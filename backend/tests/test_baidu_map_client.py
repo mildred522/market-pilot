@@ -52,7 +52,7 @@ def test_search_nearby_raises_provider_status_error():
     )
 
     with httpx.Client(transport=transport) as http_client:
-        with pytest.raises(BaiduMapResponseError, match="status=4"):
+        with pytest.raises(BaiduMapResponseError, match="status=4") as exc_info:
             BaiduMapClient(
                 "test-ak", http_client=http_client
             ).search_nearby(
@@ -61,6 +61,10 @@ def test_search_nearby_raises_provider_status_error():
                 longitude=104.0668,
                 radius_meters=800,
             )
+
+    assert exc_info.value.provider_status == 4
+    assert exc_info.value.kind == "quota"
+    assert exc_info.value.retryable is False
 
 
 def test_search_nearby_page_sends_requested_page_and_options():
@@ -170,6 +174,81 @@ def test_search_page_normalizes_transport_error_without_exposing_api_key():
             )
 
     assert "secret-test-ak" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("status", "kind"),
+    [
+        (1, "retryable"),
+        (2, "request"),
+        (3, "permission"),
+        (5, "authentication"),
+        (101, "configuration"),
+        (210, "ip_restriction"),
+        (211, "signature"),
+        (999, "unknown"),
+    ],
+)
+def test_provider_statuses_have_stable_error_kind(status: int, kind: str):
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(200, json={"status": status, "message": "failure"})
+    )
+
+    with httpx.Client(transport=transport) as http_client:
+        with pytest.raises(BaiduMapResponseError) as exc_info:
+            BaiduMapClient(
+                "secret-test-ak", http_client=http_client
+            ).search_region_page(query="奶茶", region="成都市")
+
+    error = exc_info.value
+    assert error.provider_status == status
+    assert error.kind == kind
+    assert error.retryable is (kind == "retryable")
+    assert "secret-test-ak" not in str(error)
+
+
+def test_timeout_is_retryable_and_structured():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        with pytest.raises(BaiduMapResponseError) as exc_info:
+            BaiduMapClient(
+                "secret-test-ak", http_client=http_client
+            ).search_nearby_page(
+                query="奶茶",
+                latitude=30.5728,
+                longitude=104.0668,
+                radius_meters=800,
+            )
+
+    assert exc_info.value.provider_status is None
+    assert exc_info.value.kind == "retryable"
+    assert exc_info.value.retryable is True
+
+
+@pytest.mark.parametrize(
+    ("http_status", "kind"),
+    [(429, "quota"), (403, "permission"), (500, "retryable")],
+)
+def test_http_errors_are_structured_and_classified(
+    http_status: int,
+    kind: str,
+):
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(http_status, text="provider failure")
+    )
+
+    with httpx.Client(transport=transport) as http_client:
+        with pytest.raises(BaiduMapResponseError) as exc_info:
+            BaiduMapClient(
+                "secret-test-ak", http_client=http_client
+            ).search_region_page(query="奶茶", region="成都市")
+
+    error = exc_info.value
+    assert error.provider_status == http_status
+    assert error.kind == kind
+    assert error.retryable is (kind == "retryable")
 
 
 def test_from_env_requires_server_api_key(monkeypatch):

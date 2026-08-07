@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 from typing import Any
 
 import httpx
@@ -10,8 +11,60 @@ class BaiduMapConfigurationError(ValueError):
     pass
 
 
+class BaiduMapErrorKind(str, Enum):
+    CONFIGURATION = "configuration"
+    AUTHENTICATION = "authentication"
+    IP_RESTRICTION = "ip_restriction"
+    SIGNATURE = "signature"
+    PERMISSION = "permission"
+    QUOTA = "quota"
+    REQUEST = "request"
+    RETRYABLE = "retryable"
+    UNKNOWN = "unknown"
+
+
 class BaiduMapResponseError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_status: int | None = None,
+        kind: BaiduMapErrorKind = BaiduMapErrorKind.UNKNOWN,
+        retryable: bool | None = None,
+    ) -> None:
+        self.provider_status = provider_status
+        self.kind = BaiduMapErrorKind(kind)
+        self.retryable = (
+            self.kind == BaiduMapErrorKind.RETRYABLE
+            if retryable is None
+            else retryable
+        )
+        super().__init__(message)
+
+
+_PROVIDER_STATUS_KINDS = {
+    1: BaiduMapErrorKind.RETRYABLE,
+    2: BaiduMapErrorKind.REQUEST,
+    3: BaiduMapErrorKind.PERMISSION,
+    4: BaiduMapErrorKind.QUOTA,
+    5: BaiduMapErrorKind.AUTHENTICATION,
+    101: BaiduMapErrorKind.CONFIGURATION,
+    102: BaiduMapErrorKind.PERMISSION,
+    200: BaiduMapErrorKind.AUTHENTICATION,
+    201: BaiduMapErrorKind.AUTHENTICATION,
+    202: BaiduMapErrorKind.AUTHENTICATION,
+    203: BaiduMapErrorKind.CONFIGURATION,
+    210: BaiduMapErrorKind.IP_RESTRICTION,
+    211: BaiduMapErrorKind.SIGNATURE,
+    220: BaiduMapErrorKind.PERMISSION,
+    240: BaiduMapErrorKind.PERMISSION,
+    260: BaiduMapErrorKind.PERMISSION,
+    261: BaiduMapErrorKind.PERMISSION,
+    301: BaiduMapErrorKind.QUOTA,
+    302: BaiduMapErrorKind.QUOTA,
+    401: BaiduMapErrorKind.QUOTA,
+    402: BaiduMapErrorKind.QUOTA,
+}
 
 
 class BaiduMapClient:
@@ -138,12 +191,16 @@ class BaiduMapClient:
             with httpx.Client() as http_client:
                 payload = self._request(http_client, params)
 
-        status = payload.get("status")
+        status = _optional_int(payload.get("status"))
         if status != 0:
             message = payload.get("message", "unknown provider error")
             safe_message = str(message).replace(self._ak, "[redacted]")
             raise BaiduMapResponseError(
-                f"Baidu Place API status={status}: {safe_message}"
+                f"Baidu Place API status={status}: {safe_message}",
+                provider_status=status,
+                kind=_PROVIDER_STATUS_KINDS.get(
+                    status, BaiduMapErrorKind.UNKNOWN
+                ),
             )
         return payload
 
@@ -195,10 +252,42 @@ class BaiduMapClient:
             )
             response.raise_for_status()
             payload = response.json()
-        except (httpx.HTTPError, ValueError):
-            raise BaiduMapResponseError("Baidu Place API request failed") from None
+        except httpx.TimeoutException:
+            raise BaiduMapResponseError(
+                "Baidu Place API request timed out",
+                kind=BaiduMapErrorKind.RETRYABLE,
+                retryable=True,
+            ) from None
+        except httpx.NetworkError:
+            raise BaiduMapResponseError(
+                "Baidu Place API network request failed",
+                kind=BaiduMapErrorKind.RETRYABLE,
+                retryable=True,
+            ) from None
+        except httpx.HTTPStatusError as error:
+            status = error.response.status_code
+            kind = _http_error_kind(status)
+            raise BaiduMapResponseError(
+                "Baidu Place API returned an HTTP error",
+                provider_status=status,
+                kind=kind,
+                retryable=kind == BaiduMapErrorKind.RETRYABLE,
+            ) from None
+        except httpx.RequestError:
+            raise BaiduMapResponseError(
+                "Baidu Place API request failed",
+                kind=BaiduMapErrorKind.REQUEST,
+            ) from None
+        except ValueError:
+            raise BaiduMapResponseError(
+                "Baidu Place API returned invalid JSON",
+                kind=BaiduMapErrorKind.REQUEST,
+            ) from None
         if not isinstance(payload, dict):
-            raise BaiduMapResponseError("Baidu Place API returned invalid JSON")
+            raise BaiduMapResponseError(
+                "Baidu Place API returned invalid JSON",
+                kind=BaiduMapErrorKind.REQUEST,
+            )
         return payload
 
     @staticmethod
@@ -219,6 +308,18 @@ class BaiduMapClient:
             comment_count=_optional_int(detail.get("comment_num")),
             average_price=_optional_float(detail.get("price")),
         )
+
+
+def _http_error_kind(status: int) -> BaiduMapErrorKind:
+    if status == 429:
+        return BaiduMapErrorKind.QUOTA
+    if status == 401:
+        return BaiduMapErrorKind.AUTHENTICATION
+    if status == 403:
+        return BaiduMapErrorKind.PERMISSION
+    if status == 408 or status >= 500:
+        return BaiduMapErrorKind.RETRYABLE
+    return BaiduMapErrorKind.REQUEST
 
 
 def _optional_text(value: Any) -> str | None:
