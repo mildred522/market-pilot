@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.orm import Session
@@ -459,6 +460,29 @@ class ScreeningCollector:
         )
 
 
+class SelectiveScreeningCollector(ScreeningCollector):
+    def __init__(self, errors):
+        super().__init__()
+        self.errors = errors
+
+    def collect(self, *, candidate, radius_meters, queries):
+        index = int(candidate.representative.uid.split("-")[-1])
+        if index in self.errors:
+            self.calls.append(
+                {
+                    "candidate": candidate,
+                    "radius_meters": radius_meters,
+                    "queries": queries,
+                }
+            )
+            raise self.errors[index]
+        return super().collect(
+            candidate=candidate,
+            radius_meters=radius_meters,
+            queries=queries,
+        )
+
+
 def test_recommendations_deep_analyzes_at_most_ten_and_returns_requested_five():
     session = make_session()
     collector = Collector()
@@ -521,6 +545,122 @@ def test_recommendations_return_actual_insufficient_candidates_without_invention
     assert len(screening.calls) == 2
     assert len(analysis.result_json["candidates"]) == 2
     assert any("insufficient candidates" in item for item in analysis.warnings_json)
+
+
+def test_partial_screening_failure_persists_degraded_successful_candidates():
+    session = make_session()
+    collector = Collector()
+    screening = SelectiveScreeningCollector(
+        {
+            3: BaiduMapResponseError(
+                "quota",
+                provider_status=4,
+                kind=BaiduMapErrorKind.QUOTA,
+                retryable=False,
+            )
+        }
+    )
+    service = make_service(
+        session,
+        collector,
+        Snapshots(),
+        screening_collector=screening,
+    )
+    service._candidate_generator = CandidateSource(4)
+
+    analysis = service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=3,
+    )
+
+    assert analysis.status == "degraded"
+    assert analysis.result_json["candidate_count"] == 3
+    assert len(collector.calls) == 3
+    assert len(screening.calls) == 4
+    assert analysis.warnings_json == [
+        "candidate_screening:anchor-3:baidu_map:quota:permanent"
+    ]
+    assert session.get(LocationAnalysis, analysis.id).status == "degraded"
+
+
+def test_all_retryable_screening_transport_failures_persist_degraded_record():
+    session = make_session()
+    request = httpx.Request("GET", "https://api.map.baidu.com")
+    screening = SelectiveScreeningCollector(
+        {
+            index: httpx.ConnectError("offline", request=request)
+            for index in range(3)
+        }
+    )
+    collector = Collector()
+    service = make_service(
+        session,
+        collector,
+        Snapshots(),
+        screening_collector=screening,
+    )
+    service._candidate_generator = CandidateSource(3)
+
+    analysis = service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=3,
+    )
+
+    assert analysis.status == "degraded"
+    assert analysis.result_json["candidate_count"] == 0
+    assert collector.calls == []
+    assert len(screening.calls) == 3
+    assert (
+        "candidate_screening:anchor-0:baidu_map:transport:retryable"
+        in analysis.warnings_json
+    )
+    assert session.get(LocationAnalysis, analysis.id) is not None
+
+
+def test_all_permanent_screening_failures_persist_failed_without_retry():
+    session = make_session()
+    screening = SelectiveScreeningCollector(
+        {
+            index: BaiduMapResponseError(
+                "permission",
+                provider_status=3,
+                kind=BaiduMapErrorKind.PERMISSION,
+                retryable=False,
+            )
+            for index in range(3)
+        }
+    )
+    collector = Collector()
+    service = make_service(
+        session,
+        collector,
+        Snapshots(),
+        screening_collector=screening,
+    )
+    service._candidate_generator = CandidateSource(3)
+
+    analysis = service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=3,
+    )
+
+    assert analysis.status == "failed"
+    assert analysis.result_json["candidate_count"] == 0
+    assert collector.calls == []
+    assert len(screening.calls) == 3
+    assert analysis.warnings_json[0] == (
+        "candidate_screening:anchor-0:baidu_map:permission:permanent"
+    )
+    assert session.get(LocationAnalysis, analysis.id).status == "failed"
 
 
 @pytest.mark.parametrize("invalid_count", [2, 6])

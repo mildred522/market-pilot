@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.db.models import LocationAnalysis
@@ -18,6 +19,7 @@ from app.location.candidates import (
     BaiduCandidateScreeningCollector,
     CandidateGenerator,
     CandidateScreener,
+    ScreenedCandidate,
 )
 from app.location.contracts import (
     ConfidenceInputs,
@@ -208,11 +210,34 @@ class LocationAnalysisService:
                 warnings=[self._provider_warning(error)],
             )
 
-        screened = self._candidate_screener.screen(
-            generated, self._screening_collector
-        )[:10]
+        screened, warnings, screening_failures = self._screen_candidates(
+            generated
+        )
+        screened = screened[:10]
+        if not screened and screening_failures:
+            status = (
+                "degraded"
+                if any(screening_failures)
+                else "failed"
+            )
+            warnings.append(
+                f"insufficient candidates: requested {max_candidates}, available 0"
+            )
+            return self._persist(
+                mode="recommendations",
+                project_id=project_id,
+                input_scope=input_scope,
+                latitude=None,
+                longitude=None,
+                status=status,
+                result_json={
+                    "region": region,
+                    "candidate_count": 0,
+                    "candidates": [],
+                },
+                warnings=warnings,
+            )
         candidate_results: list[dict[str, Any]] = []
-        warnings: list[str] = []
         for screened_candidate in screened:
             candidate = screened_candidate.candidate
             analysis = self.analyze_manual(
@@ -294,6 +319,51 @@ class LocationAnalysisService:
             ],
             warnings=warnings,
         )
+
+    def _screen_candidates(
+        self, candidates
+    ) -> tuple[list[ScreenedCandidate], list[str], list[bool]]:
+        screened: list[ScreenedCandidate] = []
+        warnings: list[str] = []
+        retryable_failures: list[bool] = []
+        for candidate in candidates:
+            identifier = candidate.representative.uid
+            try:
+                metrics = self._screening_collector.collect(
+                    candidate=candidate,
+                    radius_meters=self._candidate_screener.RADIUS_METERS,
+                    queries=self._candidate_screener.QUERIES,
+                )
+            except BaiduMapResponseError as error:
+                warnings.append(
+                    f"candidate_screening:{identifier}:"
+                    f"{self._provider_warning(error)}"
+                )
+                retryable_failures.append(error.retryable)
+            except httpx.TransportError:
+                warnings.append(
+                    f"candidate_screening:{identifier}:"
+                    "baidu_map:transport:retryable"
+                )
+                retryable_failures.append(True)
+            else:
+                screened.append(
+                    ScreenedCandidate(
+                        candidate=candidate,
+                        score=self._candidate_screener.score(metrics),
+                        metrics=metrics,
+                    )
+                )
+        screened.sort(
+            key=lambda item: (
+                -item.score,
+                item.candidate.representative.uid,
+                item.candidate.representative.name,
+                item.candidate.latitude,
+                item.candidate.longitude,
+            )
+        )
+        return screened, warnings, retryable_failures
 
     def _reference_fallback(
         self,
