@@ -268,3 +268,44 @@ def test_from_env_requires_server_api_key(monkeypatch):
 
     with pytest.raises(BaiduMapConfigurationError):
         BaiduMapClient.from_env()
+
+
+def test_geocode_sends_address_and_returns_bd09_coordinate_without_ak():
+    captured_request: httpx.Request | None = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        return httpx.Response(
+            200,
+            json={"status": 0, "result": {"location": {"lng": 104.1, "lat": 30.6}}},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        result = BaiduMapClient("secret-ak", http_client=http_client).geocode(
+            address="No. 1 Tianfu Avenue", city="Chengdu"
+        )
+
+    assert captured_request is not None
+    assert captured_request.url.path == "/geocoding/v3"
+    assert captured_request.url.params["address"] == "No. 1 Tianfu Avenue"
+    assert captured_request.url.params["city"] == "Chengdu"
+    assert result.latitude == 30.6
+    assert result.longitude == 104.1
+    assert result.source == "baidu_geocoding"
+    assert "secret-ak" not in result.model_dump_json()
+
+
+def test_geocode_classifies_provider_errors():
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(200, json={"status": 210, "message": "ip"})
+    )
+
+    with httpx.Client(transport=transport) as http_client:
+        with pytest.raises(BaiduMapResponseError) as exc_info:
+            BaiduMapClient("secret-ak", http_client=http_client).geocode(
+                address="x", city="Chengdu"
+            )
+
+    assert exc_info.value.kind == "ip_restriction"
+    assert "secret-ak" not in str(exc_info.value)

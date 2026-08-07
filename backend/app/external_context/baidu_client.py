@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any
 
 import httpx
+from pydantic import BaseModel
 
 from app.external_context.contracts import BaiduPoi, BaiduPoiSearchResult
 
@@ -42,6 +43,13 @@ class BaiduMapResponseError(RuntimeError):
         super().__init__(message)
 
 
+class BaiduGeocodeResult(BaseModel):
+    latitude: float
+    longitude: float
+    coordinate_system: str = "bd09ll"
+    source: str = "baidu_geocoding"
+
+
 _PROVIDER_STATUS_KINDS = {
     1: BaiduMapErrorKind.RETRYABLE,
     2: BaiduMapErrorKind.REQUEST,
@@ -69,6 +77,7 @@ _PROVIDER_STATUS_KINDS = {
 
 class BaiduMapClient:
     BASE_URL = "https://api.map.baidu.com/place/v2/search"
+    GEOCODING_URL = "https://api.map.baidu.com/geocoding/v3"
 
     def __init__(
         self,
@@ -110,6 +119,28 @@ class BaiduMapClient:
             longitude=longitude,
             radius_meters=radius_meters,
         )
+
+    def geocode(self, *, address: str, city: str) -> BaiduGeocodeResult:
+        payload = self._execute(
+            {
+                "address": address,
+                "city": city,
+                "output": "json",
+                "ak": self._ak,
+            },
+            url=self.GEOCODING_URL,
+        )
+        try:
+            location = payload["result"]["location"]
+            return BaiduGeocodeResult(
+                latitude=float(location["lat"]),
+                longitude=float(location["lng"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            raise BaiduMapResponseError(
+                "Baidu geocoding returned an invalid location",
+                kind=BaiduMapErrorKind.REQUEST,
+            ) from None
 
     def search_nearby_page(
         self,
@@ -184,12 +215,17 @@ class BaiduMapClient:
             page_size=page_size,
         )
 
-    def _execute(self, params: dict[str, str | int]) -> dict[str, Any]:
+    def _execute(
+        self,
+        params: dict[str, str | int],
+        *,
+        url: str | None = None,
+    ) -> dict[str, Any]:
         if self._http_client is not None:
-            payload = self._request(self._http_client, params)
+            payload = self._request(self._http_client, params, url=url)
         else:
             with httpx.Client() as http_client:
-                payload = self._request(http_client, params)
+                payload = self._request(http_client, params, url=url)
 
         status = _optional_int(payload.get("status"))
         if status != 0:
@@ -251,10 +287,12 @@ class BaiduMapClient:
         self,
         http_client: httpx.Client,
         params: dict[str, str | int],
+        *,
+        url: str | None = None,
     ) -> dict[str, Any]:
         try:
             response = http_client.get(
-                self.BASE_URL,
+                url or self.BASE_URL,
                 params=params,
                 timeout=self._timeout_seconds,
             )
