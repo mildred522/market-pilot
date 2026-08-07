@@ -30,8 +30,8 @@ backend/storage/
 *.bak
 
 # Editor and OS files
+.worktrees/
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-
