@@ -23,7 +23,7 @@ class FinanceFeasibility(str, Enum):
 class NormalizedPoiFeature(BaseModel):
     uid: str
     name: str
-    distance_meters: int | None = None
+    distance_meters: int | None = Field(default=None, ge=0)
     matched_keywords: list[str] = Field(default_factory=list)
     category: str | None = None
     classifications: list[PoiClassification] = Field(default_factory=list)
@@ -33,12 +33,12 @@ class NormalizedPoiFeature(BaseModel):
 
 
 class RingMetrics(BaseModel):
-    radius_meters: int
-    direct_competitors: int = 0
-    substitutes: int = 0
-    demand_proxies: int = 0
-    transit: int = 0
-    amenities: int = 0
+    radius_meters: int = Field(ge=0)
+    direct_competitors: int = Field(default=0, ge=0)
+    substitutes: int = Field(default=0, ge=0)
+    demand_proxies: int = Field(default=0, ge=0)
+    transit: int = Field(default=0, ge=0)
+    amenities: int = Field(default=0, ge=0)
 
 
 class PriceMetrics(BaseModel):
@@ -98,8 +98,8 @@ class ConfidenceInputs(BaseModel):
 
 class ConfidenceComponent(BaseModel):
     raw_coverage: float = Field(ge=0, le=1)
-    weight: int
-    weighted_score: float
+    weight: int = Field(ge=0)
+    weighted_score: float = Field(ge=0)
 
 
 class ConfidenceBreakdown(BaseModel):

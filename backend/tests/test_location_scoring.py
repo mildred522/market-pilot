@@ -1,14 +1,18 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from pydantic import ValidationError
 
 from app.location.contracts import (
+    ConfidenceComponent,
     ConfidenceInputs,
     DimensionScores,
     Evidence,
     FinanceFeasibility,
     NormalizedPoiFeature,
     OpportunityWeights,
+    PoiClassification,
+    RingMetrics,
 )
 from app.location.feature_builder import LocationFeatureBuilder
 from app.location.scorer import LocationScorer
@@ -100,6 +104,90 @@ def test_feature_builder_calculates_price_distribution_and_preserves_missing_val
     assert office.distance_meters is None
     assert office.average_price is None
     assert office.business_status is None
+
+
+def test_feature_builder_unions_explicit_classifications_when_deduplicating():
+    features = LocationFeatureBuilder().build(
+        [
+            NormalizedPoiFeature(
+                uid="shared-poi",
+                name="共享点位",
+                classifications=[PoiClassification.AMENITY],
+            ),
+            NormalizedPoiFeature(
+                uid="shared-poi",
+                name="共享点位",
+                classifications=[PoiClassification.TRANSIT],
+            ),
+        ]
+    )
+
+    merged = features.pois[0]
+    assert set(merged.classifications) == {
+        PoiClassification.AMENITY,
+        PoiClassification.TRANSIT,
+    }
+
+
+def test_feature_builder_includes_exact_ring_boundary_and_ignores_missing_distance():
+    features = LocationFeatureBuilder().build(
+        [
+            poi("boundary", "边界竞品", 300, keywords=["奶茶"]),
+            poi("outside", "圈外竞品", 301, keywords=["奶茶"]),
+            poi("unknown", "距离未知", None, keywords=["奶茶"]),
+        ]
+    )
+
+    assert features.rings[300].direct_competitors == 1
+    assert features.rings[500].direct_competitors == 2
+    assert features.rings[1500].direct_competitors == 2
+
+
+def test_feature_builder_empty_input_preserves_missing_metrics():
+    features = LocationFeatureBuilder().build([])
+
+    assert features.pois == []
+    assert features.price.eligible_count == 0
+    assert features.price.sample_count == 0
+    assert features.price.coverage == 0
+    assert features.price.median is None
+    assert all(ring.direct_competitors == 0 for ring in features.rings.values())
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "distance_meters",
+    ],
+)
+def test_normalized_poi_numeric_fields_reject_negative_values(field_name: str):
+    with pytest.raises(ValidationError):
+        NormalizedPoiFeature(uid="invalid", name="invalid", **{field_name: -1})
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "radius_meters",
+        "direct_competitors",
+        "substitutes",
+        "demand_proxies",
+        "transit",
+        "amenities",
+    ],
+)
+def test_ring_metrics_numeric_fields_reject_negative_values(field_name: str):
+    with pytest.raises(ValidationError):
+        values = {"radius_meters": 1, field_name: -1}
+        RingMetrics(**values)
+
+
+@pytest.mark.parametrize("field_name", ["weight", "weighted_score"])
+def test_confidence_component_scores_reject_negative_values(field_name: str):
+    with pytest.raises(ValidationError):
+        values = {"raw_coverage": 0, "weight": 1, "weighted_score": 0}
+        values[field_name] = -1
+        ConfidenceComponent(**values)
 
 
 def test_confidence_below_60_forces_further_research_and_returns_raw_coverage():

@@ -80,6 +80,10 @@ class LocationFeatureBuilder:
                     "matched_keywords": sorted(
                         set(current.matched_keywords + poi.matched_keywords)
                     ),
+                    "classifications": sorted(
+                        set(current.classifications + poi.classifications),
+                        key=str,
+                    ),
                     "category": current.category or poi.category,
                     "average_price": (
                         current.average_price
