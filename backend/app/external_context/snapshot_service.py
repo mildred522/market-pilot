@@ -176,6 +176,18 @@ class ExternalContextSnapshotService:
         coord_type: int,
         radius_limit: bool,
     ) -> str | None:
+        if (
+            isinstance(max_pages, bool)
+            or not isinstance(max_pages, int)
+            or max_pages < 1
+        ):
+            raise ValueError("max_pages must be at least 1")
+        if (
+            isinstance(page_size, bool)
+            or not isinstance(page_size, int)
+            or not 1 <= page_size <= 20
+        ):
+            raise ValueError("page_size must be between 1 and 20")
         values = (keywords, radii, scoring_version)
         if all(value is None for value in values):
             return None
@@ -198,9 +210,7 @@ class ExternalContextSnapshotService:
             key=Decimal,
         )
         normalized_mapping = {
-            keyword.strip(): str(
-                getattr(classification, "value", classification)
-            ).strip()
+            keyword.strip(): _normalize_classifications(classification)
             for keyword, classification in (keyword_classifications or {}).items()
         }
         if any(
@@ -232,7 +242,7 @@ class ExternalContextSnapshotService:
             "keyword_classifications": dict(sorted(normalized_mapping.items())),
             "scoring_version": scoring_version.strip(),
             "max_pages": _canonical_number(
-                min(max(max_pages, 1), ExternalContextSnapshotService.MAX_PAGES),
+                min(max_pages, ExternalContextSnapshotService.MAX_PAGES),
                 name="max_pages",
             ),
             "page_size": _canonical_number(page_size, name="page_size"),
@@ -261,3 +271,22 @@ def _canonical_number(value: object, *, name: str) -> str:
         raise ValueError(f"{name} must be finite")
     normalized = format(number.normalize(), "f")
     return "0" if normalized in {"-0", "-0.0"} else normalized
+
+
+def _normalize_classifications(value: object) -> list[str]:
+    if isinstance(value, (str, bytes)) or hasattr(value, "value"):
+        values = (value,)
+    elif isinstance(value, (Sequence, set, frozenset)):
+        values = value
+    else:
+        values = (value,)
+    normalized = sorted(
+        {
+            str(getattr(item, "value", item)).strip()
+            for item in values
+            if str(getattr(item, "value", item)).strip()
+        }
+    )
+    if not normalized:
+        raise ValueError("keyword classifications cannot be empty")
+    return normalized

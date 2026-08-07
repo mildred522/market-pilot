@@ -541,6 +541,111 @@ def test_effective_max_pages_makes_requested_eight_and_hundred_same_scope():
         ) is not None
 
 
+@pytest.mark.parametrize(
+    ("parameter", "invalid_value"),
+    [("max_pages", 0), ("page_size", 0), ("page_size", 21)],
+)
+def test_snapshot_scope_rejects_invalid_pagination_bounds(
+    parameter: str,
+    invalid_value: int,
+):
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    scope = {
+        "keywords": ("奶茶",),
+        "radii": (300,),
+        "keyword_classifications": {"奶茶": "direct_competitor"},
+        "scoring_version": "location-v1",
+    }
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.flush()
+        service = ExternalContextSnapshotService()
+        with pytest.raises(ValueError, match=parameter):
+            service.save(
+                session,
+                project_id=project.id,
+                provider="baidu_map",
+                city="chengdu",
+                category="milk-tea",
+                latitude=30.5728,
+                longitude=104.0668,
+                radius_meters=1500,
+                queried_at=now,
+                context=make_long_lived_context(now),
+                **scope,
+                **{parameter: invalid_value},
+            )
+        with pytest.raises(ValueError, match=parameter):
+            service.find_reusable(
+                session,
+                project_id=project.id,
+                provider="baidu_map",
+                city="chengdu",
+                category="milk-tea",
+                latitude=30.5728,
+                longitude=104.0668,
+                radius_meters=1500,
+                now=now,
+                **scope,
+                **{parameter: invalid_value},
+            )
+
+
+def test_signature_normalizes_multi_class_keyword_sets_order_insensitively():
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    scope = {
+        "keywords": ("奶茶",),
+        "radii": (300,),
+        "scoring_version": "location-v1",
+    }
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.flush()
+        service = ExternalContextSnapshotService()
+        service.save(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            queried_at=now,
+            context=make_long_lived_context(now),
+            keyword_classifications={
+                "奶茶": ["direct_competitor", "substitute"]
+            },
+            **scope,
+        )
+
+        common = {
+            "project_id": project.id,
+            "provider": "baidu_map",
+            "city": "chengdu",
+            "category": "milk-tea",
+            "latitude": 30.5728,
+            "longitude": 104.0668,
+            "radius_meters": 1500,
+            "now": now + timedelta(days=1),
+            **scope,
+        }
+        assert service.find_reusable(
+            session,
+            **common,
+            keyword_classifications={
+                "奶茶": ["substitute", "direct_competitor"]
+            },
+        ) is not None
+        assert service.find_reusable(
+            session,
+            **common,
+            keyword_classifications={"奶茶": ["direct_competitor"]},
+        ) is None
+
+
 def test_save_clamps_expiry_to_seven_days_and_lookup_honors_expiry():
     now = datetime(2026, 7, 24, 10, tzinfo=UTC)
     with make_session() as session:
