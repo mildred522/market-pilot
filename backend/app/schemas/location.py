@@ -1,12 +1,16 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, StrictFloat, StrictInt, model_validator
+from math import isfinite
+
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, field_validator, model_validator
 
 
 CoordinateSystem = Literal["bd09ll"]
 
 
 class FinanceAssumptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     gross_margin: StrictFloat | None = Field(default=None, ge=0, le=1)
     labor_cost: StrictFloat | None = Field(default=None, ge=0, allow_inf_nan=False)
     utilities_cost: StrictFloat | None = Field(default=None, ge=0, allow_inf_nan=False)
@@ -14,8 +18,35 @@ class FinanceAssumptions(BaseModel):
     target_daily_orders: StrictInt | None = Field(default=None, ge=0)
     monthly_rent: StrictFloat | None = Field(default=None, ge=0, allow_inf_nan=False)
 
+    @field_validator(
+        "gross_margin",
+        "labor_cost",
+        "utilities_cost",
+        "other_fixed_cost",
+        "monthly_rent",
+        mode="before",
+    )
+    @classmethod
+    def require_json_float(cls, value: Any) -> Any:
+        if value is not None and (
+            type(value) not in (int, float)
+            or isinstance(value, bool)
+            or not isfinite(value)
+        ):
+            raise ValueError("finance float fields require finite JSON numbers")
+        return value
+
+    @field_validator("target_daily_orders", mode="before")
+    @classmethod
+    def require_json_int(cls, value: Any) -> Any:
+        if value is not None and type(value) is not int:
+            raise ValueError("target_daily_orders must be an integer")
+        return value
+
 
 class LocationRequestBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     project_id: StrictInt = Field(gt=0)
     city: str = Field(min_length=1, max_length=80)
     district: str = Field(min_length=1, max_length=80)
@@ -26,11 +57,40 @@ class LocationRequestBase(BaseModel):
     coordinate_system: CoordinateSystem = "bd09ll"
     radius_meters: StrictInt = Field(default=1500, ge=300, le=5000)
 
+    @field_validator("project_id", "radius_meters", mode="before")
+    @classmethod
+    def require_base_int(cls, value: Any) -> Any:
+        if type(value) is not int:
+            raise ValueError("integer fields must be JSON integers")
+        return value
+
+    @field_validator("planned_average_order_value", mode="before")
+    @classmethod
+    def require_order_value_float(cls, value: Any) -> Any:
+        if (
+            type(value) not in (int, float)
+            or isinstance(value, bool)
+            or not isfinite(value)
+        ):
+            raise ValueError("planned_average_order_value must be a finite float")
+        return value
+
 
 class ManualLocationAnalysisRequest(LocationRequestBase):
     address: str | None = Field(default=None, min_length=1, max_length=500)
     latitude: StrictFloat | None = Field(default=None, ge=-90, le=90)
     longitude: StrictFloat | None = Field(default=None, ge=-180, le=180)
+
+    @field_validator("latitude", "longitude", mode="before")
+    @classmethod
+    def require_coordinate_float(cls, value: Any) -> Any:
+        if value is not None and (
+            type(value) not in (int, float)
+            or isinstance(value, bool)
+            or not isfinite(value)
+        ):
+            raise ValueError("coordinates must be finite floats")
+        return value
 
     @model_validator(mode="after")
     def require_exactly_one_location(self) -> "ManualLocationAnalysisRequest":
@@ -46,7 +106,17 @@ class ManualLocationAnalysisRequest(LocationRequestBase):
 
 
 class LocationRecommendationsRequest(LocationRequestBase):
+    # Shared client form payloads may include an empty address; recommendations
+    # still reject any non-null address through this strict None field.
+    address: None = None
     candidate_count: StrictInt = Field(default=5, ge=1, le=10)
+
+    @field_validator("candidate_count", mode="before")
+    @classmethod
+    def require_candidate_int(cls, value: Any) -> Any:
+        if type(value) is not int:
+            raise ValueError("candidate_count must be an integer")
+        return value
 
 
 class Coordinate(BaseModel):
