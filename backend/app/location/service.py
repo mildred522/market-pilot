@@ -30,7 +30,7 @@ from app.location.contracts import (
     LocationAnalysisResult,
     NormalizedPoiFeature,
 )
-from app.location.evidence import LocationEvidenceBuilder
+from app.location.evidence import CONFIDENCE_FIELDS, LocationEvidenceBuilder
 
 SCORING_VERSION = "location-v1"
 SNAPSHOT_RADIUS_METERS = max(RING_RADII)
@@ -572,7 +572,13 @@ class LocationAnalysisService:
             },
             "local_poi_data": "unavailable",
         }
-        scope = {"city": city, "category": category, "year": year}
+        scope = {
+            "city": city,
+            "category": category,
+            "year": year,
+            "center": {"latitude": latitude, "longitude": longitude},
+            "radius_meters": radius_meters,
+        }
         observed_at = self._now()
         expires_at = observed_at + timedelta(days=1)
         dimensions = DimensionScores(
@@ -581,6 +587,13 @@ class LocationAnalysisService:
             transit=0,
             price_fit=0,
             surrounding_synergy=0,
+        )
+        confidence_inputs = ConfidenceInputs(
+            pagination=0,
+            key_fields=0,
+            keyword_coverage=0,
+            freshness=0,
+            status_comment_coverage=0,
         )
         labels = (
             "competition_balance",
@@ -597,21 +610,27 @@ class LocationAnalysisService:
                 expires_at=expires_at,
                 query_scope=scope,
                 value={
+                    "score": getattr(dimensions, label),
                     "local_poi_data": "unavailable",
                     "dataset_ids": dataset_ids,
                 },
             )
             for label in labels
         ]
+        evidence.extend(
+            Evidence(
+                source="reference_dataset",
+                label=f"confidence.{label}",
+                observed_at=observed_at,
+                expires_at=expires_at,
+                query_scope=scope,
+                value=getattr(confidence_inputs, label),
+            )
+            for label in CONFIDENCE_FIELDS
+        )
         result = self._scorer.score(
             dimensions,
-            ConfidenceInputs(
-                pagination=0,
-                key_fields=0,
-                keyword_coverage=0,
-                freshness=0,
-                status_comment_coverage=0,
-            ),
+            confidence_inputs,
             finance_feasibility=finance_feasibility,
             evidence=evidence,
         )

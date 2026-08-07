@@ -369,10 +369,15 @@ def _provider_http_error_for_kind(kind: str, *, retryable: bool) -> HTTPExceptio
 def _raise_for_provider_warnings(warnings: list[str]) -> None:
     for warning in warnings:
         parts = warning.split(":")
-        if len(parts) >= 3 and parts[0] == "baidu_map":
-            kind = parts[1]
+        try:
+            provider_index = parts.index("baidu_map")
+            kind = parts[provider_index + 1]
+            disposition = parts[provider_index + 2]
+        except (ValueError, IndexError):
+            continue
+        if kind:
             raise _provider_http_error_for_kind(
-                kind, retryable=parts[2] == "retryable"
+                kind, retryable=disposition == "retryable"
             )
 
 

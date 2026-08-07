@@ -17,6 +17,7 @@ from app.location.contracts import (
     RingMetrics,
 )
 from app.location.feature_builder import LocationFeatureBuilder
+from app.location.evidence import LocationEvidenceBuilder
 from app.location.scorer import LocationScorer
 
 
@@ -154,6 +155,34 @@ def test_feature_builder_empty_input_preserves_missing_metrics():
     assert features.price.coverage == 0
     assert features.price.median is None
     assert all(ring.direct_competitors == 0 for ring in features.rings.values())
+
+
+@pytest.mark.parametrize(
+    ("requested_radius", "expected_demand"),
+    [(300, 15), (499, 15), (500, 30), (799, 30), (800, 45)],
+)
+def test_dimensions_use_largest_observed_ring_within_requested_radius(
+    requested_radius, expected_demand
+):
+    features = LocationFeatureBuilder().build(
+        [
+            poi("demand-300", "office", 250, category="写字楼"),
+            poi("demand-500", "residence", 450, category="住宅"),
+            poi("demand-800", "school", 750, category="学校"),
+        ]
+    )
+    dimensions, _, _ = LocationEvidenceBuilder().build(
+        features=features,
+        city="Chengdu",
+        category="milk-tea",
+        latitude=30.5,
+        longitude=104.0,
+        observed_at=datetime(2026, 8, 7, tzinfo=UTC),
+        expires_at=datetime(2026, 8, 14, tzinfo=UTC),
+        complete=True,
+        radius_meters=requested_radius,
+    )
+    assert dimensions.demand_proxies == expected_demand
 
 
 @pytest.mark.parametrize(

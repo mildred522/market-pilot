@@ -94,8 +94,12 @@ def valid_result():
             label=label,
             observed_at=observed,
             expires_at=observed + timedelta(days=7),
-            query_scope={"city": "Chengdu"},
-            value=1,
+            query_scope={
+                "city": "Chengdu",
+                "center": {"latitude": 30.57, "longitude": 104.06},
+                "radius_meters": 800,
+            },
+            value=70 if label.startswith("dimension.") else 1,
         )
         for label in [
             "dimension.competition_balance",
@@ -103,6 +107,11 @@ def valid_result():
             "dimension.transit",
             "dimension.price_fit",
             "dimension.surrounding_synergy",
+            "confidence.pagination",
+            "confidence.key_fields",
+            "confidence.keyword_coverage",
+            "confidence.freshness",
+            "confidence.status_comment_coverage",
         ]
     ]
     scored = LocationScorer().score(
@@ -326,6 +335,58 @@ def test_provider_errors_are_classified(kind, expected, api_setup):
     assert response.json()["detail"]["code"].startswith("baidu_")
 
 
+@pytest.mark.parametrize(
+    ("warning_kind", "expected"),
+    [
+        ("permission", 403),
+        ("quota", 429),
+        ("ip_restriction", 403),
+        ("signature", 403),
+    ],
+)
+def test_prefixed_screening_provider_warnings_are_not_returned_as_success(
+    warning_kind, expected, api_setup
+):
+    session, project_id, _, service = api_setup
+    service.row = make_row(session, project_id, result=valid_result())
+    service.row.warnings_json = [
+        f"candidate_screening:anchor-1:baidu_map:{warning_kind}:permanent"
+    ]
+    with TestClient(app) as http:
+        response = http.post(
+            "/pre-open/location/manual-analysis",
+            json=payload(project_id, address=None, latitude=30.5, longitude=104.0),
+        )
+    assert response.status_code == expected
+    assert response.json()["detail"]["code"] == f"baidu_{warning_kind}_error"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("project_id", True),
+        ("project_id", 1.0),
+        ("planned_average_order_value", True),
+        ("latitude", True),
+        ("longitude", True),
+        ("finance_assumptions", {"labor_cost": True}),
+        ("finance_assumptions", {"target_daily_orders": 10.0}),
+    ],
+)
+def test_location_api_rejects_coercible_numeric_inputs(field, value, api_setup):
+    session, project_id, _, service = api_setup
+    service.row = make_row(session, project_id, result=valid_result())
+    overrides = {"address": None, "latitude": 30.5, "longitude": 104.0}
+    body = payload(project_id, **overrides)
+    body[field] = value
+    with TestClient(app) as http:
+        response = http.post(
+            "/pre-open/location/manual-analysis",
+            json=body,
+        )
+    assert response.status_code == 422
+
+
 def test_persisted_authentication_warning_uses_same_provider_mapping(api_setup):
     session, project_id, _, service = api_setup
     service.row = make_row(
@@ -370,6 +431,55 @@ def test_retrieval_rejects_invalid_persisted_evidence(api_setup):
         project_id,
         result={"opportunity_score": 72, "confidence_score": 81},
     )
+    with TestClient(app) as http:
+        response = http.get(f"/pre-open/location/analyses/{row.id}")
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "evidence_verification_failed"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda evidence: {**evidence, "source": "untrusted"},
+        lambda evidence: {**evidence, "query_scope": {"radius_meters": 800}},
+        lambda evidence: {
+            **evidence,
+            "query_scope": {
+                **evidence["query_scope"],
+                "center": {"latitude": 91, "longitude": 104.06},
+            },
+        },
+        lambda evidence: {
+            **evidence,
+            "query_scope": {**evidence["query_scope"], "radius_meters": True},
+        },
+        lambda evidence: {**evidence, "value": float("nan")},
+        lambda evidence: {**evidence, "value": {"score": "not-a-number"}},
+        lambda evidence: {**evidence, "value": 69},
+        lambda evidence: {**evidence, "label": "dimension.unknown"},
+    ],
+)
+def test_retrieval_rejects_malformed_persisted_evidence(mutation, api_setup):
+    session, project_id, _, _ = api_setup
+    result = valid_result()
+    result["evidence"][0] = mutation(result["evidence"][0])
+    row = make_row(session, project_id, result=result)
+    with TestClient(app) as http:
+        response = http.get(f"/pre-open/location/analyses/{row.id}")
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "evidence_verification_failed"
+
+
+def test_retrieval_rejects_confidence_evidence_that_does_not_match_result(api_setup):
+    session, project_id, _, _ = api_setup
+    result = valid_result()
+    item = next(
+        evidence
+        for evidence in result["evidence"]
+        if evidence["label"] == "confidence.pagination"
+    )
+    item["value"] = 0.5
+    row = make_row(session, project_id, result=result)
     with TestClient(app) as http:
         response = http.get(f"/pre-open/location/analyses/{row.id}")
     assert response.status_code == 422

@@ -115,12 +115,22 @@ def result_with_evidence(labels: list[str], *, confidence: float = 1):
             label=label,
             observed_at=NOW,
             expires_at=NOW + timedelta(days=7),
-            query_scope={"region": "test"},
-            value=1,
+            query_scope={
+                "region": "test",
+                "center": {"latitude": 30.57, "longitude": 104.06},
+                "radius_meters": 800,
+            },
+            value=(
+                70
+                if label.startswith("dimension.")
+                else confidence
+                if label.startswith("confidence.")
+                else 1
+            ),
         )
         for label in labels
     ]
-    return scorer.score(
+    result = scorer.score(
         DimensionScores(
             competition_balance=70,
             demand_proxies=70,
@@ -138,6 +148,13 @@ def result_with_evidence(labels: list[str], *, confidence: float = 1):
         finance_feasibility=FinanceFeasibility.FEASIBLE,
         evidence=evidence,
     )
+    normalized_evidence = [
+        item.model_copy(update={"value": result.conclusion})
+        if item.label == "conclusion"
+        else item
+        for item in evidence
+    ]
+    return result.model_copy(update={"evidence": normalized_evidence})
 
 
 def test_location_analysis_model_is_create_all_compatible_and_centers_are_nullable():
@@ -194,6 +211,11 @@ def test_evidence_verifier_requires_explicit_low_confidence_fallback():
         "dimension.transit",
         "dimension.price_fit",
         "dimension.surrounding_synergy",
+        "confidence.pagination",
+        "confidence.key_fields",
+        "confidence.keyword_coverage",
+        "confidence.freshness",
+        "confidence.status_comment_coverage",
         "conclusion",
     ]
     verifier = LocationEvidenceVerifier()

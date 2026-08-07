@@ -1,27 +1,27 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, StrictInt, model_validator
+from pydantic import BaseModel, Field, StrictFloat, StrictInt, model_validator
 
 
 CoordinateSystem = Literal["bd09ll"]
 
 
 class FinanceAssumptions(BaseModel):
-    gross_margin: float | None = Field(default=None, ge=0, le=1)
-    labor_cost: float | None = Field(default=None, ge=0)
-    utilities_cost: float | None = Field(default=None, ge=0)
-    other_fixed_cost: float | None = Field(default=None, ge=0)
-    target_daily_orders: int | None = Field(default=None, ge=0)
-    monthly_rent: float | None = Field(default=None, ge=0)
+    gross_margin: StrictFloat | None = Field(default=None, ge=0, le=1)
+    labor_cost: StrictFloat | None = Field(default=None, ge=0, allow_inf_nan=False)
+    utilities_cost: StrictFloat | None = Field(default=None, ge=0, allow_inf_nan=False)
+    other_fixed_cost: StrictFloat | None = Field(default=None, ge=0, allow_inf_nan=False)
+    target_daily_orders: StrictInt | None = Field(default=None, ge=0)
+    monthly_rent: StrictFloat | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class LocationRequestBase(BaseModel):
-    project_id: int = Field(gt=0)
+    project_id: StrictInt = Field(gt=0)
     city: str = Field(min_length=1, max_length=80)
     district: str = Field(min_length=1, max_length=80)
     category: str = Field(min_length=1, max_length=80)
     target_customer: str = Field(min_length=1, max_length=200)
-    planned_average_order_value: float = Field(gt=0, allow_inf_nan=False)
+    planned_average_order_value: StrictFloat = Field(gt=0, allow_inf_nan=False)
     finance_assumptions: FinanceAssumptions | None = None
     coordinate_system: CoordinateSystem = "bd09ll"
     radius_meters: StrictInt = Field(default=1500, ge=300, le=5000)
@@ -29,8 +29,8 @@ class LocationRequestBase(BaseModel):
 
 class ManualLocationAnalysisRequest(LocationRequestBase):
     address: str | None = Field(default=None, min_length=1, max_length=500)
-    latitude: float | None = Field(default=None, ge=-90, le=90)
-    longitude: float | None = Field(default=None, ge=-180, le=180)
+    latitude: StrictFloat | None = Field(default=None, ge=-90, le=90)
+    longitude: StrictFloat | None = Field(default=None, ge=-180, le=180)
 
     @model_validator(mode="after")
     def require_exactly_one_location(self) -> "ManualLocationAnalysisRequest":
