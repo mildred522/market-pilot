@@ -139,3 +139,34 @@ class ExternalContextSnapshot(Base):
         JSON, nullable=False
     )
     warnings_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+
+
+class LocationAnalysis(Base):
+    __tablename__ = "location_analyses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    input_scope_json: Mapped[dict[str, Any]] = mapped_column(
+        "input_scope", JSON, nullable=False
+    )
+    center_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    center_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    result_json: Mapped[dict[str, Any]] = mapped_column(
+        "result", JSON, nullable=False
+    )
+    evidence_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        "evidence", JSON, nullable=False
+    )
+    warnings_json: Mapped[list[str]] = mapped_column(
+        "warnings", JSON, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )

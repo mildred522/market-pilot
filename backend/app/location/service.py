@@ -1,0 +1,442 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.db.models import LocationAnalysis
+from app.external_context.baidu_client import BaiduMapResponseError
+from app.external_context.contracts import EvidenceRecord, ExternalContextData
+from app.location.collector import (
+    DEFAULT_COMPETITOR_KEYWORD_GROUPS,
+    RING_RADII,
+)
+from app.location.candidates import CandidateGenerator
+from app.location.contracts import (
+    FinanceFeasibility,
+    LocationAnalysisResult,
+    NormalizedPoiFeature,
+)
+from app.location.evidence import LocationEvidenceBuilder
+
+SCORING_VERSION = "location-v1"
+SNAPSHOT_RADIUS_METERS = max(RING_RADII)
+
+
+class LocationAnalysisService:
+    def __init__(
+        self,
+        *,
+        session: Session,
+        baidu_client,
+        poi_collector,
+        feature_builder,
+        scorer,
+        snapshot_service,
+        evidence_verifier,
+        evidence_builder=None,
+        candidate_generator=None,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._session = session
+        self._baidu_client = baidu_client
+        self._collector = poi_collector
+        self._feature_builder = feature_builder
+        self._scorer = scorer
+        self._snapshots = snapshot_service
+        self._verifier = evidence_verifier
+        self._evidence_builder = evidence_builder or LocationEvidenceBuilder()
+        self._candidate_generator = candidate_generator
+        self._now = now or (lambda: datetime.now(UTC))
+
+    def get_analysis(self, analysis_id: int) -> LocationAnalysis | None:
+        return self._session.get(LocationAnalysis, analysis_id)
+
+    def analyze_manual(
+        self,
+        *,
+        project_id: int,
+        city: str,
+        category: str,
+        latitude: float,
+        longitude: float,
+        finance_feasibility: FinanceFeasibility = FinanceFeasibility.MISSING,
+    ) -> LocationAnalysis:
+        scope = self._scope(
+            project_id=project_id,
+            city=city,
+            category=category,
+            latitude=latitude,
+            longitude=longitude,
+        )
+        snapshot = self._snapshots.find_reusable(self._session, **scope)
+        warnings: list[str] = []
+        fallback = False
+        if snapshot is not None:
+            pois = self._snapshot_pois(snapshot)
+            observed_at = _aware(snapshot.queried_at)
+            expires_at = _aware(snapshot.expires_at)
+            warnings.append(f"snapshot reuse:id={snapshot.id}")
+            complete = not snapshot.warnings_json
+        else:
+            try:
+                collection = self._collector.collect_competitors(
+                    latitude=latitude,
+                    longitude=longitude,
+                )
+            except BaiduMapResponseError as error:
+                warning = self._provider_warning(error)
+                if not error.retryable:
+                    return self._persist(
+                        mode="manual",
+                        project_id=project_id,
+                        input_scope=self._input_scope(city, category),
+                        latitude=latitude,
+                        longitude=longitude,
+                        status="failed",
+                        warnings=[warning],
+                    )
+                warnings.append(warning)
+                snapshot = self._snapshots.find_reusable(self._session, **scope)
+                if snapshot is None:
+                    return self._persist(
+                        mode="manual",
+                        project_id=project_id,
+                        input_scope=self._input_scope(city, category),
+                        latitude=latitude,
+                        longitude=longitude,
+                        status="failed",
+                        warnings=[*warnings, "snapshot fallback:unavailable"],
+                    )
+                pois = self._snapshot_pois(snapshot)
+                observed_at = _aware(snapshot.queried_at)
+                expires_at = _aware(snapshot.expires_at)
+                warnings.append(f"snapshot fallback:id={snapshot.id}")
+                complete = False
+                fallback = True
+            else:
+                pois = list(collection)
+                observed_at = self._now()
+                expires_at = observed_at + timedelta(days=7)
+                complete = collection.complete
+                warnings.extend(collection.warnings)
+                self._save_snapshot(
+                    scope=scope,
+                    pois=pois,
+                    observed_at=observed_at,
+                    expires_at=expires_at,
+                    warnings=list(collection.warnings),
+                )
+
+        result = self._analyze_pois(
+            pois=pois,
+            city=city,
+            category=category,
+            latitude=latitude,
+            longitude=longitude,
+            observed_at=observed_at,
+            expires_at=expires_at,
+            complete=complete,
+            fallback=fallback,
+            finance_feasibility=finance_feasibility,
+        )
+        self._verifier.verify(result, warnings=warnings)
+        return self._persist(
+            mode="manual",
+            project_id=project_id,
+            input_scope=self._input_scope(city, category),
+            latitude=latitude,
+            longitude=longitude,
+            status="degraded" if fallback or not complete else "completed",
+            result=result,
+            warnings=warnings,
+        )
+
+    def analyze_recommendations(
+        self,
+        *,
+        project_id: int,
+        city: str,
+        region: str,
+        category: str,
+        max_candidates: int = 5,
+    ) -> LocationAnalysis:
+        if not 3 <= max_candidates <= 5:
+            raise ValueError("max_candidates must be between 3 and 5")
+        generator = self._candidate_generator or CandidateGenerator(
+            self._baidu_client
+        )
+        input_scope = {
+            "city": city,
+            "region": region,
+            "category": category,
+            "coordinate_system": "bd09ll",
+            "max_candidates": max_candidates,
+        }
+        try:
+            generated = generator.generate(region=region)
+        except BaiduMapResponseError as error:
+            return self._persist(
+                mode="recommendations",
+                project_id=project_id,
+                input_scope=input_scope,
+                latitude=None,
+                longitude=None,
+                status="failed",
+                warnings=[self._provider_warning(error)],
+            )
+
+        screened = generator.screen(generated)[:10]
+        candidate_results: list[dict[str, Any]] = []
+        warnings: list[str] = []
+        for candidate in screened:
+            analysis = self.analyze_manual(
+                project_id=project_id,
+                city=city,
+                category=category,
+                latitude=candidate.latitude,
+                longitude=candidate.longitude,
+            )
+            if analysis.status == "failed":
+                warnings.extend(
+                    f"{candidate.name}:{warning}"
+                    for warning in analysis.warnings_json
+                )
+                continue
+            candidate_results.append(
+                {
+                    "name": candidate.name,
+                    "center": {
+                        "latitude": candidate.latitude,
+                        "longitude": candidate.longitude,
+                    },
+                    "transition_input": {
+                        "latitude": candidate.latitude,
+                        "longitude": candidate.longitude,
+                        "coordinate_system": "bd09ll",
+                    },
+                    "representative_anchor": {
+                        "uid": candidate.representative.uid,
+                        "name": candidate.representative.name,
+                        "anchor_type": candidate.representative.anchor_type,
+                    },
+                    "merged_anchor_evidence": [
+                        {
+                            "uid": item.uid,
+                            "name": item.name,
+                            "anchor_type": item.anchor_type,
+                        }
+                        for item in candidate.anchors
+                    ],
+                    "analysis_id": analysis.id,
+                    "status": analysis.status,
+                    "result": analysis.result_json,
+                    "evidence": analysis.evidence_json,
+                    "warnings": analysis.warnings_json,
+                }
+            )
+        candidate_results.sort(key=_candidate_result_key)
+        selected = candidate_results[:max_candidates]
+        if len(selected) < max_candidates:
+            warnings.append(
+                f"insufficient candidates: requested {max_candidates}, "
+                f"available {len(selected)}"
+            )
+        return self._persist(
+            mode="recommendations",
+            project_id=project_id,
+            input_scope=input_scope,
+            latitude=None,
+            longitude=None,
+            status="degraded" if warnings else "completed",
+            result_json={
+                "region": region,
+                "candidate_count": len(selected),
+                "candidates": selected,
+            },
+            evidence_json=[
+                evidence
+                for candidate in selected
+                for evidence in candidate["evidence"]
+            ],
+            warnings=warnings,
+        )
+
+    def _analyze_pois(
+        self,
+        *,
+        pois: Sequence[NormalizedPoiFeature],
+        city: str,
+        category: str,
+        latitude: float,
+        longitude: float,
+        observed_at: datetime,
+        expires_at: datetime,
+        complete: bool,
+        fallback: bool,
+        finance_feasibility: FinanceFeasibility,
+    ) -> LocationAnalysisResult:
+        features = self._feature_builder.build(pois)
+        dimensions, confidence, evidence = self._evidence_builder.build(
+            features=features,
+            city=city,
+            category=category,
+            latitude=latitude,
+            longitude=longitude,
+            observed_at=observed_at,
+            expires_at=expires_at,
+            complete=complete,
+        )
+        result = self._scorer.score(
+            dimensions,
+            confidence,
+            finance_feasibility=finance_feasibility,
+            evidence=evidence,
+        )
+        conclusion = evidence[0].model_copy(
+            update={"label": "conclusion", "value": result.conclusion}
+        )
+        final_evidence = [*evidence, conclusion]
+        if fallback or result.confidence_score < 60:
+            final_evidence.append(
+                evidence[0].model_copy(
+                    update={"label": "fallback", "value": "low confidence or snapshot"}
+                )
+            )
+        return result.model_copy(update={"evidence": final_evidence})
+
+    def _save_snapshot(
+        self,
+        *,
+        scope: dict[str, Any],
+        pois: Sequence[NormalizedPoiFeature],
+        observed_at: datetime,
+        expires_at: datetime,
+        warnings: list[str],
+    ) -> None:
+        evidence = EvidenceRecord(
+            source="baidu_map",
+            label="normalized POI collection",
+            observed_at=observed_at,
+            expires_at=expires_at,
+            scope={
+                "latitude": scope["latitude"],
+                "longitude": scope["longitude"],
+                "radius_meters": SNAPSHOT_RADIUS_METERS,
+            },
+            value={"poi_count": len(pois)},
+        )
+        save_scope = {key: value for key, value in scope.items() if key != "now"}
+        self._snapshots.save(
+            self._session,
+            **save_scope,
+            queried_at=observed_at,
+            context=ExternalContextData(
+                metrics={
+                    "pois": [item.model_dump(mode="json") for item in pois]
+                },
+                evidence=[evidence],
+                warnings=warnings,
+            ),
+        )
+
+    @staticmethod
+    def _snapshot_pois(snapshot) -> list[NormalizedPoiFeature]:
+        return [
+            NormalizedPoiFeature.model_validate(item)
+            for item in snapshot.metrics_json.get("pois", [])
+        ]
+
+    def _scope(
+        self,
+        *,
+        project_id: int,
+        city: str,
+        category: str,
+        latitude: float,
+        longitude: float,
+    ) -> dict[str, Any]:
+        keyword_classifications = {
+            keyword: group.classification.value
+            for group in DEFAULT_COMPETITOR_KEYWORD_GROUPS
+            for keyword in group.keywords
+        }
+        return {
+            "project_id": project_id,
+            "provider": "baidu_map",
+            "city": city,
+            "category": category,
+            "latitude": latitude,
+            "longitude": longitude,
+            "radius_meters": SNAPSHOT_RADIUS_METERS,
+            "now": self._now(),
+            "keywords": tuple(keyword_classifications),
+            "radii": RING_RADII,
+            "keyword_classifications": keyword_classifications,
+            "scoring_version": SCORING_VERSION,
+        }
+
+    @staticmethod
+    def _input_scope(city: str, category: str) -> dict[str, str]:
+        return {"city": city, "category": category, "coordinate_system": "bd09ll"}
+
+    @staticmethod
+    def _provider_warning(error: BaiduMapResponseError) -> str:
+        retryability = "retryable" if error.retryable else "permanent"
+        return f"baidu_map:{error.kind.value}:{retryability}"
+
+    def _persist(
+        self,
+        *,
+        mode: str,
+        project_id: int,
+        input_scope: dict[str, Any],
+        latitude: float | None,
+        longitude: float | None,
+        status: str,
+        result: LocationAnalysisResult | None = None,
+        result_json: dict[str, Any] | None = None,
+        evidence_json: list[dict[str, Any]] | None = None,
+        warnings: Sequence[str] = (),
+    ) -> LocationAnalysis:
+        serialized_result = (
+            result.model_dump(mode="json") if result is not None else result_json or {}
+        )
+        serialized_evidence = (
+            [item.model_dump(mode="json") for item in result.evidence]
+            if result is not None
+            else evidence_json or []
+        )
+        analysis = LocationAnalysis(
+            mode=mode,
+            project_id=project_id,
+            input_scope_json=input_scope,
+            center_latitude=latitude,
+            center_longitude=longitude,
+            status=status,
+            result_json=serialized_result,
+            evidence_json=serialized_evidence,
+            warnings_json=list(warnings),
+        )
+        self._session.add(analysis)
+        self._session.commit()
+        self._session.refresh(analysis)
+        return analysis
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def _candidate_result_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    result = item["result"]
+    center = item["center"]
+    return (
+        -result["opportunity_score"],
+        -result["confidence_score"],
+        item["name"],
+        center["latitude"],
+        center["longitude"],
+    )
