@@ -178,4 +178,5 @@ class LocationAnalysisResult(BaseModel):
     conclusion: Conclusion
     dimension_scores: DimensionScoreBreakdown
     confidence: ConfidenceBreakdown
+    finance_metrics: dict[str, Any] = Field(default_factory=dict)
     evidence: list[Evidence] = Field(default_factory=list)

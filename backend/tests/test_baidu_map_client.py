@@ -309,3 +309,21 @@ def test_geocode_classifies_provider_errors():
 
     assert exc_info.value.kind == "ip_restriction"
     assert "secret-ak" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "location",
+    [{"lng": 181, "lat": 30}, {"lng": 104, "lat": -91}, {"lng": "nan", "lat": 30}],
+)
+def test_geocode_rejects_nonfinite_or_out_of_range_coordinates(location):
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(
+            200, json={"status": 0, "result": {"location": location}}
+        )
+    )
+
+    with httpx.Client(transport=transport) as http_client:
+        with pytest.raises(BaiduMapResponseError, match="invalid location"):
+            BaiduMapClient("secret-ak", http_client=http_client).geocode(
+                address="x", city="Chengdu"
+            )

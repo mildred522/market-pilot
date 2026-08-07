@@ -275,6 +275,50 @@ def test_analyze_manual_persists_normalized_result_evidence_and_snapshot():
     assert "raw_response" not in snapshots.saved[0]["context"].metrics
 
 
+def test_finance_inputs_change_persisted_finance_metrics_and_feasibility():
+    first_session = make_session()
+    first = make_service(first_session, Collector(), Snapshots()).analyze_manual(
+        project_id=1,
+        city="Chengdu",
+        category="milk-tea",
+        latitude=30.5728,
+        longitude=104.0668,
+        planned_average_order_value=20,
+        finance_assumptions={
+            "gross_margin": 0.65,
+            "labor_cost": 30000,
+            "utilities_cost": 5000,
+            "other_fixed_cost": 3000,
+            "target_daily_orders": 100,
+            "monthly_rent": 20000,
+        },
+    )
+    second_session = make_session()
+    second = make_service(second_session, Collector(), Snapshots()).analyze_manual(
+        project_id=1,
+        city="Chengdu",
+        category="milk-tea",
+        latitude=30.5728,
+        longitude=104.0668,
+        planned_average_order_value=40,
+        finance_assumptions={
+            "gross_margin": 0.65,
+            "labor_cost": 30000,
+            "utilities_cost": 5000,
+            "other_fixed_cost": 3000,
+            "target_daily_orders": 100,
+            "monthly_rent": 20000,
+        },
+    )
+
+    assert first.result_json["finance_feasibility"] == "infeasible"
+    assert second.result_json["finance_feasibility"] == "feasible"
+    assert (
+        first.result_json["finance_metrics"]["planned_daily_revenue"]
+        < second.result_json["finance_metrics"]["planned_daily_revenue"]
+    )
+
+
 def test_analyze_manual_reuses_exact_snapshot_without_supplier_call():
     session = make_session()
     collector = Collector(error=AssertionError("collector must not be called"))
@@ -521,6 +565,92 @@ def test_recommendations_deep_analyzes_at_most_ten_and_returns_requested_five():
     }
 
 
+def test_recommendations_propagate_requested_radius_to_screening_collection_and_scope():
+    session = make_session()
+    collector = Collector()
+    screening = ScreeningCollector()
+    service = make_service(
+        session,
+        collector,
+        Snapshots(),
+        screening_collector=screening,
+    )
+    service._candidate_generator = CandidateSource(3)
+
+    analysis = service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=1,
+        radius_meters=600,
+    )
+
+    assert analysis.input_scope_json["radius_meters"] == 600
+    assert all(call["radius_meters"] == 600 for call in screening.calls)
+    assert all(call["max_radius_meters"] == 600 for call in collector.calls)
+    assert len(analysis.result_json["candidates"]) == 1
+
+
+def test_recommendations_return_requested_upper_bound_after_ten_deep_analyses():
+    session = make_session()
+    service = make_service(
+        session,
+        Collector(),
+        Snapshots(),
+        screening_collector=ScreeningCollector(),
+    )
+    service._candidate_generator = CandidateSource(12)
+
+    analysis = service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=10,
+    )
+
+    assert analysis.result_json["candidate_count"] == 10
+    assert len(analysis.result_json["candidates"]) == 10
+
+
+def test_recommendation_finance_assumptions_affect_each_candidate_result():
+    session = make_session()
+    service = make_service(
+        session,
+        Collector(),
+        Snapshots(),
+        screening_collector=ScreeningCollector(),
+    )
+    service._candidate_generator = CandidateSource(3)
+
+    analysis = service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=3,
+        planned_average_order_value=40,
+        finance_assumptions={
+            "gross_margin": 0.65,
+            "labor_cost": 30000,
+            "utilities_cost": 5000,
+            "other_fixed_cost": 3000,
+            "target_daily_orders": 100,
+            "monthly_rent": 20000,
+        },
+    )
+
+    candidates = analysis.result_json["candidates"]
+    assert {item["result"]["finance_feasibility"] for item in candidates} == {
+        "feasible"
+    }
+    assert all(
+        item["result"]["finance_metrics"]["planned_average_order_value"] == 40
+        for item in candidates
+    )
+
+
 def test_recommendations_return_actual_insufficient_candidates_without_invention():
     session = make_session()
     collector = Collector()
@@ -726,7 +856,7 @@ def test_all_permanent_screening_failures_persist_failed_without_retry():
     assert session.get(LocationAnalysis, analysis.id).status == "failed"
 
 
-@pytest.mark.parametrize("invalid_count", [True, False, 3.0, -1, 2, 6])
+@pytest.mark.parametrize("invalid_count", [True, False, 3.0, -1, 0, 11])
 def test_recommendations_reject_requested_counts_outside_three_to_five(
     invalid_count,
 ):
@@ -735,7 +865,7 @@ def test_recommendations_reject_requested_counts_outside_three_to_five(
     source = CandidateSource(5)
     service._candidate_generator = source
 
-    with pytest.raises(ValueError, match="between 3 and 5"):
+    with pytest.raises(ValueError, match="between 1 and 10"):
         service.analyze_recommendations(
             project_id=1,
             city="Chengdu",

@@ -76,12 +76,20 @@ class PoiCollector:
         *,
         latitude: float,
         longitude: float,
+        max_radius_meters: int | None = None,
     ) -> PoiCollectionResult:
+        radii = (
+            tuple(radius for radius in self._radii if radius <= max_radius_meters)
+            if max_radius_meters is not None
+            else self._radii
+        )
+        if not radii:
+            raise ValueError("max_radius_meters is below the smallest collection ring")
         collected: dict[str, NormalizedPoiFeature] = {}
         warnings: list[str] = []
         for group in self._keyword_groups:
             for keyword in group.keywords:
-                for radius in self._radii:
+                for radius in radii:
                     warning = self._collect_query_pages(
                         collected,
                         keyword=keyword,

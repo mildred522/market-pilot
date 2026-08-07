@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StrictInt, model_validator
 
 
 CoordinateSystem = Literal["bd09ll"]
@@ -45,8 +45,8 @@ class ManualLocationAnalysisRequest(LocationRequestBase):
 
 
 class LocationRecommendationsRequest(LocationRequestBase):
-    candidate_count: int = Field(default=5, ge=3, le=5)
-    radius_meters: int = Field(default=1500, ge=300, le=5000)
+    candidate_count: StrictInt = Field(default=5, ge=1, le=10)
+    radius_meters: StrictInt = Field(default=1500, ge=300, le=5000)
 
 
 class Coordinate(BaseModel):
@@ -68,6 +68,7 @@ class ConfidenceSummary(BaseModel):
 class FinanceSummary(BaseModel):
     feasibility: str | None = None
     assumptions_provided: bool = False
+    metrics: dict[str, Any] = Field(default_factory=dict)
     disclaimer: str = "This is a planning assumption, not observed rent or revenue."
 
 

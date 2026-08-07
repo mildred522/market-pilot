@@ -1,5 +1,6 @@
 import os
 from enum import Enum
+from math import isfinite
 from typing import Any
 
 import httpx
@@ -132,10 +133,16 @@ class BaiduMapClient:
         )
         try:
             location = payload["result"]["location"]
-            return BaiduGeocodeResult(
-                latitude=float(location["lat"]),
-                longitude=float(location["lng"]),
-            )
+            latitude = float(location["lat"])
+            longitude = float(location["lng"])
+            if (
+                not isfinite(latitude)
+                or not -90 <= latitude <= 90
+                or not isfinite(longitude)
+                or not -180 <= longitude <= 180
+            ):
+                raise ValueError("geocode coordinate out of range")
+            return BaiduGeocodeResult(latitude=latitude, longitude=longitude)
         except (KeyError, TypeError, ValueError):
             raise BaiduMapResponseError(
                 "Baidu geocoding returned an invalid location",

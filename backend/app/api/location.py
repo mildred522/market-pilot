@@ -1,7 +1,9 @@
 from collections.abc import Callable
+from math import isfinite
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.db.models import LocationAnalysis, Project
@@ -16,6 +18,7 @@ from app.external_context.snapshot_service import ExternalContextSnapshotService
 from app.location.collector import PoiCollector
 from app.location.evidence import EvidenceVerificationError, LocationEvidenceVerifier
 from app.location.feature_builder import LocationFeatureBuilder
+from app.location.contracts import LocationAnalysisResult
 from app.location.scorer import LocationScorer
 from app.location.service import LocationAnalysisService
 from app.schemas.location import (
@@ -51,6 +54,10 @@ def get_location_service_factory() -> Callable[[Session, BaiduMapClient], Locati
     return factory
 
 
+def get_location_evidence_verifier() -> LocationEvidenceVerifier:
+    return LocationEvidenceVerifier()
+
+
 @router.post("/manual-analysis", response_model=LocationAnalysisResponse)
 def manual_analysis(
     payload: ManualLocationAnalysisRequest,
@@ -76,6 +83,12 @@ def manual_analysis(
             category=payload.category,
             latitude=latitude,
             longitude=longitude,
+            planned_average_order_value=payload.planned_average_order_value,
+            finance_assumptions=(
+                payload.finance_assumptions.model_dump(mode="json")
+                if payload.finance_assumptions
+                else None
+            ),
         )
         _raise_for_provider_warnings(analysis.warnings_json)
         return _response_for_row(analysis, source=source, request=payload)
@@ -115,6 +128,13 @@ def recommendations(
             region=payload.district,
             category=payload.category,
             max_candidates=payload.candidate_count,
+            radius_meters=payload.radius_meters,
+            planned_average_order_value=payload.planned_average_order_value,
+            finance_assumptions=(
+                payload.finance_assumptions.model_dump(mode="json")
+                if payload.finance_assumptions
+                else None
+            ),
         )
         _raise_for_provider_warnings(analysis.warnings_json)
         return _response_for_row(analysis, request=payload)
@@ -134,12 +154,22 @@ def recommendations(
 
 @router.get("/analyses/{analysis_id}", response_model=LocationAnalysisResponse)
 def get_location_analysis(
-    analysis_id: int, db: Session = Depends(get_db)
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    verifier: LocationEvidenceVerifier = Depends(get_location_evidence_verifier),
 ) -> LocationAnalysisResponse:
     analysis = db.get(LocationAnalysis, analysis_id)
     if analysis is None:
         raise _structured_error(status.HTTP_404_NOT_FOUND, "analysis_not_found", "location analysis not found")
-    return _response_for_row(analysis)
+    try:
+        _verify_persisted_analysis(analysis, verifier)
+        return _response_for_row(analysis)
+    except EvidenceVerificationError as error:
+        raise _structured_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "evidence_verification_failed",
+            str(error),
+        ) from error
 
 
 def _require_project(db: Session, project_id: int) -> Project:
@@ -150,9 +180,54 @@ def _require_project(db: Session, project_id: int) -> Project:
 
 
 def _coordinate_values(value: BaiduGeocodeResult | dict[str, Any]) -> tuple[float, float]:
-    if isinstance(value, dict):
-        return float(value["latitude"]), float(value["longitude"])
-    return value.latitude, value.longitude
+    try:
+        latitude, longitude = (
+            (float(value["latitude"]), float(value["longitude"]))
+            if isinstance(value, dict)
+            else (float(value.latitude), float(value.longitude))
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise BaiduMapResponseError(
+            "Baidu geocoding returned invalid coordinates",
+            kind="request",
+        ) from None
+    if not isfinite(latitude) or not -90 <= latitude <= 90:
+        raise BaiduMapResponseError(
+            "Baidu geocoding returned an invalid latitude",
+            kind="request",
+        )
+    if not isfinite(longitude) or not -180 <= longitude <= 180:
+        raise BaiduMapResponseError(
+            "Baidu geocoding returned an invalid longitude",
+            kind="request",
+        )
+    return latitude, longitude
+
+
+def _verify_persisted_analysis(
+    row: LocationAnalysis, verifier: LocationEvidenceVerifier
+) -> None:
+    if row.mode == "recommendations":
+        for candidate in (row.result_json or {}).get("candidates", []):
+            result = dict(candidate.get("result") or {})
+            result["evidence"] = candidate.get("evidence") or []
+            try:
+                normalized = LocationAnalysisResult.model_validate(result)
+            except ValidationError as error:
+                raise EvidenceVerificationError(
+                    f"invalid persisted candidate result: {error}"
+                ) from error
+            verifier.verify(normalized, warnings=candidate.get("warnings") or [])
+        return
+    result = dict(row.result_json or {})
+    result["evidence"] = row.evidence_json or []
+    try:
+        normalized = LocationAnalysisResult.model_validate(result)
+    except ValidationError as error:
+        raise EvidenceVerificationError(
+            f"invalid persisted analysis result: {error}"
+        ) from error
+    verifier.verify(normalized, warnings=row.warnings_json or [])
 
 
 def _response_for_row(
@@ -222,7 +297,11 @@ def _candidate_response(item: dict[str, Any]) -> RecommendationCandidate:
             score=result.get("opportunity_score"), conclusion=result.get("conclusion")
         ),
         confidence=ConfidenceSummary(score=result.get("confidence_score")),
-        finance=FinanceSummary(feasibility=result.get("finance_feasibility")),
+        finance=FinanceSummary(
+            feasibility=result.get("finance_feasibility"),
+            assumptions_provided=bool((result.get("finance_metrics") or {}).get("assumptions")),
+            metrics=result.get("finance_metrics") or {},
+        ),
         dimension_breakdown=result.get("dimension_scores") or {},
         confidence_breakdown=result.get("confidence") or {},
         evidence=item.get("evidence") or [],
@@ -240,7 +319,11 @@ def _result_response(**kwargs: Any) -> LocationAnalysisResponse:
             score=result.get("opportunity_score"), conclusion=result.get("conclusion")
         ),
         confidence=ConfidenceSummary(score=result.get("confidence_score")),
-        finance=FinanceSummary(feasibility=result.get("finance_feasibility")),
+        finance=FinanceSummary(
+            feasibility=result.get("finance_feasibility"),
+            assumptions_provided=bool((result.get("finance_metrics") or {}).get("assumptions")),
+            metrics=result.get("finance_metrics") or {},
+        ),
         dimension_breakdown=result.get("dimension_scores") or {},
         confidence_breakdown=result.get("confidence") or {},
         risks=_risks(result, kwargs.get("warnings", [])),
@@ -263,10 +346,15 @@ def _recommendations() -> list[str]:
 
 
 def _provider_http_error(error: BaiduMapResponseError) -> HTTPException:
-    kind = error.kind.value
+    return _provider_http_error_for_kind(error.kind.value, retryable=error.retryable)
+
+
+def _provider_http_error_for_kind(kind: str, *, retryable: bool) -> HTTPException:
     code = f"baidu_{kind}_error"
     status_code = (
-        status.HTTP_403_FORBIDDEN
+        status.HTTP_503_SERVICE_UNAVAILABLE
+        if kind in {"authentication", "configuration"} or retryable
+        else status.HTTP_403_FORBIDDEN
         if kind in {"permission", "ip_restriction", "signature"}
         else status.HTTP_429_TOO_MANY_REQUESTS
         if kind == "quota"
@@ -282,20 +370,8 @@ def _raise_for_provider_warnings(warnings: list[str]) -> None:
         parts = warning.split(":")
         if len(parts) >= 3 and parts[0] == "baidu_map":
             kind = parts[1]
-            retryable = parts[2] == "retryable"
-            status_code = (
-                status.HTTP_503_SERVICE_UNAVAILABLE
-                if retryable
-                else status.HTTP_403_FORBIDDEN
-                if kind in {"permission", "ip_restriction", "signature"}
-                else status.HTTP_429_TOO_MANY_REQUESTS
-                if kind == "quota"
-                else status.HTTP_400_BAD_REQUEST
-            )
-            raise _structured_error(
-                status_code,
-                f"baidu_{kind}_error",
-                "Baidu provider request failed",
+            raise _provider_http_error_for_kind(
+                kind, retryable=parts[2] == "retryable"
             )
 
 

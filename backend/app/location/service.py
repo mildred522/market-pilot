@@ -8,6 +8,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.db.models import LocationAnalysis
+from app.tools.break_even_tool import calculate_break_even
 from app.external_context.baidu_client import BaiduMapResponseError
 from app.external_context.contracts import EvidenceRecord, ExternalContextData
 from app.external_context.reference_repository import ReferenceDatasetRepository
@@ -94,8 +95,14 @@ class LocationAnalysisService:
         category: str,
         latitude: float,
         longitude: float,
-        finance_feasibility: FinanceFeasibility = FinanceFeasibility.MISSING,
+        planned_average_order_value: float | None = None,
+        finance_assumptions: dict[str, Any] | None = None,
+        finance_feasibility: FinanceFeasibility | None = None,
     ) -> LocationAnalysis:
+        assessed_finance, finance_metrics = _assess_finance(
+            planned_average_order_value=planned_average_order_value,
+            assumptions=finance_assumptions,
+        )
         try:
             return self._analyze_manual(
                 project_id=project_id,
@@ -103,7 +110,9 @@ class LocationAnalysisService:
                 category=category,
                 latitude=latitude,
                 longitude=longitude,
-                finance_feasibility=finance_feasibility,
+                finance_feasibility=finance_feasibility or assessed_finance,
+                finance_metrics=finance_metrics,
+                radius_meters=SNAPSHOT_RADIUS_METERS,
                 commit=True,
             )
         except Exception:
@@ -120,6 +129,8 @@ class LocationAnalysisService:
         longitude: float,
         finance_feasibility: FinanceFeasibility,
         commit: bool,
+        finance_metrics: dict[str, Any] | None = None,
+        radius_meters: int = SNAPSHOT_RADIUS_METERS,
     ) -> LocationAnalysis:
         scope = self._scope(
             project_id=project_id,
@@ -127,6 +138,7 @@ class LocationAnalysisService:
             category=category,
             latitude=latitude,
             longitude=longitude,
+            radius_meters=radius_meters,
         )
         snapshot = self._snapshots.find_reusable(self._session, **scope)
         warnings: list[str] = []
@@ -142,6 +154,7 @@ class LocationAnalysisService:
                 collection = self._collector.collect_competitors(
                     latitude=latitude,
                     longitude=longitude,
+                    max_radius_meters=radius_meters,
                 )
             except BaiduMapResponseError as error:
                 warning = self._provider_warning(error)
@@ -149,10 +162,23 @@ class LocationAnalysisService:
                     return self._persist(
                         mode="manual",
                         project_id=project_id,
-                        input_scope=self._input_scope(city, category),
+                        input_scope={
+                            **self._input_scope(city, category),
+                            "radius_meters": radius_meters,
+                        },
                         latitude=latitude,
                         longitude=longitude,
                         status="failed",
+                        result_json=(
+                            {
+                                "finance_feasibility": finance_feasibility.value,
+                                "finance_metrics": finance_metrics or {},
+                            }
+                            if finance_metrics
+                            and finance_metrics.get("planned_average_order_value")
+                            is not None
+                            else {}
+                        ),
                         warnings=[warning],
                         commit=commit,
                     )
@@ -168,7 +194,10 @@ class LocationAnalysisService:
                         latitude=latitude,
                         longitude=longitude,
                         warnings=warnings,
+                        finance_feasibility=finance_feasibility,
+                        finance_metrics=finance_metrics or {},
                         commit=commit,
+                        radius_meters=radius_meters,
                     )
                 pois = self._snapshot_pois(snapshot)
                 observed_at = _aware(snapshot.queried_at)
@@ -205,12 +234,16 @@ class LocationAnalysisService:
             complete=complete,
             fallback=fallback,
             finance_feasibility=finance_feasibility,
+            finance_metrics=finance_metrics or {},
         )
         self._verifier.verify(result, warnings=warnings)
         return self._persist(
             mode="manual",
             project_id=project_id,
-            input_scope=self._input_scope(city, category),
+            input_scope={
+                **self._input_scope(city, category),
+                "radius_meters": radius_meters,
+            },
             latitude=latitude,
             longitude=longitude,
             status="degraded" if fallback or not complete else "completed",
@@ -227,13 +260,26 @@ class LocationAnalysisService:
         region: str,
         category: str,
         max_candidates: int = 5,
+        radius_meters: int = SNAPSHOT_RADIUS_METERS,
+        planned_average_order_value: float | None = None,
+        finance_assumptions: dict[str, Any] | None = None,
     ) -> LocationAnalysis:
         if (
             isinstance(max_candidates, bool)
             or not isinstance(max_candidates, int)
-            or not 3 <= max_candidates <= 5
+            or not 1 <= max_candidates <= 10
         ):
-            raise ValueError("max_candidates must be between 3 and 5")
+            raise ValueError("max_candidates must be between 1 and 10")
+        if (
+            isinstance(radius_meters, bool)
+            or not isinstance(radius_meters, int)
+            or not 300 <= radius_meters <= 5000
+        ):
+            raise ValueError("radius_meters must be between 300 and 5000")
+        assessed_finance, finance_metrics = _assess_finance(
+            planned_average_order_value=planned_average_order_value,
+            assumptions=finance_assumptions,
+        )
         try:
             analysis = self._analyze_recommendations(
                 project_id=project_id,
@@ -241,6 +287,9 @@ class LocationAnalysisService:
                 region=region,
                 category=category,
                 max_candidates=max_candidates,
+                radius_meters=radius_meters,
+                finance_feasibility=assessed_finance,
+                finance_metrics=finance_metrics,
             )
             self._session.commit()
             self._session.refresh(analysis)
@@ -257,6 +306,9 @@ class LocationAnalysisService:
         region: str,
         category: str,
         max_candidates: int,
+        radius_meters: int,
+        finance_feasibility: FinanceFeasibility,
+        finance_metrics: dict[str, Any],
     ) -> LocationAnalysis:
         generator = (
             self._candidate_generator
@@ -269,6 +321,11 @@ class LocationAnalysisService:
             "category": category,
             "coordinate_system": "bd09ll",
             "max_candidates": max_candidates,
+            "radius_meters": radius_meters,
+            "planned_average_order_value": finance_metrics.get(
+                "planned_average_order_value"
+            ),
+            "finance_assumptions": finance_metrics.get("assumptions"),
         }
         try:
             generated = generator.generate(region=region)
@@ -285,7 +342,7 @@ class LocationAnalysisService:
             )
 
         screened, warnings, screening_failures = self._screen_candidates(
-            generated
+            generated, radius_meters=radius_meters
         )
         screened = screened[:10]
         if not screened and screening_failures:
@@ -323,7 +380,9 @@ class LocationAnalysisService:
                 category=category,
                 latitude=candidate.latitude,
                 longitude=candidate.longitude,
-                finance_feasibility=FinanceFeasibility.MISSING,
+                finance_feasibility=finance_feasibility,
+                finance_metrics=finance_metrics,
+                radius_meters=radius_meters,
                 commit=False,
             )
             warnings.extend(
@@ -417,7 +476,7 @@ class LocationAnalysisService:
         )
 
     def _screen_candidates(
-        self, candidates
+        self, candidates, *, radius_meters: int
     ) -> tuple[list[ScreenedCandidate], list[str], list[bool]]:
         screened: list[ScreenedCandidate] = []
         warnings: list[str] = []
@@ -427,7 +486,7 @@ class LocationAnalysisService:
             try:
                 metrics = self._screening_collector.collect(
                     candidate=candidate,
-                    radius_meters=self._candidate_screener.RADIUS_METERS,
+                    radius_meters=radius_meters,
                     queries=self._candidate_screener.QUERIES,
                 )
             except BaiduMapResponseError as error:
@@ -470,7 +529,10 @@ class LocationAnalysisService:
         latitude: float,
         longitude: float,
         warnings: list[str],
+        finance_feasibility: FinanceFeasibility,
+        finance_metrics: dict[str, Any],
         commit: bool,
+        radius_meters: int = SNAPSHOT_RADIUS_METERS,
     ) -> LocationAnalysis:
         year = self._now().year - 1
         datasets = []
@@ -534,7 +596,7 @@ class LocationAnalysisService:
                 freshness=0,
                 status_comment_coverage=0,
             ),
-            finance_feasibility=FinanceFeasibility.MISSING,
+            finance_feasibility=finance_feasibility,
             evidence=evidence,
         )
         final_evidence = [
@@ -546,7 +608,9 @@ class LocationAnalysisService:
                 update={"label": "fallback", "value": reference_value}
             ),
         ]
-        result = result.model_copy(update={"evidence": final_evidence})
+        result = result.model_copy(
+            update={"evidence": final_evidence, "finance_metrics": finance_metrics}
+        )
         reference_warning = (
             f"reference fallback:datasets={','.join(dataset_ids)}"
             if dataset_ids
@@ -557,7 +621,10 @@ class LocationAnalysisService:
         return self._persist(
             mode="manual",
             project_id=project_id,
-            input_scope=self._input_scope(city, category),
+            input_scope={
+                **self._input_scope(city, category),
+                "radius_meters": radius_meters,
+            },
             latitude=latitude,
             longitude=longitude,
             status="degraded",
@@ -579,6 +646,7 @@ class LocationAnalysisService:
         complete: bool,
         fallback: bool,
         finance_feasibility: FinanceFeasibility,
+        finance_metrics: dict[str, Any],
     ) -> LocationAnalysisResult:
         features = self._feature_builder.build(pois)
         dimensions, confidence, evidence = self._evidence_builder.build(
@@ -608,7 +676,9 @@ class LocationAnalysisService:
                     update={"label": "fallback", "value": "low confidence or snapshot"}
                 )
             )
-        return result.model_copy(update={"evidence": final_evidence})
+        return result.model_copy(
+            update={"evidence": final_evidence, "finance_metrics": finance_metrics}
+        )
 
     def _save_snapshot(
         self,
@@ -628,7 +698,7 @@ class LocationAnalysisService:
             scope={
                 "latitude": scope["latitude"],
                 "longitude": scope["longitude"],
-                "radius_meters": SNAPSHOT_RADIUS_METERS,
+                "radius_meters": scope["radius_meters"],
             },
             value={"poi_count": len(pois)},
         )
@@ -662,6 +732,7 @@ class LocationAnalysisService:
         category: str,
         latitude: float,
         longitude: float,
+        radius_meters: int = SNAPSHOT_RADIUS_METERS,
     ) -> dict[str, Any]:
         keyword_classifications = {
             keyword: group.classification.value
@@ -675,7 +746,7 @@ class LocationAnalysisService:
             "category": category,
             "latitude": latitude,
             "longitude": longitude,
-            "radius_meters": SNAPSHOT_RADIUS_METERS,
+            "radius_meters": radius_meters,
             "now": self._now(),
             "keywords": tuple(keyword_classifications),
             "radii": RING_RADII,
@@ -753,3 +824,73 @@ def _candidate_result_key(item: dict[str, Any]) -> tuple[Any, ...]:
         center["latitude"],
         center["longitude"],
     )
+
+
+def _assess_finance(
+    *,
+    planned_average_order_value: float | None,
+    assumptions: dict[str, Any] | None,
+) -> tuple[FinanceFeasibility, dict[str, Any]]:
+    metrics: dict[str, Any] = {
+        "planned_average_order_value": planned_average_order_value,
+        "assumptions": assumptions,
+    }
+    if not assumptions or planned_average_order_value is None:
+        return FinanceFeasibility.MISSING, metrics
+
+    required = (
+        "gross_margin",
+        "labor_cost",
+        "utilities_cost",
+        "other_fixed_cost",
+        "target_daily_orders",
+    )
+    if any(assumptions.get(key) is None for key in required):
+        return FinanceFeasibility.MISSING, metrics
+
+    gross_margin = float(assumptions["gross_margin"])
+    target_daily_orders = int(assumptions["target_daily_orders"])
+    if gross_margin <= 0 or target_daily_orders <= 0:
+        return FinanceFeasibility.INFEASIBLE, metrics
+
+    planned_daily_revenue = round(
+        target_daily_orders * planned_average_order_value, 2
+    )
+    planned_daily_gross_profit = round(
+        planned_daily_revenue * gross_margin, 2
+    )
+    monthly_non_rent = sum(float(assumptions[key]) for key in required[1:4])
+    max_monthly_rent = round(
+        max(0, planned_daily_gross_profit - monthly_non_rent / 30) * 30,
+        2,
+    )
+    metrics.update(
+        {
+            "planned_daily_revenue": planned_daily_revenue,
+            "planned_daily_gross_profit": planned_daily_gross_profit,
+            "max_plannable_monthly_rent": max_monthly_rent,
+            "monthly_non_rent_fixed_cost": round(monthly_non_rent, 2),
+            "disclaimer": "Planning model only; it does not observe traffic, revenue, or rent.",
+        }
+    )
+
+    monthly_rent = assumptions.get("monthly_rent")
+    if monthly_rent is None:
+        return FinanceFeasibility.ADJUSTABLE, metrics
+
+    break_even = calculate_break_even(
+        monthly_rent=float(monthly_rent),
+        monthly_labor=float(assumptions["labor_cost"]),
+        monthly_utilities=float(assumptions["utilities_cost"]),
+        monthly_misc=float(assumptions["other_fixed_cost"]),
+        gross_margin=gross_margin,
+        avg_order_value=planned_average_order_value,
+    )
+    metrics["break_even"] = break_even
+    daily_fixed_cost = float(break_even["daily_fixed_cost"])
+    surplus = planned_daily_gross_profit - daily_fixed_cost
+    if surplus >= 0:
+        return FinanceFeasibility.FEASIBLE, metrics
+    if surplus >= -planned_daily_gross_profit * 0.2:
+        return FinanceFeasibility.ADJUSTABLE, metrics
+    return FinanceFeasibility.INFEASIBLE, metrics
