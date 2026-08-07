@@ -85,9 +85,12 @@ class BaiduPoi(BaseModel):
 
 class BaiduPoiSearchResult(BaseModel):
     query: str
-    center_latitude: float
-    center_longitude: float
+    center_latitude: float | None = None
+    center_longitude: float | None = None
     coordinate_system: Literal["bd09ll"] = "bd09ll"
-    radius_meters: int
+    radius_meters: int | None = None
+    region: str | None = None
+    page_num: int = Field(default=0, ge=0)
+    page_size: int = Field(default=20, ge=1, le=20)
     total: int
     pois: list[BaiduPoi]
