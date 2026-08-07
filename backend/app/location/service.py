@@ -238,6 +238,8 @@ class LocationAnalysisService:
                 warnings=warnings,
             )
         candidate_results: list[dict[str, Any]] = []
+        child_degraded = False
+        child_failed = False
         for screened_candidate in screened:
             candidate = screened_candidate.candidate
             analysis = self.analyze_manual(
@@ -247,12 +249,15 @@ class LocationAnalysisService:
                 latitude=candidate.latitude,
                 longitude=candidate.longitude,
             )
+            warnings.extend(
+                f"{candidate.name}:{warning}"
+                for warning in analysis.warnings_json
+            )
             if analysis.status == "failed":
-                warnings.extend(
-                    f"{candidate.name}:{warning}"
-                    for warning in analysis.warnings_json
-                )
+                child_failed = True
                 continue
+            if analysis.status == "degraded":
+                child_degraded = True
             candidate_results.append(
                 {
                     "name": candidate.name,
@@ -300,13 +305,20 @@ class LocationAnalysisService:
                 f"insufficient candidates: requested {max_candidates}, "
                 f"available {len(selected)}"
             )
+        status = (
+            "failed"
+            if child_failed and not selected
+            else "degraded"
+            if child_degraded or child_failed or warnings
+            else "completed"
+        )
         return self._persist(
             mode="recommendations",
             project_id=project_id,
             input_scope=input_scope,
             latitude=None,
             longitude=None,
-            status="degraded" if warnings else "completed",
+            status=status,
             result_json={
                 "region": region,
                 "candidate_count": len(selected),

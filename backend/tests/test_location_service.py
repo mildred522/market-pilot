@@ -547,6 +547,42 @@ def test_recommendations_return_actual_insufficient_candidates_without_invention
     assert any("insufficient candidates" in item for item in analysis.warnings_json)
 
 
+def test_recommendations_propagate_degraded_child_status_and_warnings():
+    session = make_session()
+    collector = Collector(
+        result=PoiCollectionResult(
+            normalized_pois(),
+            truncated=True,
+            warnings=["child collection incomplete"],
+        )
+    )
+    screening = ScreeningCollector()
+    service = make_service(
+        session,
+        collector,
+        Snapshots(),
+        screening_collector=screening,
+    )
+    service._candidate_generator = CandidateSource(3)
+
+    analysis = service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=3,
+    )
+
+    assert analysis.status == "degraded"
+    assert len(analysis.result_json["candidates"]) == 3
+    assert "Candidate 00:child collection incomplete" in analysis.warnings_json
+    assert all(
+        candidate["status"] == "degraded"
+        and candidate["warnings"] == ["child collection incomplete"]
+        for candidate in analysis.result_json["candidates"]
+    )
+
+
 def test_partial_screening_failure_persists_degraded_successful_candidates():
     session = make_session()
     collector = Collector()
