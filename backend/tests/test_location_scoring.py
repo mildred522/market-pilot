@@ -226,6 +226,65 @@ def test_price_metric_values_reject_negative_and_non_finite_values(
         PriceMetrics(**values)
 
 
+def test_price_metrics_reject_sample_count_above_eligible_count():
+    with pytest.raises(ValidationError, match="sample_count"):
+        PriceMetrics(eligible_count=1, sample_count=2, coverage=1)
+
+
+@pytest.mark.parametrize(
+    ("eligible_count", "sample_count", "coverage"),
+    [(2, 1, 0.4), (0, 0, 0.1)],
+)
+def test_price_metrics_reject_inconsistent_coverage(
+    eligible_count: int,
+    sample_count: int,
+    coverage: float,
+):
+    with pytest.raises(ValidationError, match="coverage"):
+        PriceMetrics(
+            eligible_count=eligible_count,
+            sample_count=sample_count,
+            coverage=coverage,
+        )
+
+
+def test_price_metrics_require_all_distribution_fields_together():
+    with pytest.raises(ValidationError, match="distribution"):
+        PriceMetrics(median=15)
+
+
+def test_price_metrics_reject_unordered_distribution():
+    with pytest.raises(ValidationError, match="ordered"):
+        PriceMetrics(
+            eligible_count=1,
+            sample_count=1,
+            coverage=1,
+            minimum=10,
+            first_quartile=15,
+            median=12,
+            third_quartile=18,
+            maximum=20,
+        )
+
+
+def test_price_metrics_accept_valid_empty_and_nonempty_models():
+    empty = PriceMetrics()
+    populated = PriceMetrics(
+        eligible_count=3,
+        sample_count=2,
+        coverage=0.6667,
+        minimum=10,
+        first_quartile=12,
+        median=15,
+        third_quartile=18,
+        maximum=20,
+    )
+
+    assert empty.coverage == 0
+    assert populated.sample_count == 2
+    assert populated.median == 15
+
+
 def test_confidence_below_60_forces_further_research_and_returns_raw_coverage():
     result = LocationScorer().score(
         dimensions(90),

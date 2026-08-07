@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from math import isclose
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -62,6 +63,39 @@ class PriceMetrics(BaseModel):
     )
     minimum: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     maximum: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_invariants(self) -> "PriceMetrics":
+        if self.sample_count > self.eligible_count:
+            raise ValueError("sample_count cannot exceed eligible_count")
+
+        expected_coverage = (
+            self.sample_count / self.eligible_count
+            if self.eligible_count
+            else 0
+        )
+        if not isclose(
+            self.coverage,
+            expected_coverage,
+            rel_tol=0,
+            abs_tol=1e-4,
+        ):
+            raise ValueError("coverage must match sampled price coverage")
+
+        distribution = [
+            self.minimum,
+            self.first_quartile,
+            self.median,
+            self.third_quartile,
+            self.maximum,
+        ]
+        if any(value is not None for value in distribution):
+            if any(value is None for value in distribution):
+                raise ValueError("all distribution fields must be provided together")
+            values = [float(value) for value in distribution if value is not None]
+            if values != sorted(values):
+                raise ValueError("distribution fields must be ordered")
+        return self
 
 
 class LocationFeatures(BaseModel):
