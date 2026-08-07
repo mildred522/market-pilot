@@ -86,3 +86,77 @@ export type UploadedFileResult = {
   filename: string;
   storage_path: string;
 };
+
+export type FinanceAssumptions = {
+  gross_margin?: number;
+  labor_cost?: number;
+  utilities_cost?: number;
+  other_fixed_cost?: number;
+  target_daily_orders?: number;
+  monthly_rent?: number;
+};
+
+export type LocationRequestBase = {
+  project_id: number;
+  city: string;
+  district: string;
+  category: string;
+  target_customer: string;
+  planned_average_order_value: number;
+  finance_assumptions?: FinanceAssumptions;
+  coordinate_system: "bd09ll";
+  radius_meters: number;
+};
+
+export type ManualLocationRequest = LocationRequestBase & {
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+};
+
+export type RecommendationRequest = LocationRequestBase & {
+  candidate_count: number;
+};
+
+export type LocationEvidence = {
+  source: string;
+  label: string;
+  observed_at: string;
+  expires_at: string;
+  query_scope: Record<string, unknown>;
+  value: unknown;
+};
+
+export type LocationResult = {
+  mode: "manual" | "recommendations";
+  status: "completed" | "degraded" | "failed";
+  analysis_id: number;
+  input_scope: Record<string, unknown>;
+  center?: { latitude: number; longitude: number; coordinate_system: "bd09ll"; source?: string };
+  opportunity: { score?: number; conclusion?: string };
+  confidence: { score?: number };
+  finance: { feasibility?: string; assumptions_provided: boolean; metrics: Record<string, unknown>; disclaimer: string };
+  dimension_breakdown: Record<string, unknown>;
+  confidence_breakdown: Record<string, unknown>;
+  evidence: LocationEvidence[];
+  risks: string[];
+  warnings: string[];
+  recommendations: string[];
+  transition_coordinates?: { latitude: number; longitude: number; coordinate_system: "bd09ll"; source?: string };
+  candidates: LocationCandidate[];
+};
+
+export type LocationCandidate = {
+  name: string;
+  center: { latitude: number; longitude: number; coordinate_system: "bd09ll"; source?: string };
+  transition_coordinates: { latitude: number; longitude: number; coordinate_system: "bd09ll"; source?: string };
+  opportunity: { score?: number; conclusion?: string };
+  confidence: { score?: number };
+  finance: { feasibility?: string; assumptions_provided: boolean; metrics: Record<string, unknown>; disclaimer: string };
+  dimension_breakdown: Record<string, unknown>;
+  confidence_breakdown: Record<string, unknown>;
+  evidence: LocationEvidence[];
+  risks: string[];
+  warnings: string[];
+  recommendations: string[];
+};

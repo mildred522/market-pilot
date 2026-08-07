@@ -1,4 +1,4 @@
-import type { AnalysisReport, PreOpenInput, PreOpenReport, Project, Stage, UploadedFileResult } from "./types";
+import type { AnalysisReport, LocationResult, ManualLocationRequest, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -35,6 +35,20 @@ export function analyzePreOpen(payload: PreOpenInput): Promise<PreOpenReport> {
 
 export function getAnalysis(analysisId: number): Promise<AnalysisReport> {
   return request<AnalysisReport>(`/analysis/${analysisId}`);
+}
+
+export function analyzeLocationManually(payload: ManualLocationRequest): Promise<LocationResult> {
+  return request<LocationResult>("/pre-open/location/manual-analysis", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function recommendLocations(payload: RecommendationRequest): Promise<LocationResult> {
+  return request<LocationResult>("/pre-open/location/recommendations", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function analyzeOperatingSample(projectId: number): Promise<AnalysisReport> {
