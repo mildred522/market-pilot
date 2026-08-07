@@ -646,6 +646,35 @@ def test_signature_normalizes_multi_class_keyword_sets_order_insensitively():
         ) is None
 
 
+def test_signature_rejects_duplicate_normalized_keyword_classification_keys():
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.flush()
+
+        with pytest.raises(ValueError, match="duplicate"):
+            ExternalContextSnapshotService().save(
+                session,
+                project_id=project.id,
+                provider="baidu_map",
+                city="chengdu",
+                category="milk-tea",
+                latitude=30.5728,
+                longitude=104.0668,
+                radius_meters=1500,
+                queried_at=now,
+                context=make_long_lived_context(now),
+                keywords=("奶茶",),
+                radii=(300,),
+                keyword_classifications={
+                    "奶茶": ["direct_competitor"],
+                    " 奶茶 ": ["substitute"],
+                },
+                scoring_version="location-v1",
+            )
+
+
 def test_save_clamps_expiry_to_seven_days_and_lookup_honors_expiry():
     now = datetime(2026, 7, 24, 10, tzinfo=UTC)
     with make_session() as session:

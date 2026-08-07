@@ -209,10 +209,16 @@ class ExternalContextSnapshotService:
             },
             key=Decimal,
         )
-        normalized_mapping = {
-            keyword.strip(): _normalize_classifications(classification)
-            for keyword, classification in (keyword_classifications or {}).items()
-        }
+        normalized_mapping: dict[str, list[str]] = {}
+        for keyword, classification in keyword_classifications.items():
+            normalized_keyword = keyword.strip()
+            if normalized_keyword in normalized_mapping:
+                raise ValueError(
+                    "duplicate normalized keyword_classifications key"
+                )
+            normalized_mapping[normalized_keyword] = _normalize_classifications(
+                classification
+            )
         if any(
             not keyword or not classification
             for keyword, classification in normalized_mapping.items()
