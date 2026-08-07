@@ -140,7 +140,11 @@ class CandidateGenerator:
     )
 
     def __init__(self, client, *, max_raw_anchors: int = MAX_RAW_ANCHORS) -> None:
-        if not 1 <= max_raw_anchors <= self.MAX_RAW_ANCHORS:
+        if (
+            isinstance(max_raw_anchors, bool)
+            or not isinstance(max_raw_anchors, int)
+            or not 1 <= max_raw_anchors <= self.MAX_RAW_ANCHORS
+        ):
             raise ValueError("max_raw_anchors must be between 1 and 30")
         self._client = client
         self._max_raw_anchors = max_raw_anchors

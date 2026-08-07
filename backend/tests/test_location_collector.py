@@ -1,8 +1,27 @@
 import httpx
+import pytest
 
 from app.external_context.baidu_client import BaiduMapClient
 from app.location.collector import PoiCollector, PoiKeywordGroup
 from app.location.contracts import PoiClassification
+
+
+@pytest.mark.parametrize(
+    ("parameter", "invalid_count"),
+    [
+        ("page_size", True),
+        ("page_size", 1.5),
+        ("page_size", 0),
+        ("max_pages", False),
+        ("max_pages", 2.0),
+        ("max_pages", -1),
+    ],
+)
+def test_collector_rejects_invalid_count_parameters(parameter, invalid_count):
+    values = {"page_size": 20, "max_pages": 8, parameter: invalid_count}
+
+    with pytest.raises(ValueError, match=parameter):
+        PoiCollector(object(), **values)
 
 
 def poi_payload(

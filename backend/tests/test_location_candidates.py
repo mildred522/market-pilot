@@ -1,3 +1,5 @@
+import pytest
+
 from app.external_context.contracts import BaiduPoi, BaiduPoiSearchResult
 from app.location.candidates import (
     BaiduCandidateScreeningCollector,
@@ -118,6 +120,18 @@ def test_generate_rejects_provider_results_outside_requested_region_scope():
     )
 
     assert CandidateGenerator(client).generate(region="Requested region") == []
+
+
+@pytest.mark.parametrize("invalid_count", [True, False, 3.0, 0, -1, 31])
+def test_generator_rejects_non_integer_or_out_of_range_anchor_limits(
+    invalid_count,
+):
+    client = RegionClient({})
+
+    with pytest.raises(ValueError, match="max_raw_anchors"):
+        CandidateGenerator(client, max_raw_anchors=invalid_count)
+
+    assert client.calls == []
 
 
 def test_screening_prefers_anchor_diversity_then_evidence_count_stably():

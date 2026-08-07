@@ -133,8 +133,8 @@ def test_search_region_page_uses_region_search_parameters():
     assert result.radius_meters is None
 
 
-@pytest.mark.parametrize("page_size", [0, 21])
-def test_search_page_rejects_page_size_outside_provider_limit(page_size: int):
+@pytest.mark.parametrize("page_size", [True, 1.5, 0, 21])
+def test_search_page_rejects_invalid_page_size(page_size):
     with pytest.raises(ValueError, match="page_size"):
         BaiduMapClient("test-ak").search_nearby_page(
             query="奶茶",
@@ -142,6 +142,18 @@ def test_search_page_rejects_page_size_outside_provider_limit(page_size: int):
             longitude=104.0668,
             radius_meters=800,
             page_size=page_size,
+        )
+
+
+@pytest.mark.parametrize("page_num", [True, 1.5, -1])
+def test_search_page_rejects_invalid_page_number(page_num):
+    with pytest.raises(ValueError, match="page_num"):
+        BaiduMapClient("test-ak").search_nearby_page(
+            query="奶茶",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=800,
+            page_num=page_num,
         )
 
 

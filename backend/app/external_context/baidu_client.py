@@ -234,9 +234,17 @@ class BaiduMapClient:
 
     @staticmethod
     def _validate_page(page_num: int, page_size: int) -> None:
-        if page_num < 0:
+        if (
+            isinstance(page_num, bool)
+            or not isinstance(page_num, int)
+            or page_num < 0
+        ):
             raise ValueError("page_num must be non-negative")
-        if not 1 <= page_size <= 20:
+        if (
+            isinstance(page_size, bool)
+            or not isinstance(page_size, int)
+            or not 1 <= page_size <= 20
+        ):
             raise ValueError("page_size must be between 1 and 20")
 
     def _request(

@@ -51,9 +51,17 @@ class PoiCollector:
         page_size: int = 20,
         max_pages: int = MAX_PAGES,
     ) -> None:
-        if not 1 <= page_size <= 20:
+        if (
+            isinstance(page_size, bool)
+            or not isinstance(page_size, int)
+            or not 1 <= page_size <= 20
+        ):
             raise ValueError("page_size must be between 1 and 20")
-        if max_pages < 1:
+        if (
+            isinstance(max_pages, bool)
+            or not isinstance(max_pages, int)
+            or max_pages < 1
+        ):
             raise ValueError("max_pages must be positive")
         if any(radius <= 0 for radius in radii):
             raise ValueError("radii must be positive")

@@ -583,6 +583,33 @@ def test_recommendations_propagate_degraded_child_status_and_warnings():
     )
 
 
+def test_recommendations_preserve_snapshot_info_without_degrading_parent():
+    session = make_session()
+    service = make_service(
+        session,
+        Collector(error=AssertionError("collector must not be called")),
+        Snapshots(reusable_snapshot()),
+        screening_collector=ScreeningCollector(),
+    )
+    service._candidate_generator = CandidateSource(3)
+
+    analysis = service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=3,
+    )
+
+    assert analysis.status == "completed"
+    assert all(
+        candidate["status"] == "completed"
+        for candidate in analysis.result_json["candidates"]
+    )
+    assert len(analysis.warnings_json) == 3
+    assert all("snapshot reuse:id=7" in item for item in analysis.warnings_json)
+
+
 def test_partial_screening_failure_persists_degraded_successful_candidates():
     session = make_session()
     collector = Collector()
@@ -699,12 +726,14 @@ def test_all_permanent_screening_failures_persist_failed_without_retry():
     assert session.get(LocationAnalysis, analysis.id).status == "failed"
 
 
-@pytest.mark.parametrize("invalid_count", [2, 6])
+@pytest.mark.parametrize("invalid_count", [True, False, 3.0, -1, 2, 6])
 def test_recommendations_reject_requested_counts_outside_three_to_five(
     invalid_count,
 ):
-    service = make_service(make_session(), Collector(), Snapshots())
-    service._candidate_generator = CandidateSource(5)
+    session = make_session()
+    service = make_service(session, Collector(), Snapshots())
+    source = CandidateSource(5)
+    service._candidate_generator = source
 
     with pytest.raises(ValueError, match="between 3 and 5"):
         service.analyze_recommendations(
@@ -714,3 +743,127 @@ def test_recommendations_reject_requested_counts_outside_three_to_five(
             category="milk-tea",
             max_candidates=invalid_count,
         )
+
+    assert source.generated_regions == []
+    assert session.scalars(select(LocationAnalysis)).all() == []
+
+
+class FailOnSecondCollection(Collector):
+    def collect_competitors(self, **kwargs):
+        if len(self.calls) == 1:
+            raise RuntimeError("later child failed")
+        return super().collect_competitors(**kwargs)
+
+
+def test_recommendations_roll_back_flushed_children_after_later_child_error():
+    session = make_session()
+    service = make_service(
+        session,
+        FailOnSecondCollection(),
+        Snapshots(),
+        screening_collector=ScreeningCollector(),
+    )
+    service._candidate_generator = CandidateSource(3)
+
+    with pytest.raises(RuntimeError, match="later child failed"):
+        service.analyze_recommendations(
+            project_id=1,
+            city="Chengdu",
+            region="High-tech Zone",
+            category="milk-tea",
+            max_candidates=3,
+        )
+
+    assert session.scalars(select(LocationAnalysis)).all() == []
+
+
+def test_recommendations_roll_back_children_when_parent_persistence_fails(
+    monkeypatch,
+):
+    session = make_session()
+    service = make_service(
+        session,
+        Collector(),
+        Snapshots(),
+        screening_collector=ScreeningCollector(),
+    )
+    service._candidate_generator = CandidateSource(3)
+    original_persist = service._persist
+
+    def fail_parent(**kwargs):
+        if kwargs["mode"] == "recommendations":
+            raise RuntimeError("parent persistence failed")
+        return original_persist(**kwargs)
+
+    monkeypatch.setattr(service, "_persist", fail_parent)
+
+    with pytest.raises(RuntimeError, match="parent persistence failed"):
+        service.analyze_recommendations(
+            project_id=1,
+            city="Chengdu",
+            region="High-tech Zone",
+            category="milk-tea",
+            max_candidates=3,
+        )
+
+    assert session.scalars(select(LocationAnalysis)).all() == []
+
+
+def test_recommendations_commit_parent_and_children_once(monkeypatch):
+    session = make_session()
+    service = make_service(
+        session,
+        Collector(),
+        Snapshots(),
+        screening_collector=ScreeningCollector(),
+    )
+    service._candidate_generator = CandidateSource(3)
+    original_commit = session.commit
+    commit_calls = 0
+
+    def counting_commit():
+        nonlocal commit_calls
+        commit_calls += 1
+        return original_commit()
+
+    monkeypatch.setattr(session, "commit", counting_commit)
+
+    analysis = service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=3,
+    )
+
+    assert analysis.id is not None
+    assert commit_calls == 1
+    assert len(session.scalars(select(LocationAnalysis)).all()) == 4
+
+
+def test_recommendations_roll_back_on_final_commit_error(monkeypatch):
+    session = make_session()
+    service = make_service(
+        session,
+        Collector(),
+        Snapshots(),
+        screening_collector=ScreeningCollector(),
+    )
+    service._candidate_generator = CandidateSource(3)
+    original_commit = session.commit
+
+    def fail_commit():
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(session, "commit", fail_commit)
+    with pytest.raises(RuntimeError, match="commit failed"):
+        service.analyze_recommendations(
+            project_id=1,
+            city="Chengdu",
+            region="High-tech Zone",
+            category="milk-tea",
+            max_candidates=3,
+        )
+
+    monkeypatch.setattr(session, "commit", original_commit)
+    assert session.scalars(select(LocationAnalysis)).all() == []

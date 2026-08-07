@@ -60,14 +60,28 @@ class LocationAnalysisService:
         self._scorer = scorer
         self._snapshots = snapshot_service
         self._verifier = evidence_verifier
-        self._evidence_builder = evidence_builder or LocationEvidenceBuilder()
-        self._candidate_generator = candidate_generator
-        self._references = reference_repository or ReferenceDatasetRepository()
-        self._screening_collector = (
-            screening_collector or BaiduCandidateScreeningCollector(baidu_client)
+        self._evidence_builder = (
+            evidence_builder
+            if evidence_builder is not None
+            else LocationEvidenceBuilder()
         )
-        self._candidate_screener = candidate_screener or CandidateScreener()
-        self._now = now or (lambda: datetime.now(UTC))
+        self._candidate_generator = candidate_generator
+        self._references = (
+            reference_repository
+            if reference_repository is not None
+            else ReferenceDatasetRepository()
+        )
+        self._screening_collector = (
+            screening_collector
+            if screening_collector is not None
+            else BaiduCandidateScreeningCollector(baidu_client)
+        )
+        self._candidate_screener = (
+            candidate_screener
+            if candidate_screener is not None
+            else CandidateScreener()
+        )
+        self._now = now if now is not None else lambda: datetime.now(UTC)
 
     def get_analysis(self, analysis_id: int) -> LocationAnalysis | None:
         return self._session.get(LocationAnalysis, analysis_id)
@@ -81,6 +95,31 @@ class LocationAnalysisService:
         latitude: float,
         longitude: float,
         finance_feasibility: FinanceFeasibility = FinanceFeasibility.MISSING,
+    ) -> LocationAnalysis:
+        try:
+            return self._analyze_manual(
+                project_id=project_id,
+                city=city,
+                category=category,
+                latitude=latitude,
+                longitude=longitude,
+                finance_feasibility=finance_feasibility,
+                commit=True,
+            )
+        except Exception:
+            self._session.rollback()
+            raise
+
+    def _analyze_manual(
+        self,
+        *,
+        project_id: int,
+        city: str,
+        category: str,
+        latitude: float,
+        longitude: float,
+        finance_feasibility: FinanceFeasibility,
+        commit: bool,
     ) -> LocationAnalysis:
         scope = self._scope(
             project_id=project_id,
@@ -115,6 +154,7 @@ class LocationAnalysisService:
                         longitude=longitude,
                         status="failed",
                         warnings=[warning],
+                        commit=commit,
                     )
                 warnings.append(warning)
                 snapshot = self._snapshots.find_latest_stale(
@@ -128,6 +168,7 @@ class LocationAnalysisService:
                         latitude=latitude,
                         longitude=longitude,
                         warnings=warnings,
+                        commit=commit,
                     )
                 pois = self._snapshot_pois(snapshot)
                 observed_at = _aware(snapshot.queried_at)
@@ -150,6 +191,7 @@ class LocationAnalysisService:
                     observed_at=observed_at,
                     expires_at=expires_at,
                     warnings=list(collection.warnings),
+                    commit=False,
                 )
 
         result = self._analyze_pois(
@@ -174,6 +216,7 @@ class LocationAnalysisService:
             status="degraded" if fallback or not complete else "completed",
             result=result,
             warnings=warnings,
+            commit=commit,
         )
 
     def analyze_recommendations(
@@ -185,10 +228,40 @@ class LocationAnalysisService:
         category: str,
         max_candidates: int = 5,
     ) -> LocationAnalysis:
-        if not 3 <= max_candidates <= 5:
+        if (
+            isinstance(max_candidates, bool)
+            or not isinstance(max_candidates, int)
+            or not 3 <= max_candidates <= 5
+        ):
             raise ValueError("max_candidates must be between 3 and 5")
-        generator = self._candidate_generator or CandidateGenerator(
-            self._baidu_client
+        try:
+            analysis = self._analyze_recommendations(
+                project_id=project_id,
+                city=city,
+                region=region,
+                category=category,
+                max_candidates=max_candidates,
+            )
+            self._session.commit()
+            self._session.refresh(analysis)
+            return analysis
+        except Exception:
+            self._session.rollback()
+            raise
+
+    def _analyze_recommendations(
+        self,
+        *,
+        project_id: int,
+        city: str,
+        region: str,
+        category: str,
+        max_candidates: int,
+    ) -> LocationAnalysis:
+        generator = (
+            self._candidate_generator
+            if self._candidate_generator is not None
+            else CandidateGenerator(self._baidu_client)
         )
         input_scope = {
             "city": city,
@@ -208,6 +281,7 @@ class LocationAnalysisService:
                 longitude=None,
                 status="failed",
                 warnings=[self._provider_warning(error)],
+                commit=False,
             )
 
         screened, warnings, screening_failures = self._screen_candidates(
@@ -236,18 +310,21 @@ class LocationAnalysisService:
                     "candidates": [],
                 },
                 warnings=warnings,
+                commit=False,
             )
         candidate_results: list[dict[str, Any]] = []
         child_degraded = False
         child_failed = False
         for screened_candidate in screened:
             candidate = screened_candidate.candidate
-            analysis = self.analyze_manual(
+            analysis = self._analyze_manual(
                 project_id=project_id,
                 city=city,
                 category=category,
                 latitude=candidate.latitude,
                 longitude=candidate.longitude,
+                finance_feasibility=FinanceFeasibility.MISSING,
+                commit=False,
             )
             warnings.extend(
                 f"{candidate.name}:{warning}"
@@ -305,11 +382,17 @@ class LocationAnalysisService:
                 f"insufficient candidates: requested {max_candidates}, "
                 f"available {len(selected)}"
             )
+        insufficient_candidates = len(selected) < max_candidates
         status = (
             "failed"
-            if child_failed and not selected
+            if not selected
             else "degraded"
-            if child_degraded or child_failed or warnings
+            if (
+                child_degraded
+                or child_failed
+                or bool(screening_failures)
+                or insufficient_candidates
+            )
             else "completed"
         )
         return self._persist(
@@ -330,6 +413,7 @@ class LocationAnalysisService:
                 for evidence in candidate["evidence"]
             ],
             warnings=warnings,
+            commit=False,
         )
 
     def _screen_candidates(
@@ -386,6 +470,7 @@ class LocationAnalysisService:
         latitude: float,
         longitude: float,
         warnings: list[str],
+        commit: bool,
     ) -> LocationAnalysis:
         year = self._now().year - 1
         datasets = []
@@ -478,6 +563,7 @@ class LocationAnalysisService:
             status="degraded",
             result=result,
             warnings=all_warnings,
+            commit=commit,
         )
 
     def _analyze_pois(
@@ -532,6 +618,7 @@ class LocationAnalysisService:
         observed_at: datetime,
         expires_at: datetime,
         warnings: list[str],
+        commit: bool,
     ) -> None:
         evidence = EvidenceRecord(
             source="baidu_map",
@@ -557,6 +644,7 @@ class LocationAnalysisService:
                 evidence=[evidence],
                 warnings=warnings,
             ),
+            commit=commit,
         )
 
     @staticmethod
@@ -617,6 +705,7 @@ class LocationAnalysisService:
         result_json: dict[str, Any] | None = None,
         evidence_json: list[dict[str, Any]] | None = None,
         warnings: Sequence[str] = (),
+        commit: bool = True,
     ) -> LocationAnalysis:
         serialized_result = (
             result.model_dump(mode="json") if result is not None else result_json or {}
@@ -638,8 +727,11 @@ class LocationAnalysisService:
             warnings_json=list(warnings),
         )
         self._session.add(analysis)
-        self._session.commit()
-        self._session.refresh(analysis)
+        if commit:
+            self._session.commit()
+            self._session.refresh(analysis)
+        else:
+            self._session.flush()
         return analysis
 
 

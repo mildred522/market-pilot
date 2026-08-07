@@ -39,6 +39,7 @@ class ExternalContextSnapshotService:
         scope: int = 2,
         coord_type: int = 3,
         radius_limit: bool = True,
+        commit: bool = True,
     ) -> ExternalContextSnapshot:
         if not context.evidence:
             raise ValueError("snapshot requires at least one evidence record")
@@ -88,8 +89,11 @@ class ExternalContextSnapshotService:
             warnings_json=context.warnings,
         )
         session.add(snapshot)
-        session.commit()
-        session.refresh(snapshot)
+        if commit:
+            session.commit()
+            session.refresh(snapshot)
+        else:
+            session.flush()
         return snapshot
 
     def find_reusable(

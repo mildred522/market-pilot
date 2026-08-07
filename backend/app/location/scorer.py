@@ -25,7 +25,11 @@ class LocationScorer:
         self,
         opportunity_weights: OpportunityWeights | None = None,
     ) -> None:
-        self.opportunity_weights = opportunity_weights or OpportunityWeights()
+        self.opportunity_weights = (
+            opportunity_weights
+            if opportunity_weights is not None
+            else OpportunityWeights()
+        )
 
     def score(
         self,

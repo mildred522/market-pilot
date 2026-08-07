@@ -23,7 +23,11 @@ class InvalidReferenceDataset(ValueError):
 
 class ReferenceDatasetRepository:
     def __init__(self, root: Path | None = None) -> None:
-        self.root = root or Path(__file__).resolve().parents[2] / "data/reference"
+        self.root = (
+            root
+            if root is not None
+            else Path(__file__).resolve().parents[2] / "data/reference"
+        )
 
     def load_city(self, city: str, year: int) -> ReferenceDataset:
         return self._load("cities", city, year)

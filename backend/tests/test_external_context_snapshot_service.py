@@ -1,11 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.db.models import Base, Project
+from app.db.models import Base, ExternalContextSnapshot, Project
 from app.external_context.contracts import EvidenceRecord, ExternalContextData
 from app.external_context.snapshot_service import ExternalContextSnapshotService
 
@@ -80,6 +80,32 @@ def test_save_uses_earliest_evidence_expiry():
         )
 
         assert snapshot.expires_at.replace(tzinfo=UTC) == now + timedelta(hours=1)
+
+
+def test_save_can_flush_without_committing_for_caller_owned_transaction():
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.commit()
+
+        snapshot = ExternalContextSnapshotService().save(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=800,
+            queried_at=now,
+            context=make_context(now),
+            commit=False,
+        )
+
+        assert snapshot.id is not None
+        session.rollback()
+        assert session.scalars(select(ExternalContextSnapshot)).all() == []
 
 
 def test_find_reusable_returns_fresh_exact_match_only():
