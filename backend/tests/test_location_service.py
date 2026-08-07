@@ -319,6 +319,28 @@ def test_finance_inputs_change_persisted_finance_metrics_and_feasibility():
     )
 
 
+def test_partial_radius_marks_outer_rings_unobserved_and_reduces_confidence():
+    session = make_session()
+    analysis = make_service(session, Collector(), Snapshots()).analyze_manual(
+        project_id=1,
+        city="Chengdu",
+        category="milk-tea",
+        latitude=30.5728,
+        longitude=104.0668,
+        radius_meters=300,
+    )
+
+    assert analysis.result_json["confidence"]["pagination"]["raw_coverage"] < 1
+    assert any("unobserved outer rings" in warning for warning in analysis.warnings_json)
+    competition = next(
+        item
+        for item in analysis.evidence_json
+        if item["label"] == "dimension.competition_balance"
+    )
+    assert competition["query_scope"]["radius_meters"] == 300
+    assert competition["query_scope"]["unobserved_rings_meters"] == [500, 800, 1500]
+
+
 def test_analyze_manual_reuses_exact_snapshot_without_supplier_call():
     session = make_session()
     collector = Collector(error=AssertionError("collector must not be called"))

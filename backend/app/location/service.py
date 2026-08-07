@@ -98,7 +98,14 @@ class LocationAnalysisService:
         planned_average_order_value: float | None = None,
         finance_assumptions: dict[str, Any] | None = None,
         finance_feasibility: FinanceFeasibility | None = None,
+        radius_meters: int = SNAPSHOT_RADIUS_METERS,
     ) -> LocationAnalysis:
+        if (
+            isinstance(radius_meters, bool)
+            or not isinstance(radius_meters, int)
+            or not 300 <= radius_meters <= 5000
+        ):
+            raise ValueError("radius_meters must be between 300 and 5000")
         assessed_finance, finance_metrics = _assess_finance(
             planned_average_order_value=planned_average_order_value,
             assumptions=finance_assumptions,
@@ -112,7 +119,7 @@ class LocationAnalysisService:
                 longitude=longitude,
                 finance_feasibility=finance_feasibility or assessed_finance,
                 finance_metrics=finance_metrics,
-                radius_meters=SNAPSHOT_RADIUS_METERS,
+                radius_meters=radius_meters,
                 commit=True,
             )
         except Exception:
@@ -142,6 +149,14 @@ class LocationAnalysisService:
         )
         snapshot = self._snapshots.find_reusable(self._session, **scope)
         warnings: list[str] = []
+        if radius_meters < SNAPSHOT_RADIUS_METERS:
+            unobserved = [
+                radius for radius in RING_RADII if radius > radius_meters
+            ]
+            warnings.append(
+                "radius coverage incomplete: unobserved outer rings "
+                f"{unobserved}; low confidence due to partial radius coverage"
+            )
         fallback = False
         if snapshot is not None:
             pois = self._snapshot_pois(snapshot)
@@ -235,6 +250,7 @@ class LocationAnalysisService:
             fallback=fallback,
             finance_feasibility=finance_feasibility,
             finance_metrics=finance_metrics or {},
+            radius_meters=radius_meters,
         )
         self._verifier.verify(result, warnings=warnings)
         return self._persist(
@@ -647,6 +663,7 @@ class LocationAnalysisService:
         fallback: bool,
         finance_feasibility: FinanceFeasibility,
         finance_metrics: dict[str, Any],
+        radius_meters: int,
     ) -> LocationAnalysisResult:
         features = self._feature_builder.build(pois)
         dimensions, confidence, evidence = self._evidence_builder.build(
@@ -659,6 +676,7 @@ class LocationAnalysisService:
             expires_at=expires_at,
             complete=complete,
             fallback=fallback,
+            radius_meters=radius_meters,
         )
         result = self._scorer.score(
             dimensions,

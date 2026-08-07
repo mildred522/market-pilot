@@ -89,6 +89,7 @@ def manual_analysis(
                 if payload.finance_assumptions
                 else None
             ),
+            radius_meters=payload.radius_meters,
         )
         _raise_for_provider_warnings(analysis.warnings_json)
         return _response_for_row(analysis, source=source, request=payload)

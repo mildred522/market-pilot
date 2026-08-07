@@ -24,6 +24,7 @@ class LocationRequestBase(BaseModel):
     planned_average_order_value: float = Field(gt=0, allow_inf_nan=False)
     finance_assumptions: FinanceAssumptions | None = None
     coordinate_system: CoordinateSystem = "bd09ll"
+    radius_meters: StrictInt = Field(default=1500, ge=300, le=5000)
 
 
 class ManualLocationAnalysisRequest(LocationRequestBase):
@@ -46,7 +47,6 @@ class ManualLocationAnalysisRequest(LocationRequestBase):
 
 class LocationRecommendationsRequest(LocationRequestBase):
     candidate_count: StrictInt = Field(default=5, ge=1, le=10)
-    radius_meters: StrictInt = Field(default=1500, ge=300, le=5000)
 
 
 class Coordinate(BaseModel):

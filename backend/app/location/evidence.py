@@ -29,13 +29,18 @@ class LocationEvidenceBuilder:
         expires_at: datetime,
         complete: bool,
         fallback: bool = False,
+        radius_meters: int = max(RING_RADII),
     ) -> tuple[DimensionScores, ConfidenceInputs, list[Evidence]]:
         dimensions = self._dimensions(features)
+        observed_radii = [radius for radius in RING_RADII if radius <= radius_meters]
+        unobserved_radii = [radius for radius in RING_RADII if radius > radius_meters]
         scope = {
             "city": city,
             "category": category,
             "center": {"latitude": latitude, "longitude": longitude},
-            "radii_meters": list(RING_RADII),
+            "radius_meters": radius_meters,
+            "radii_meters": observed_radii,
+            "unobserved_rings_meters": unobserved_radii,
         }
         metrics: dict[str, Any] = {
             "competition_balance": {
@@ -43,7 +48,9 @@ class LocationEvidenceBuilder:
                 "rings": {
                     str(radius): item.model_dump(mode="json")
                     for radius, item in features.rings.items()
+                    if radius <= radius_meters
                 },
+                "unobserved_rings_meters": unobserved_radii,
             },
             "demand_proxies": dimensions.demand_proxies,
             "transit": dimensions.transit,
@@ -64,7 +71,9 @@ class LocationEvidenceBuilder:
             )
             for name, value in metrics.items()
         ]
-        return dimensions, self._confidence(features, complete, fallback), evidence
+        return dimensions, self._confidence(
+            features, complete, fallback, radius_meters=radius_meters
+        ), evidence
 
     @staticmethod
     def _dimensions(features: LocationFeatures) -> DimensionScores:
@@ -80,15 +89,20 @@ class LocationEvidenceBuilder:
 
     @staticmethod
     def _confidence(
-        features: LocationFeatures, complete: bool, fallback: bool
+        features: LocationFeatures,
+        complete: bool,
+        fallback: bool,
+        *,
+        radius_meters: int,
     ) -> ConfidenceInputs:
         pois = features.pois
         count = len(pois)
+        coverage = min(1, radius_meters / max(RING_RADII))
         if not count:
             return ConfidenceInputs(
-                pagination=1 if complete else 0,
+                pagination=(1 if complete else 0) * coverage,
                 key_fields=0,
-                keyword_coverage=0,
+                keyword_coverage=coverage,
                 freshness=1,
                 status_comment_coverage=0,
             )
@@ -101,9 +115,9 @@ class LocationEvidenceBuilder:
             for poi in pois
         ) / (count * 2)
         return ConfidenceInputs(
-            pagination=0 if fallback else (1 if complete else 0.5),
+            pagination=(0 if fallback else (1 if complete else 0.5)) * coverage,
             key_fields=key_fields,
-            keyword_coverage=0.5 if fallback else 1,
+            keyword_coverage=(0.5 if fallback else 1) * coverage,
             freshness=0 if fallback else 1,
             status_comment_coverage=status_comments,
         )
