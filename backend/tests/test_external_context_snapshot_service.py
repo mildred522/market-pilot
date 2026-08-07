@@ -190,6 +190,10 @@ def test_signature_aware_reuse_matches_canonical_keyword_and_radius_scope():
             context=make_long_lived_context(now),
             keywords=("茶饮", "奶茶", "奶茶"),
             radii=(1500, 300, 800, 500),
+            keyword_classifications={
+                "奶茶": "direct_competitor",
+                "茶饮": "direct_competitor",
+            },
             scoring_version="location-v1",
         )
 
@@ -205,6 +209,10 @@ def test_signature_aware_reuse_matches_canonical_keyword_and_radius_scope():
             now=now + timedelta(days=1),
             keywords=("奶茶", "茶饮"),
             radii=(300, 500, 800, 1500),
+            keyword_classifications={
+                "奶茶": "direct_competitor",
+                "茶饮": "direct_competitor",
+            },
             scoring_version="location-v1",
         )
 
@@ -247,6 +255,10 @@ def test_signature_aware_reuse_misses_changed_scope(
             context=make_long_lived_context(now),
             keywords=("奶茶", "茶饮"),
             radii=(300, 500, 800, 1500),
+            keyword_classifications={
+                "奶茶": "direct_competitor",
+                "茶饮": "direct_competitor",
+            },
             scoring_version="location-v1",
         )
 
@@ -262,6 +274,9 @@ def test_signature_aware_reuse_misses_changed_scope(
             now=now + timedelta(days=1),
             keywords=keywords,
             radii=radii,
+            keyword_classifications={
+                keyword: "direct_competitor" for keyword in keywords
+            },
             scoring_version=scoring_version,
         )
 
@@ -286,6 +301,10 @@ def test_signature_aware_reuse_misses_changed_provider_parameter(
     base_scope = {
         "keywords": ("奶茶", "茶饮"),
         "radii": (300, 500, 800, 1500),
+        "keyword_classifications": {
+            "奶茶": "direct_competitor",
+            "茶饮": "direct_competitor",
+        },
         "scoring_version": "location-v1",
         "page_size": 20,
         "filter": "industry_type:cater",
@@ -410,6 +429,7 @@ def test_signature_canonicalizes_decimal_radii_and_strips_scoring_version():
             context=make_long_lived_context(now),
             keywords=("奶茶",),
             radii=("300.50",),
+            keyword_classifications={"奶茶": "direct_competitor"},
             scoring_version=" location-v1 ",
         )
 
@@ -425,6 +445,7 @@ def test_signature_canonicalizes_decimal_radii_and_strips_scoring_version():
             now=now + timedelta(days=1),
             keywords=("奶茶",),
             radii=(300.5,),
+            keyword_classifications={"奶茶": "direct_competitor"},
             scoring_version="location-v1",
         ) is not None
         assert service.find_reusable(
@@ -439,8 +460,85 @@ def test_signature_canonicalizes_decimal_radii_and_strips_scoring_version():
             now=now + timedelta(days=1),
             keywords=("奶茶",),
             radii=(300,),
+            keyword_classifications={"奶茶": "direct_competitor"},
             scoring_version="location-v1",
         ) is None
+
+
+def test_signature_aware_scope_requires_complete_keyword_classifications():
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    common = {
+        "project_id": 1,
+        "provider": "baidu_map",
+        "city": "chengdu",
+        "category": "milk-tea",
+        "latitude": 30.5728,
+        "longitude": 104.0668,
+        "radius_meters": 1500,
+        "queried_at": now,
+        "context": make_long_lived_context(now),
+        "keywords": ("奶茶", "茶饮"),
+        "radii": (300, 500, 800, 1500),
+        "scoring_version": "location-v1",
+    }
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.flush()
+        common["project_id"] = project.id
+        service = ExternalContextSnapshotService()
+
+        with pytest.raises(ValueError, match="keyword_classifications"):
+            service.save(session, **common)
+        with pytest.raises(ValueError, match="keyword_classifications"):
+            service.save(
+                session,
+                **common,
+                keyword_classifications={"奶茶": "direct_competitor"},
+            )
+
+
+def test_effective_max_pages_makes_requested_eight_and_hundred_same_scope():
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    scope = {
+        "keywords": ("奶茶",),
+        "radii": (300, 500, 800, 1500),
+        "keyword_classifications": {"奶茶": "direct_competitor"},
+        "scoring_version": "location-v1",
+    }
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.flush()
+        service = ExternalContextSnapshotService()
+        service.save(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            queried_at=now,
+            context=make_long_lived_context(now),
+            max_pages=100,
+            **scope,
+        )
+
+        assert service.find_reusable(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            now=now + timedelta(days=1),
+            max_pages=8,
+            **scope,
+        ) is not None
 
 
 def test_save_clamps_expiry_to_seven_days_and_lookup_honors_expiry():
@@ -463,6 +561,7 @@ def test_save_clamps_expiry_to_seven_days_and_lookup_honors_expiry():
             context=make_long_lived_context(now),
             keywords=("奶茶",),
             radii=(300, 500, 800, 1500),
+            keyword_classifications={"奶茶": "direct_competitor"},
             scoring_version="location-v1",
         )
 
@@ -479,6 +578,7 @@ def test_save_clamps_expiry_to_seven_days_and_lookup_honors_expiry():
             now=now + timedelta(days=7),
             keywords=("奶茶",),
             radii=(300, 500, 800, 1500),
+            keyword_classifications={"奶茶": "direct_competitor"},
             scoring_version="location-v1",
         ) is None
 
@@ -519,5 +619,6 @@ def test_legacy_snapshot_is_reusable_only_by_legacy_lookup():
             **common,
             keywords=("奶茶",),
             radii=(300, 500, 800, 1500),
+            keyword_classifications={"奶茶": "direct_competitor"},
             scoring_version="location-v1",
         ) is None

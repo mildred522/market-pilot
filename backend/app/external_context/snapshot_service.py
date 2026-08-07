@@ -13,6 +13,7 @@ from app.external_context.contracts import ExternalContextData
 
 class ExternalContextSnapshotService:
     MAX_AGE = timedelta(days=7)
+    MAX_PAGES = 8
     SCOPE_METADATA_KEY = "_snapshot_scope"
 
     def save(
@@ -182,6 +183,10 @@ class ExternalContextSnapshotService:
             raise ValueError(
                 "keywords, radii, and scoring_version must be provided together"
             )
+        if keyword_classifications is None:
+            raise ValueError(
+                "keyword_classifications is required for signature-aware scope"
+            )
         normalized_keywords = sorted(
             {keyword.strip() for keyword in keywords or () if keyword.strip()}
         )
@@ -203,6 +208,10 @@ class ExternalContextSnapshotService:
             for keyword, classification in normalized_mapping.items()
         ):
             raise ValueError("keyword classifications cannot be empty")
+        if set(normalized_mapping) != set(normalized_keywords):
+            raise ValueError(
+                "keyword_classifications must cover the normalized keyword set"
+            )
         if (
             not normalized_keywords
             or not normalized_radii
@@ -222,7 +231,10 @@ class ExternalContextSnapshotService:
             "radii": normalized_radii,
             "keyword_classifications": dict(sorted(normalized_mapping.items())),
             "scoring_version": scoring_version.strip(),
-            "max_pages": _canonical_number(max_pages, name="max_pages"),
+            "max_pages": _canonical_number(
+                min(max(max_pages, 1), ExternalContextSnapshotService.MAX_PAGES),
+                name="max_pages",
+            ),
             "page_size": _canonical_number(page_size, name="page_size"),
             "filter": filter,
             "scope": _canonical_number(scope, name="scope"),
