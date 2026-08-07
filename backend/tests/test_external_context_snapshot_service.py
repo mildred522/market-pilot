@@ -268,6 +268,67 @@ def test_signature_aware_reuse_misses_changed_scope(
         assert reused is None
 
 
+@pytest.mark.parametrize(
+    ("parameter", "changed_value"),
+    [
+        ("page_size", 10),
+        ("filter", "industry_type:life"),
+        ("scope", 1),
+        ("coord_type", 1),
+        ("radius_limit", False),
+    ],
+)
+def test_signature_aware_reuse_misses_changed_provider_parameter(
+    parameter: str,
+    changed_value: object,
+):
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    base_scope = {
+        "keywords": ("奶茶", "茶饮"),
+        "radii": (300, 500, 800, 1500),
+        "scoring_version": "location-v1",
+        "page_size": 20,
+        "filter": "industry_type:cater",
+        "scope": 2,
+        "coord_type": 3,
+        "radius_limit": True,
+    }
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.flush()
+        service = ExternalContextSnapshotService()
+        service.save(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            queried_at=now,
+            context=make_long_lived_context(now),
+            **base_scope,
+        )
+
+        changed_scope = {**base_scope, parameter: changed_value}
+        reused = service.find_reusable(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            now=now + timedelta(days=1),
+            **changed_scope,
+        )
+
+        assert reused is None
+
+
 def test_save_clamps_expiry_to_seven_days_and_lookup_honors_expiry():
     now = datetime(2026, 7, 24, 10, tzinfo=UTC)
     with make_session() as session:

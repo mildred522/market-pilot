@@ -30,6 +30,11 @@ class ExternalContextSnapshotService:
         keywords: Sequence[str] | None = None,
         radii: Sequence[int] | None = None,
         scoring_version: str | None = None,
+        page_size: int = 20,
+        filter: str = "industry_type:cater",
+        scope: int = 2,
+        coord_type: int = 3,
+        radius_limit: bool = True,
     ) -> ExternalContextSnapshot:
         if not context.evidence:
             raise ValueError("snapshot requires at least one evidence record")
@@ -44,6 +49,11 @@ class ExternalContextSnapshotService:
             keywords=keywords,
             radii=radii,
             scoring_version=scoring_version,
+            page_size=page_size,
+            filter=filter,
+            scope=scope,
+            coord_type=coord_type,
+            radius_limit=radius_limit,
         )
         metrics = dict(context.metrics)
         if query_signature is not None:
@@ -91,6 +101,11 @@ class ExternalContextSnapshotService:
         keywords: Sequence[str] | None = None,
         radii: Sequence[int] | None = None,
         scoring_version: str | None = None,
+        page_size: int = 20,
+        filter: str = "industry_type:cater",
+        scope: int = 2,
+        coord_type: int = 3,
+        radius_limit: bool = True,
     ) -> ExternalContextSnapshot | None:
         query_signature = self._query_signature(
             provider=provider,
@@ -102,6 +117,11 @@ class ExternalContextSnapshotService:
             keywords=keywords,
             radii=radii,
             scoring_version=scoring_version,
+            page_size=page_size,
+            filter=filter,
+            scope=scope,
+            coord_type=coord_type,
+            radius_limit=radius_limit,
         )
         statement = (
             select(ExternalContextSnapshot)
@@ -138,6 +158,11 @@ class ExternalContextSnapshotService:
         keywords: Sequence[str] | None,
         radii: Sequence[int] | None,
         scoring_version: str | None,
+        page_size: int,
+        filter: str,
+        scope: int,
+        coord_type: int,
+        radius_limit: bool,
     ) -> str | None:
         values = (keywords, radii, scoring_version)
         if all(value is None for value in values):
@@ -166,6 +191,11 @@ class ExternalContextSnapshotService:
             "keywords": normalized_keywords,
             "radii": normalized_radii,
             "scoring_version": scoring_version,
+            "page_size": page_size,
+            "filter": filter,
+            "scope": scope,
+            "coord_type": coord_type,
+            "radius_limit": radius_limit,
         }
         canonical = json.dumps(
             scope,
