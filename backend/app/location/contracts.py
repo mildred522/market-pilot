@@ -27,9 +27,13 @@ class NormalizedPoiFeature(BaseModel):
     matched_keywords: list[str] = Field(default_factory=list)
     category: str | None = None
     classifications: list[PoiClassification] = Field(default_factory=list)
-    average_price: float | None = None
+    average_price: float | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+    )
     business_status: str | None = None
-    comment_count: int | None = None
+    comment_count: int | None = Field(default=None, ge=0)
 
 
 class RingMetrics(BaseModel):
@@ -42,14 +46,22 @@ class RingMetrics(BaseModel):
 
 
 class PriceMetrics(BaseModel):
-    eligible_count: int = 0
-    sample_count: int = 0
+    eligible_count: int = Field(default=0, ge=0)
+    sample_count: int = Field(default=0, ge=0)
     coverage: float = Field(default=0, ge=0, le=1)
-    median: float | None = None
-    first_quartile: float | None = None
-    third_quartile: float | None = None
-    minimum: float | None = None
-    maximum: float | None = None
+    median: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    first_quartile: float | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+    )
+    third_quartile: float | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+    )
+    minimum: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    maximum: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class LocationFeatures(BaseModel):

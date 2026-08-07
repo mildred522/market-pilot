@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from math import inf, nan
 
 import pytest
 from pydantic import ValidationError
@@ -11,6 +12,7 @@ from app.location.contracts import (
     FinanceFeasibility,
     NormalizedPoiFeature,
     OpportunityWeights,
+    PriceMetrics,
     PoiClassification,
     RingMetrics,
 )
@@ -165,6 +167,19 @@ def test_normalized_poi_numeric_fields_reject_negative_values(field_name: str):
         NormalizedPoiFeature(uid="invalid", name="invalid", **{field_name: -1})
 
 
+@pytest.mark.parametrize("value", [-1, nan, inf, -inf])
+def test_normalized_poi_average_price_rejects_negative_and_non_finite_values(
+    value: float,
+):
+    with pytest.raises(ValidationError):
+        NormalizedPoiFeature(uid="invalid", name="invalid", average_price=value)
+
+
+def test_normalized_poi_comment_count_rejects_negative_values():
+    with pytest.raises(ValidationError):
+        NormalizedPoiFeature(uid="invalid", name="invalid", comment_count=-1)
+
+
 @pytest.mark.parametrize(
     "field_name",
     [
@@ -188,6 +203,27 @@ def test_confidence_component_scores_reject_negative_values(field_name: str):
         values = {"raw_coverage": 0, "weight": 1, "weighted_score": 0}
         values[field_name] = -1
         ConfidenceComponent(**values)
+
+
+@pytest.mark.parametrize("field_name", ["eligible_count", "sample_count"])
+def test_price_metric_counts_reject_negative_values(field_name: str):
+    with pytest.raises(ValidationError):
+        values = {field_name: -1}
+        PriceMetrics(**values)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["median", "first_quartile", "third_quartile", "minimum", "maximum"],
+)
+@pytest.mark.parametrize("value", [-1, nan, inf, -inf])
+def test_price_metric_values_reject_negative_and_non_finite_values(
+    field_name: str,
+    value: float,
+):
+    with pytest.raises(ValidationError):
+        values = {field_name: value}
+        PriceMetrics(**values)
 
 
 def test_confidence_below_60_forces_further_research_and_returns_raw_coverage():
