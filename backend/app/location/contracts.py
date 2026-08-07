@@ -89,7 +89,10 @@ class PriceMetrics(BaseModel):
             self.third_quartile,
             self.maximum,
         ]
-        if any(value is not None for value in distribution):
+        has_distribution = any(value is not None for value in distribution)
+        if has_distribution and self.sample_count == 0:
+            raise ValueError("distribution requires a positive sample_count")
+        if has_distribution:
             if any(value is None for value in distribution):
                 raise ValueError("all distribution fields must be provided together")
             values = [float(value) for value in distribution if value is not None]

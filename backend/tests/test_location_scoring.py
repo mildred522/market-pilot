@@ -253,6 +253,17 @@ def test_price_metrics_require_all_distribution_fields_together():
         PriceMetrics(median=15)
 
 
+def test_price_metrics_reject_distribution_without_samples():
+    with pytest.raises(ValidationError, match="sample_count"):
+        PriceMetrics(
+            minimum=10,
+            first_quartile=12,
+            median=15,
+            third_quartile=18,
+            maximum=20,
+        )
+
+
 def test_price_metrics_reject_unordered_distribution():
     with pytest.raises(ValidationError, match="ordered"):
         PriceMetrics(
