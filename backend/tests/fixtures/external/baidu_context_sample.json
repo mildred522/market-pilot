@@ -1,0 +1,79 @@
+{
+  "status": 0,
+  "message": "ok",
+  "total": 4,
+  "results": [
+    {
+      "uid": "synthetic-poi-001",
+      "name": "样本茶铺A",
+      "location": {
+        "lat": 30.5731,
+        "lng": 104.0672
+      },
+      "address": "测试路1号",
+      "status": "",
+      "detail_info": {
+        "distance": 120,
+        "tag": "美食;饮品店;奶茶",
+        "brand": "样本连锁A",
+        "overall_rating": "4.6",
+        "comment_num": "320",
+        "price": "12"
+      }
+    },
+    {
+      "uid": "synthetic-poi-002",
+      "name": "样本茶铺B",
+      "location": {
+        "lat": 30.574,
+        "lng": 104.0661
+      },
+      "address": "测试路2号",
+      "status": "",
+      "detail_info": {
+        "distance": 250,
+        "tag": "美食;饮品店;奶茶",
+        "brand": "样本连锁B",
+        "overall_rating": "4.2",
+        "comment_num": "180",
+        "price": "14"
+      }
+    },
+    {
+      "uid": "synthetic-poi-003",
+      "name": "样本茶铺C",
+      "location": {
+        "lat": 30.5714,
+        "lng": 104.0649
+      },
+      "address": "测试路3号",
+      "status": "",
+      "detail_info": {
+        "distance": 320,
+        "tag": "美食;饮品店;奶茶",
+        "brand": "样本连锁C",
+        "overall_rating": "4.1",
+        "comment_num": "95",
+        "price": "16"
+      }
+    },
+    {
+      "uid": "synthetic-poi-004",
+      "name": "样本独立茶铺",
+      "location": {
+        "lat": 30.569,
+        "lng": 104.0705
+      },
+      "address": "测试路4号",
+      "status": "",
+      "detail_info": {
+        "distance": 610,
+        "tag": "美食;饮品店;奶茶",
+        "brand": "",
+        "overall_rating": "4.3",
+        "comment_num": "60",
+        "price": "18"
+      }
+    }
+  ]
+}

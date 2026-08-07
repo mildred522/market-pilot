@@ -1,0 +1,118 @@
+{
+  "dataset_id": "city-chengdu-2025",
+  "effective_year": 2025,
+  "published_at": "2025-03-28T00:00:00+08:00",
+  "sources": [
+    {
+      "source_id": "chengdu-statistical-bulletin-2024",
+      "title": "2024年成都市国民经济和社会发展统计公报",
+      "publisher": "成都市统计局、国家统计局成都调查队",
+      "url": "https://www.cdrb.com.cn/epaper/cdrbpc/202503/28/fa12d091-7d6d-4a6f-b325-46dcd25f4609.pdf",
+      "published_at": "2025-03-28T00:00:00+08:00",
+      "accessed_at": "2026-07-24",
+      "source_type": "government_statistics",
+      "notes": "统计公报由成都日报公开刊载，部分数据为初步统计数。"
+    }
+  ],
+  "metrics": {
+    "resident_population": {
+      "value": 2147.4,
+      "unit": "ten_thousand_people",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "2024年末成都市常住人口"
+    },
+    "urbanization_rate": {
+      "value": 80.8,
+      "unit": "percent",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "常住人口城镇化率"
+    },
+    "gdp": {
+      "value": 23511.3,
+      "unit": "hundred_million_cny",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "按当年价格计算的地区生产总值"
+    },
+    "service_sector_share": {
+      "value": 69.0,
+      "unit": "percent",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "第三产业增加值占地区生产总值比重"
+    },
+    "retail_sales": {
+      "value": 10835.3,
+      "unit": "hundred_million_cny",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "社会消费品零售总额"
+    },
+    "retail_sales_growth": {
+      "value": 3.3,
+      "unit": "percent_yoy",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "社会消费品零售总额同比增速"
+    },
+    "food_service_revenue": {
+      "value": 1355.2,
+      "unit": "hundred_million_cny",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "按消费形态统计的餐饮收入"
+    },
+    "food_service_revenue_growth": {
+      "value": 6.2,
+      "unit": "percent_yoy",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "餐饮收入同比增速"
+    },
+    "online_food_service_revenue_growth": {
+      "value": 28.1,
+      "unit": "percent_yoy",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "限额以上企业通过互联网实现的餐饮收入同比增速"
+    },
+    "university_students": {
+      "value": 130.7,
+      "unit": "ten_thousand_people",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "年末在蓉高校在校学生数"
+    },
+    "metro_passenger_trips": {
+      "value": 22.0,
+      "unit": "hundred_million_trips",
+      "period": "2024",
+      "source_ids": ["chengdu-statistical-bulletin-2024"],
+      "status": "reported",
+      "definition": "全年地铁客运总量"
+    }
+  },
+  "observations": [
+    "成都人口和城镇化规模为高频现制饮品提供较大的潜在消费基盘。",
+    "2024年餐饮收入增速高于社会消费品零售总额增速，但不能据此推断单个门店必然增长。",
+    "高校学生和轨道交通客流可作为选址场景线索，仍需结合具体点位POI和步行可达性。"
+  ],
+  "limitations": [
+    "数据为成都市行政区域年度汇总，不能代表具体商圈、街道或门店点位。",
+    "统计公报说明部分数据为初步统计数，后续年鉴可能修订。",
+    "限额以上企业网络餐饮收入增速不代表全部小微餐饮经营者。",
+    "本数据集不包含租金、铺面可见度、实时客流、竞品数量和外卖平台销量。"
+  ]
+}

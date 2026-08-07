@@ -1,0 +1,143 @@
+{
+  "dataset_id": "category-milk-tea-2025",
+  "effective_year": 2025,
+  "published_at": "2025-05-18T00:00:00+08:00",
+  "sources": [
+    {
+      "source_id": "ccfa-meituan-new-tea-report-2023",
+      "title": "2023新茶饮研究报告",
+      "publisher": "中国连锁经营协会新茶饮委员会、美团新餐饮研究院",
+      "url": "https://www.meituan.com/news/NN230921068001140",
+      "published_at": "2023-09-21T00:00:00+08:00",
+      "accessed_at": "2026-07-24",
+      "source_type": "industry_association",
+      "notes": "报告在2023年9月发布，全年市场规模和2025年市场规模均属于预测口径。"
+    },
+    {
+      "source_id": "made-to-order-tea-nutrition-whitepaper-2025",
+      "title": "中国现制茶饮膳食营养升级白皮书发布信息",
+      "publisher": "中国连锁经营协会",
+      "url": "https://www.ccfa.org.cn/portal/cn/xiangxi.jsp?id=446560&type=2",
+      "published_at": "2025-05-18T00:00:00+08:00",
+      "accessed_at": "2026-07-24",
+      "source_type": "industry_association",
+      "notes": "白皮书由品牌参与发布，门店规模和消费者偏好属于研究估算或调查结果。"
+    },
+    {
+      "source_id": "mixue-prospectus-industry-overview-2025",
+      "title": "蜜雪集团招股章程：行业概览",
+      "publisher": "香港交易及结算所有限公司",
+      "url": "https://www.hkexnews.hk/listedco/listconews/sehk/2025/0221/11543479/2025022100064_c.pdf",
+      "published_at": "2025-02-21T00:00:00+08:00",
+      "accessed_at": "2026-07-24",
+      "source_type": "listed_company_filing",
+      "notes": "行业数据来自灼识咨询，属于商业研究估算；招股文件存在发行人利益相关性。"
+    }
+  ],
+  "metrics": {
+    "new_tea_market_size_2023": {
+      "value": 1498,
+      "unit": "hundred_million_cny",
+      "period": "2023",
+      "source_ids": ["ccfa-meituan-new-tea-report-2023"],
+      "status": "forecast",
+      "definition": "2023新茶饮消费市场全年规模，发布时为全年预测"
+    },
+    "new_tea_market_size_forecast_2025": {
+      "value": 2015,
+      "unit": "hundred_million_cny",
+      "period": "2025",
+      "source_ids": ["ccfa-meituan-new-tea-report-2023"],
+      "status": "forecast",
+      "definition": "2025国内新茶饮消费市场规模预测"
+    },
+    "active_new_tea_store_count_2023_08_31": {
+      "value": 51.5,
+      "unit": "ten_thousand_stores",
+      "period": "2023-08-31",
+      "source_ids": ["ccfa-meituan-new-tea-report-2023"],
+      "status": "estimated",
+      "definition": "据不完全统计的在业新茶饮门店数",
+      "qualifier": "about"
+    },
+    "made_to_order_tea_store_count_2024": {
+      "value": 66,
+      "unit": "ten_thousand_stores",
+      "period": "2024",
+      "source_ids": ["made-to-order-tea-nutrition-whitepaper-2025"],
+      "status": "estimated",
+      "definition": "全国现制茶饮门店总数下限",
+      "qualifier": "more_than"
+    },
+    "taste_preference_share": {
+      "value": 63.0,
+      "unit": "percent",
+      "period": "2025-whitepaper-survey",
+      "source_ids": ["made-to-order-tea-nutrition-whitepaper-2025"],
+      "status": "estimated",
+      "definition": "调查中将口感和风味列为影响选择核心因素的消费者占比"
+    },
+    "health_ingredient_preference_share": {
+      "value": 35.3,
+      "unit": "percent",
+      "period": "2025-whitepaper-survey",
+      "source_ids": ["made-to-order-tea-nutrition-whitepaper-2025"],
+      "status": "estimated",
+      "definition": "调查中关注原料或成分健康度的消费者占比"
+    },
+    "made_to_order_tea_market_size_2023": {
+      "value": 2115,
+      "unit": "hundred_million_cny",
+      "period": "2023",
+      "source_ids": ["mixue-prospectus-industry-overview-2025"],
+      "status": "estimated",
+      "definition": "中国现制茶饮店市场终端零售额"
+    },
+    "made_to_order_tea_market_cagr_forecast_2023_2028": {
+      "value": 19.7,
+      "unit": "percent_cagr",
+      "period": "2023-2028",
+      "source_ids": ["mixue-prospectus-industry-overview-2025"],
+      "status": "forecast",
+      "definition": "中国现制茶饮店市场终端零售额预测复合年增长率"
+    },
+    "largest_brand_retail_share_2023": {
+      "value": 20.2,
+      "unit": "percent",
+      "period": "2023",
+      "source_ids": ["mixue-prospectus-industry-overview-2025"],
+      "status": "estimated",
+      "definition": "最大品牌按终端零售额计算的市场份额"
+    },
+    "largest_brand_cup_share_2023": {
+      "value": 49.6,
+      "unit": "percent",
+      "period": "2023",
+      "source_ids": ["mixue-prospectus-industry-overview-2025"],
+      "status": "estimated",
+      "definition": "最大品牌按饮品出杯量计算的市场份额"
+    },
+    "affordable_made_to_order_drink_store_count_2023": {
+      "value": 27,
+      "unit": "ten_thousand_stores",
+      "period": "2023-12-31",
+      "source_ids": ["mixue-prospectus-industry-overview-2025"],
+      "status": "estimated",
+      "definition": "主要产品平均售价不高于约10元的平价现制饮品门店数",
+      "qualifier": "about"
+    }
+  },
+  "observations": [
+    "行业规模增长预期与门店数量扩张同时存在，开店潜力不能只依据市场增长率判断。",
+    "头部品牌在出杯量上的集中度高于零售额集中度，反映平价品牌可能以高销量占据更强份额。",
+    "口感仍是核心选择因素，健康原料关注度构成重要但非唯一的产品趋势。",
+    "全国行业数据只能提供品类背景，具体成都点位仍需实时竞品、价格带和客群证据。"
+  ],
+  "limitations": [
+    "CCFA的“新茶饮消费市场”和港交所文件的“现制茶饮店终端零售额”定义不同，两个市场规模不得直接相加或计算增速。",
+    "行业协会报告、品牌参与白皮书和上市申请文件均可能存在样本、估算方法或利益相关性偏差。",
+    "2023新茶饮市场规模在2023年9月发布时属于全年预测，并非年末实测值。",
+    "全国门店数不反映成都单一商圈的竞争密度、闭店率、租金或实际订单量。",
+    "消费者偏好比例依赖白皮书样本，不能直接当作目标门店客群比例。"
+  ]
+}

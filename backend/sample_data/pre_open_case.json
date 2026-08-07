@@ -1,0 +1,21 @@
+{
+  "project_name": "加盟奶茶店演示",
+  "stage": "pre_open",
+  "category": "茶饮",
+  "city": "杭州",
+  "location_type": "mall",
+  "area_sqm": 45,
+  "seats": 16,
+  "monthly_rent": 26000,
+  "total_investment": 420000,
+  "own_capital": 180000,
+  "debt_amount": 240000,
+  "expected_daily_orders": 120,
+  "expected_avg_order_value": 18,
+  "expected_gross_margin": 0.58,
+  "is_franchise": true,
+  "franchise_fee": 120000,
+  "competitor_count": 12,
+  "storefront_visibility": "high",
+  "demo_point": "投资重、负债高、加盟费高、竞品密度高，适合演示开店前风险排雷。"
+}

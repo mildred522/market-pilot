@@ -1,0 +1,141 @@
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class PreOpenInput(Base):
+    __tablename__ = "pre_open_inputs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), nullable=False)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+    location_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    area_sqm: Mapped[float] = mapped_column(Float, nullable=False)
+    seats: Mapped[int] = mapped_column(Integer, nullable=False)
+    monthly_rent: Mapped[float] = mapped_column(Float, nullable=False)
+    total_investment: Mapped[float] = mapped_column(Float, nullable=False)
+    own_capital: Mapped[float] = mapped_column(Float, nullable=False)
+    debt_amount: Mapped[float] = mapped_column(Float, nullable=False)
+    expected_daily_orders: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_avg_order_value: Mapped[float] = mapped_column(Float, nullable=False)
+    expected_gross_margin: Mapped[float] = mapped_column(Float, nullable=False)
+    is_franchise: Mapped[bool] = mapped_column(nullable=False)
+    franchise_fee: Mapped[float] = mapped_column(Float, nullable=False)
+    competitor_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    storefront_visibility: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class UploadedFile(Base):
+    __tablename__ = "uploaded_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class Order(Base):
+    __tablename__ = "orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    order_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    order_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False)
+    item_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    actual_amount: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class MenuItem(Base):
+    __tablename__ = "menu_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    item_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), nullable=False)
+    sale_price: Mapped[float] = mapped_column(Float, nullable=False)
+    unit_cost: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    review_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class AnalysisRun(Base):
+    __tablename__ = "analysis_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    intent: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="completed")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class AnalysisResult(Base):
+    __tablename__ = "analysis_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    evidence_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    actions_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    warnings_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+
+
+class ExternalContextSnapshot(Base):
+    __tablename__ = "external_context_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+    category: Mapped[str] = mapped_column(String(80), nullable=False)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    radius_meters: Mapped[int] = mapped_column(Integer, nullable=False)
+    queried_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    evidence_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False
+    )
+    warnings_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
