@@ -33,6 +33,100 @@ class LocationCandidate:
         return tuple(sorted({item.anchor_type for item in self.anchors}))
 
 
+@dataclass(frozen=True)
+class ScreeningMetrics:
+    demand_proxies: int
+    competitors: int
+    transit: int
+
+
+@dataclass(frozen=True)
+class ScreenedCandidate:
+    candidate: LocationCandidate
+    score: float
+    metrics: ScreeningMetrics
+
+
+class CandidateScreener:
+    RADIUS_METERS = 1500
+    QUERIES = (
+        "写字楼 社区 学校 商场 医院",
+        "奶茶 咖啡",
+        "地铁站 公交站",
+    )
+
+    def screen(self, candidates, collector) -> list[ScreenedCandidate]:
+        screened = []
+        for candidate in candidates:
+            metrics = collector.collect(
+                candidate=candidate,
+                radius_meters=self.RADIUS_METERS,
+                queries=self.QUERIES,
+            )
+            screened.append(
+                ScreenedCandidate(
+                    candidate=candidate,
+                    score=self.score(metrics),
+                    metrics=metrics,
+                )
+            )
+        return sorted(
+            screened,
+            key=lambda item: (
+                -item.score,
+                _anchor_key(item.candidate.representative),
+            ),
+        )
+
+    @staticmethod
+    def score(metrics: ScreeningMetrics) -> float:
+        competition_balance = max(0, 20 - abs(metrics.competitors - 5) * 4)
+        return float(
+            metrics.demand_proxies * 3
+            + metrics.transit * 2
+            + competition_balance
+        )
+
+
+class BaiduCandidateScreeningCollector:
+    PAGE_SIZE = 10
+
+    def __init__(self, client) -> None:
+        self._client = client
+
+    def collect(
+        self,
+        *,
+        candidate: LocationCandidate,
+        radius_meters: int,
+        queries: Sequence[str],
+    ) -> ScreeningMetrics:
+        if len(queries) != 3:
+            raise ValueError(
+                "screening requires demand, competition, and transit queries"
+            )
+        counts = []
+        for query in queries:
+            page = self._client.search_nearby_page(
+                query=query,
+                latitude=candidate.latitude,
+                longitude=candidate.longitude,
+                radius_meters=radius_meters,
+                page_num=0,
+                page_size=self.PAGE_SIZE,
+                radius_limit=True,
+                scope=1,
+                coord_type=3,
+                filter=None,
+            )
+            counts.append(len(page.pois))
+        return ScreeningMetrics(
+            demand_proxies=counts[0],
+            competitors=counts[1],
+            transit=counts[2],
+        )
+
+
 class CandidateGenerator:
     MAX_RAW_ANCHORS = 30
     CLUSTER_RADIUS_METERS = 400

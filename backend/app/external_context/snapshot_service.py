@@ -156,6 +156,70 @@ class ExternalContextSnapshotService:
                 return snapshot
         return None
 
+    def find_latest_stale(
+        self,
+        session: Session,
+        *,
+        project_id: int,
+        provider: str,
+        city: str,
+        category: str,
+        latitude: float,
+        longitude: float,
+        radius_meters: int,
+        now: datetime,
+        keywords: Sequence[str] | None = None,
+        radii: Sequence[int] | None = None,
+        keyword_classifications: Mapping[str, object] | None = None,
+        scoring_version: str | None = None,
+        max_pages: int = 8,
+        page_size: int = 20,
+        filter: str = "industry_type:cater",
+        scope: int = 2,
+        coord_type: int = 3,
+        radius_limit: bool = True,
+    ) -> ExternalContextSnapshot | None:
+        query_signature = self._query_signature(
+            provider=provider,
+            city=city,
+            category=category,
+            latitude=latitude,
+            longitude=longitude,
+            radius_meters=radius_meters,
+            keywords=keywords,
+            radii=radii,
+            keyword_classifications=keyword_classifications,
+            scoring_version=scoring_version,
+            max_pages=max_pages,
+            page_size=page_size,
+            filter=filter,
+            scope=scope,
+            coord_type=coord_type,
+            radius_limit=radius_limit,
+        )
+        statement = (
+            select(ExternalContextSnapshot)
+            .where(
+                ExternalContextSnapshot.project_id == project_id,
+                ExternalContextSnapshot.provider == provider,
+                ExternalContextSnapshot.city == city,
+                ExternalContextSnapshot.category == category,
+                ExternalContextSnapshot.latitude == latitude,
+                ExternalContextSnapshot.longitude == longitude,
+                ExternalContextSnapshot.radius_meters == radius_meters,
+                ExternalContextSnapshot.expires_at <= now,
+            )
+            .order_by(ExternalContextSnapshot.queried_at.desc())
+        )
+        snapshots = session.scalars(statement)
+        if query_signature is None:
+            return next(iter(snapshots), None)
+        for snapshot in snapshots:
+            metadata = snapshot.metrics_json.get(self.SCOPE_METADATA_KEY, {})
+            if metadata.get("query_signature") == query_signature:
+                return snapshot
+        return None
+
     @staticmethod
     def _query_signature(
         *,

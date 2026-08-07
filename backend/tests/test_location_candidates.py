@@ -1,5 +1,10 @@
 from app.external_context.contracts import BaiduPoi, BaiduPoiSearchResult
-from app.location.candidates import CandidateAnchor, CandidateGenerator
+from app.location.candidates import (
+    BaiduCandidateScreeningCollector,
+    CandidateAnchor,
+    CandidateGenerator,
+    CandidateScreener,
+)
 
 
 def anchor(
@@ -131,3 +136,46 @@ def test_screening_prefers_anchor_diversity_then_evidence_count_stably():
     )[0]
 
     assert generator.screen([dense, diverse]) == [diverse, dense]
+
+
+def test_baidu_screening_collector_uses_one_bounded_outer_page_per_proxy():
+    class NearbyClient:
+        def __init__(self):
+            self.calls = []
+
+        def search_nearby_page(self, **kwargs):
+            self.calls.append(kwargs)
+            counts = {
+                CandidateScreener.QUERIES[0]: 4,
+                CandidateScreener.QUERIES[1]: 2,
+                CandidateScreener.QUERIES[2]: 3,
+            }
+            pois = [poi(index) for index in range(counts[kwargs["query"]])]
+            return BaiduPoiSearchResult(
+                query=kwargs["query"],
+                center_latitude=kwargs["latitude"],
+                center_longitude=kwargs["longitude"],
+                radius_meters=kwargs["radius_meters"],
+                total=len(pois),
+                pois=pois,
+            )
+
+    client = NearbyClient()
+    candidate = CandidateGenerator(RegionClient({})).cluster(
+        [anchor("center", "Center", 30.0, 104.0)]
+    )[0]
+
+    metrics = BaiduCandidateScreeningCollector(client).collect(
+        candidate=candidate,
+        radius_meters=1500,
+        queries=CandidateScreener.QUERIES,
+    )
+
+    assert metrics.demand_proxies == 4
+    assert metrics.competitors == 2
+    assert metrics.transit == 3
+    assert len(client.calls) == 3
+    assert all(call["page_num"] == 0 for call in client.calls)
+    assert all(call["page_size"] == 10 for call in client.calls)
+    assert all(call["radius_meters"] == 1500 for call in client.calls)
+    assert all(call["filter"] is None for call in client.calls)

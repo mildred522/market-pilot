@@ -146,6 +146,89 @@ def test_find_reusable_returns_fresh_exact_match_only():
         )
 
 
+def test_find_latest_stale_returns_latest_expired_exact_signature_only():
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    scope = {
+        "keywords": ("milk-tea",),
+        "radii": (300, 500, 800, 1500),
+        "keyword_classifications": {"milk-tea": "direct_competitor"},
+        "scoring_version": "location-v1",
+    }
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.flush()
+        service = ExternalContextSnapshotService()
+        older = service.save(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            queried_at=now - timedelta(days=10),
+            context=make_long_lived_context(now - timedelta(days=10)),
+            **scope,
+        )
+        latest = service.save(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            queried_at=now - timedelta(days=8),
+            context=make_long_lived_context(now - timedelta(days=8)),
+            **scope,
+        )
+        service.save(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            queried_at=now,
+            context=make_long_lived_context(now),
+            **scope,
+        )
+
+        found = service.find_latest_stale(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            now=now,
+            **scope,
+        )
+
+        assert older.id != latest.id
+        assert found is not None
+        assert found.id == latest.id
+        assert service.find_latest_stale(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=800,
+            now=now,
+            **scope,
+        ) is None
+
+
 def test_save_rejects_context_without_evidence():
     now = datetime(2026, 7, 24, 10, tzinfo=UTC)
     with make_session() as session:

@@ -9,12 +9,20 @@ from sqlalchemy.orm import Session
 from app.db.models import LocationAnalysis
 from app.external_context.baidu_client import BaiduMapResponseError
 from app.external_context.contracts import EvidenceRecord, ExternalContextData
+from app.external_context.reference_repository import ReferenceDatasetRepository
 from app.location.collector import (
     DEFAULT_COMPETITOR_KEYWORD_GROUPS,
     RING_RADII,
 )
-from app.location.candidates import CandidateGenerator
+from app.location.candidates import (
+    BaiduCandidateScreeningCollector,
+    CandidateGenerator,
+    CandidateScreener,
+)
 from app.location.contracts import (
+    ConfidenceInputs,
+    DimensionScores,
+    Evidence,
     FinanceFeasibility,
     LocationAnalysisResult,
     NormalizedPoiFeature,
@@ -38,6 +46,9 @@ class LocationAnalysisService:
         evidence_verifier,
         evidence_builder=None,
         candidate_generator=None,
+        reference_repository=None,
+        screening_collector=None,
+        candidate_screener=None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._session = session
@@ -49,6 +60,11 @@ class LocationAnalysisService:
         self._verifier = evidence_verifier
         self._evidence_builder = evidence_builder or LocationEvidenceBuilder()
         self._candidate_generator = candidate_generator
+        self._references = reference_repository or ReferenceDatasetRepository()
+        self._screening_collector = (
+            screening_collector or BaiduCandidateScreeningCollector(baidu_client)
+        )
+        self._candidate_screener = candidate_screener or CandidateScreener()
         self._now = now or (lambda: datetime.now(UTC))
 
     def get_analysis(self, analysis_id: int) -> LocationAnalysis | None:
@@ -99,21 +115,25 @@ class LocationAnalysisService:
                         warnings=[warning],
                     )
                 warnings.append(warning)
-                snapshot = self._snapshots.find_reusable(self._session, **scope)
+                snapshot = self._snapshots.find_latest_stale(
+                    self._session, **scope
+                )
                 if snapshot is None:
-                    return self._persist(
-                        mode="manual",
+                    return self._reference_fallback(
                         project_id=project_id,
-                        input_scope=self._input_scope(city, category),
+                        city=city,
+                        category=category,
                         latitude=latitude,
                         longitude=longitude,
-                        status="failed",
-                        warnings=[*warnings, "snapshot fallback:unavailable"],
+                        warnings=warnings,
                     )
                 pois = self._snapshot_pois(snapshot)
                 observed_at = _aware(snapshot.queried_at)
                 expires_at = _aware(snapshot.expires_at)
-                warnings.append(f"snapshot fallback:id={snapshot.id}")
+                warnings.append(
+                    "stale snapshot fallback:"
+                    f"id={snapshot.id},expired_at={expires_at.isoformat()}"
+                )
                 complete = False
                 fallback = True
             else:
@@ -188,10 +208,13 @@ class LocationAnalysisService:
                 warnings=[self._provider_warning(error)],
             )
 
-        screened = generator.screen(generated)[:10]
+        screened = self._candidate_screener.screen(
+            generated, self._screening_collector
+        )[:10]
         candidate_results: list[dict[str, Any]] = []
         warnings: list[str] = []
-        for candidate in screened:
+        for screened_candidate in screened:
+            candidate = screened_candidate.candidate
             analysis = self.analyze_manual(
                 project_id=project_id,
                 city=city,
@@ -231,6 +254,14 @@ class LocationAnalysisService:
                         for item in candidate.anchors
                     ],
                     "analysis_id": analysis.id,
+                    "screening": {
+                        "score": screened_candidate.score,
+                        "demand_proxies": (
+                            screened_candidate.metrics.demand_proxies
+                        ),
+                        "competitors": screened_candidate.metrics.competitors,
+                        "transit": screened_candidate.metrics.transit,
+                    },
                     "status": analysis.status,
                     "result": analysis.result_json,
                     "evidence": analysis.evidence_json,
@@ -264,6 +295,109 @@ class LocationAnalysisService:
             warnings=warnings,
         )
 
+    def _reference_fallback(
+        self,
+        *,
+        project_id: int,
+        city: str,
+        category: str,
+        latitude: float,
+        longitude: float,
+        warnings: list[str],
+    ) -> LocationAnalysis:
+        year = self._now().year - 1
+        datasets = []
+        for loader, key in (
+            (self._references.load_city, _reference_key(city)),
+            (self._references.load_category, _reference_key(category)),
+        ):
+            try:
+                datasets.append(loader(key, year))
+            except (FileNotFoundError, ValueError):
+                continue
+        dataset_ids = sorted(dataset.dataset_id for dataset in datasets)
+        reference_value = {
+            "dataset_ids": dataset_ids,
+            "metrics": {
+                dataset.dataset_id: {
+                    name: metric.model_dump(mode="json")
+                    for name, metric in dataset.metrics.items()
+                }
+                for dataset in datasets
+            },
+            "local_poi_data": "unavailable",
+        }
+        scope = {"city": city, "category": category, "year": year}
+        observed_at = self._now()
+        expires_at = observed_at + timedelta(days=1)
+        dimensions = DimensionScores(
+            competition_balance=0,
+            demand_proxies=0,
+            transit=0,
+            price_fit=0,
+            surrounding_synergy=0,
+        )
+        labels = (
+            "competition_balance",
+            "demand_proxies",
+            "transit",
+            "price_fit",
+            "surrounding_synergy",
+        )
+        evidence = [
+            Evidence(
+                source="reference_dataset",
+                label=f"dimension.{label}",
+                observed_at=observed_at,
+                expires_at=expires_at,
+                query_scope=scope,
+                value={
+                    "local_poi_data": "unavailable",
+                    "dataset_ids": dataset_ids,
+                },
+            )
+            for label in labels
+        ]
+        result = self._scorer.score(
+            dimensions,
+            ConfidenceInputs(
+                pagination=0,
+                key_fields=0,
+                keyword_coverage=0,
+                freshness=0,
+                status_comment_coverage=0,
+            ),
+            finance_feasibility=FinanceFeasibility.MISSING,
+            evidence=evidence,
+        )
+        final_evidence = [
+            *evidence,
+            evidence[0].model_copy(
+                update={"label": "conclusion", "value": result.conclusion}
+            ),
+            evidence[0].model_copy(
+                update={"label": "fallback", "value": reference_value}
+            ),
+        ]
+        result = result.model_copy(update={"evidence": final_evidence})
+        reference_warning = (
+            f"reference fallback:datasets={','.join(dataset_ids)}"
+            if dataset_ids
+            else "reference fallback:unavailable"
+        )
+        all_warnings = [*warnings, reference_warning]
+        self._verifier.verify(result, warnings=all_warnings)
+        return self._persist(
+            mode="manual",
+            project_id=project_id,
+            input_scope=self._input_scope(city, category),
+            latitude=latitude,
+            longitude=longitude,
+            status="degraded",
+            result=result,
+            warnings=all_warnings,
+        )
+
     def _analyze_pois(
         self,
         *,
@@ -288,6 +422,7 @@ class LocationAnalysisService:
             observed_at=observed_at,
             expires_at=expires_at,
             complete=complete,
+            fallback=fallback,
         )
         result = self._scorer.score(
             dimensions,
@@ -428,6 +563,10 @@ class LocationAnalysisService:
 
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def _reference_key(value: str) -> str:
+    return "-".join(value.strip().lower().split())
 
 
 def _candidate_result_key(item: dict[str, Any]) -> tuple[Any, ...]:

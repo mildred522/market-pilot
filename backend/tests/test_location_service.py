@@ -11,8 +11,15 @@ from app.external_context.baidu_client import (
     BaiduMapErrorKind,
     BaiduMapResponseError,
 )
+from app.external_context.contracts import EvidenceRecord, ExternalContextData
+from app.external_context.reference_repository import ReferenceDatasetRepository
+from app.external_context.snapshot_service import ExternalContextSnapshotService
 from app.location.collector import PoiCollectionResult
-from app.location.candidates import CandidateAnchor, LocationCandidate
+from app.location.candidates import (
+    CandidateAnchor,
+    LocationCandidate,
+    ScreeningMetrics,
+)
 from app.location.contracts import (
     ConfidenceInputs,
     DimensionScores,
@@ -83,12 +90,16 @@ class Collector:
 
 
 class Snapshots:
-    def __init__(self, reusable=None):
-        self.reusable = list(reusable or [])
+    def __init__(self, reusable=None, stale=None):
+        self.reusable = reusable
+        self.stale = stale
         self.saved = []
 
     def find_reusable(self, session, **kwargs):
-        return self.reusable.pop(0) if self.reusable else None
+        return self.reusable
+
+    def find_latest_stale(self, session, **kwargs):
+        return self.stale
 
     def save(self, session, **kwargs):
         self.saved.append(kwargs)
@@ -192,7 +203,14 @@ def test_evidence_verifier_requires_explicit_low_confidence_fallback():
     verifier.verify(result_with_evidence([*labels, "fallback"], confidence=0.5))
 
 
-def make_service(session, collector, snapshots):
+def make_service(
+    session,
+    collector,
+    snapshots,
+    *,
+    reference_repository=None,
+    screening_collector=None,
+):
     return LocationAnalysisService(
         session=session,
         baidu_client=object(),
@@ -201,6 +219,8 @@ def make_service(session, collector, snapshots):
         scorer=LocationScorer(),
         snapshot_service=snapshots,
         evidence_verifier=LocationEvidenceVerifier(),
+        reference_repository=reference_repository,
+        screening_collector=screening_collector,
         now=lambda: NOW,
     )
 
@@ -257,7 +277,7 @@ def test_analyze_manual_persists_normalized_result_evidence_and_snapshot():
 def test_analyze_manual_reuses_exact_snapshot_without_supplier_call():
     session = make_session()
     collector = Collector(error=AssertionError("collector must not be called"))
-    snapshots = Snapshots([reusable_snapshot()])
+    snapshots = Snapshots(reusable_snapshot())
 
     analysis = make_service(session, collector, snapshots).analyze_manual(
         project_id=1,
@@ -273,29 +293,97 @@ def test_analyze_manual_reuses_exact_snapshot_without_supplier_call():
     assert analysis.result_json["confidence_score"] > 0
 
 
-def test_analyze_manual_uses_snapshot_fallback_after_retryable_failure():
+def test_analyze_manual_uses_real_stale_snapshot_after_retryable_failure():
     session = make_session()
+    snapshots = ExternalContextSnapshotService()
+    queried_at = NOW - timedelta(days=8)
+    signature = make_service(session, Collector(), snapshots)._scope(
+        project_id=1,
+        city="chengdu",
+        category="milk-tea",
+        latitude=30.5728,
+        longitude=104.0668,
+    )
+    signature.pop("now")
+    snapshots.save(
+        session,
+        **signature,
+        queried_at=queried_at,
+        context=ExternalContextData(
+            metrics={
+                "pois": [
+                    item.model_dump(mode="json") for item in normalized_pois()
+                ]
+            },
+            evidence=[
+                EvidenceRecord(
+                    source="baidu_map",
+                    label="normalized POI collection",
+                    observed_at=queried_at,
+                    expires_at=queried_at + timedelta(days=30),
+                    scope={"radius_meters": 1500},
+                    value={"poi_count": 2},
+                )
+            ],
+        ),
+    )
     error = BaiduMapResponseError(
         "timeout",
         kind=BaiduMapErrorKind.RETRYABLE,
         retryable=True,
     )
-    snapshots = Snapshots([None, reusable_snapshot()])
 
     analysis = make_service(
         session, Collector(error=error), snapshots
     ).analyze_manual(
         project_id=1,
-        city="Chengdu",
+        city="chengdu",
         category="milk-tea",
         latitude=30.5728,
         longitude=104.0668,
     )
 
     assert analysis.status == "degraded"
+    assert analysis.result_json["confidence_score"] < 60
+    assert analysis.result_json["conclusion"] == "继续调研"
     assert any("retryable" in warning for warning in analysis.warnings_json)
-    assert any("snapshot fallback" in warning for warning in analysis.warnings_json)
+    assert any("stale snapshot" in warning for warning in analysis.warnings_json)
     assert any(item["label"] == "fallback" for item in analysis.evidence_json)
+
+
+def test_analyze_manual_uses_reference_baseline_when_retryable_outage_has_no_snapshot():
+    session = make_session()
+    error = BaiduMapResponseError(
+        "timeout",
+        kind=BaiduMapErrorKind.RETRYABLE,
+        retryable=True,
+    )
+
+    analysis = make_service(
+        session,
+        Collector(error=error),
+        Snapshots(),
+        reference_repository=ReferenceDatasetRepository(),
+    ).analyze_manual(
+        project_id=1,
+        city="chengdu",
+        category="milk-tea",
+        latitude=30.5728,
+        longitude=104.0668,
+    )
+
+    assert analysis.status == "degraded"
+    assert analysis.result_json["confidence_score"] < 60
+    assert analysis.result_json["conclusion"] == "继续调研"
+    assert any("reference fallback" in item for item in analysis.warnings_json)
+    fallback = next(
+        item for item in analysis.evidence_json if item["label"] == "fallback"
+    )
+    assert fallback["source"] == "reference_dataset"
+    assert fallback["value"]["dataset_ids"] == [
+        "category-milk-tea-2025",
+        "city-chengdu-2025",
+    ]
 
 
 def test_analyze_manual_persists_classified_permanent_supplier_failure():
@@ -351,11 +439,37 @@ class CandidateSource:
         return list(candidates)
 
 
+class ScreeningCollector:
+    def __init__(self):
+        self.calls = []
+
+    def collect(self, *, candidate, radius_meters, queries):
+        self.calls.append(
+            {
+                "candidate": candidate,
+                "radius_meters": radius_meters,
+                "queries": queries,
+            }
+        )
+        index = int(candidate.representative.uid.split("-")[-1])
+        return ScreeningMetrics(
+            demand_proxies=index,
+            competitors=5,
+            transit=index,
+        )
+
+
 def test_recommendations_deep_analyzes_at_most_ten_and_returns_requested_five():
     session = make_session()
     collector = Collector()
     source = CandidateSource(12)
-    service = make_service(session, collector, Snapshots())
+    screening = ScreeningCollector()
+    service = make_service(
+        session,
+        collector,
+        Snapshots(),
+        screening_collector=screening,
+    )
     service._candidate_generator = source
 
     analysis = service.analyze_recommendations(
@@ -366,14 +480,19 @@ def test_recommendations_deep_analyzes_at_most_ten_and_returns_requested_five():
         max_candidates=5,
     )
 
+    assert len(screening.calls) == 12
+    assert all(call["radius_meters"] == 1500 for call in screening.calls)
     assert len(collector.calls) == 10
+    assert {call["latitude"] for call in collector.calls} == {
+        30 + index / 100 for index in range(2, 12)
+    }
     assert len(analysis.result_json["candidates"]) == 5
     assert analysis.mode == "recommendations"
     assert analysis.center_latitude is None
     assert source.generated_regions == ["High-tech Zone"]
     assert analysis.result_json["candidates"][0]["transition_input"] == {
-        "latitude": 30.0,
-        "longitude": 104.0,
+        "latitude": 30.02,
+        "longitude": 104.02,
         "coordinate_system": "bd09ll",
     }
 
@@ -381,7 +500,13 @@ def test_recommendations_deep_analyzes_at_most_ten_and_returns_requested_five():
 def test_recommendations_return_actual_insufficient_candidates_without_invention():
     session = make_session()
     collector = Collector()
-    service = make_service(session, collector, Snapshots())
+    screening = ScreeningCollector()
+    service = make_service(
+        session,
+        collector,
+        Snapshots(),
+        screening_collector=screening,
+    )
     service._candidate_generator = CandidateSource(2)
 
     analysis = service.analyze_recommendations(
@@ -393,11 +518,15 @@ def test_recommendations_return_actual_insufficient_candidates_without_invention
     )
 
     assert len(collector.calls) == 2
+    assert len(screening.calls) == 2
     assert len(analysis.result_json["candidates"]) == 2
     assert any("insufficient candidates" in item for item in analysis.warnings_json)
 
 
-def test_recommendations_reject_requested_counts_outside_three_to_five():
+@pytest.mark.parametrize("invalid_count", [2, 6])
+def test_recommendations_reject_requested_counts_outside_three_to_five(
+    invalid_count,
+):
     service = make_service(make_session(), Collector(), Snapshots())
     service._candidate_generator = CandidateSource(5)
 
@@ -407,5 +536,5 @@ def test_recommendations_reject_requested_counts_outside_three_to_five():
             city="Chengdu",
             region="High-tech Zone",
             category="milk-tea",
-            max_candidates=6,
+            max_candidates=invalid_count,
         )

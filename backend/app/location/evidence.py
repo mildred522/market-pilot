@@ -28,6 +28,7 @@ class LocationEvidenceBuilder:
         observed_at: datetime,
         expires_at: datetime,
         complete: bool,
+        fallback: bool = False,
     ) -> tuple[DimensionScores, ConfidenceInputs, list[Evidence]]:
         dimensions = self._dimensions(features)
         scope = {
@@ -63,7 +64,7 @@ class LocationEvidenceBuilder:
             )
             for name, value in metrics.items()
         ]
-        return dimensions, self._confidence(features, complete), evidence
+        return dimensions, self._confidence(features, complete, fallback), evidence
 
     @staticmethod
     def _dimensions(features: LocationFeatures) -> DimensionScores:
@@ -79,7 +80,7 @@ class LocationEvidenceBuilder:
 
     @staticmethod
     def _confidence(
-        features: LocationFeatures, complete: bool
+        features: LocationFeatures, complete: bool, fallback: bool
     ) -> ConfidenceInputs:
         pois = features.pois
         count = len(pois)
@@ -100,10 +101,10 @@ class LocationEvidenceBuilder:
             for poi in pois
         ) / (count * 2)
         return ConfidenceInputs(
-            pagination=1 if complete else 0.5,
+            pagination=0 if fallback else (1 if complete else 0.5),
             key_fields=key_fields,
-            keyword_coverage=1,
-            freshness=1,
+            keyword_coverage=0.5 if fallback else 1,
+            freshness=0 if fallback else 1,
             status_comment_coverage=status_comments,
         )
 
