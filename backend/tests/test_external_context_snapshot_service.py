@@ -329,6 +329,120 @@ def test_signature_aware_reuse_misses_changed_provider_parameter(
         assert reused is None
 
 
+@pytest.mark.parametrize(
+    ("changed_keyword_classifications", "changed_max_pages"),
+    [
+        ({"奶茶": "direct_competitor", "茶饮": "substitute"}, 8),
+        ({"奶茶": "direct_competitor", "茶饮": "direct_competitor"}, 7),
+    ],
+)
+def test_signature_aware_reuse_misses_changed_collection_scope(
+    changed_keyword_classifications: dict[str, str],
+    changed_max_pages: int,
+):
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    base_scope = {
+        "keywords": ("奶茶", "茶饮"),
+        "radii": (300, 500, 800, 1500),
+        "scoring_version": "location-v1",
+        "keyword_classifications": {
+            "奶茶": "direct_competitor",
+            "茶饮": "direct_competitor",
+        },
+        "max_pages": 8,
+    }
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.flush()
+        service = ExternalContextSnapshotService()
+        service.save(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            queried_at=now,
+            context=make_long_lived_context(now),
+            **base_scope,
+        )
+
+        reused = service.find_reusable(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            now=now + timedelta(days=1),
+            **{
+                **base_scope,
+                "keyword_classifications": changed_keyword_classifications,
+                "max_pages": changed_max_pages,
+            },
+        )
+
+        assert reused is None
+
+
+def test_signature_canonicalizes_decimal_radii_and_strips_scoring_version():
+    now = datetime(2026, 7, 24, 10, tzinfo=UTC)
+    with make_session() as session:
+        project = Project(name="Chengdu milk tea", stage="pre_open")
+        session.add(project)
+        session.flush()
+        service = ExternalContextSnapshotService()
+        service.save(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            queried_at=now,
+            context=make_long_lived_context(now),
+            keywords=("奶茶",),
+            radii=("300.50",),
+            scoring_version=" location-v1 ",
+        )
+
+        assert service.find_reusable(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            now=now + timedelta(days=1),
+            keywords=("奶茶",),
+            radii=(300.5,),
+            scoring_version="location-v1",
+        ) is not None
+        assert service.find_reusable(
+            session,
+            project_id=project.id,
+            provider="baidu_map",
+            city="chengdu",
+            category="milk-tea",
+            latitude=30.5728,
+            longitude=104.0668,
+            radius_meters=1500,
+            now=now + timedelta(days=1),
+            keywords=("奶茶",),
+            radii=(300,),
+            scoring_version="location-v1",
+        ) is None
+
+
 def test_save_clamps_expiry_to_seven_days_and_lookup_honors_expiry():
     now = datetime(2026, 7, 24, 10, tzinfo=UTC)
     with make_session() as session:

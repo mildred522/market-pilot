@@ -14,6 +14,20 @@ class PoiKeywordGroup:
     keywords: tuple[str, ...]
 
 
+class PoiCollectionResult(list[NormalizedPoiFeature]):
+    def __init__(
+        self,
+        pois: Sequence[NormalizedPoiFeature],
+        *,
+        truncated: bool,
+        warnings: Sequence[str],
+    ) -> None:
+        super().__init__(pois)
+        self.truncated = truncated
+        self.complete = not truncated
+        self.warnings = tuple(warnings)
+
+
 DEFAULT_COMPETITOR_KEYWORD_GROUPS = (
     PoiKeywordGroup(
         PoiClassification.DIRECT_COMPETITOR,
@@ -24,6 +38,8 @@ DEFAULT_COMPETITOR_KEYWORD_GROUPS = (
 
 
 class PoiCollector:
+    MAX_PAGES = 8
+
     def __init__(
         self,
         client: BaiduMapClient,
@@ -33,7 +49,7 @@ class PoiCollector:
         ),
         radii: Sequence[int] = RING_RADII,
         page_size: int = 20,
-        max_pages: int = 5,
+        max_pages: int = MAX_PAGES,
     ) -> None:
         if not 1 <= page_size <= 20:
             raise ValueError("page_size must be between 1 and 20")
@@ -45,19 +61,20 @@ class PoiCollector:
         self._keyword_groups = tuple(keyword_groups)
         self._radii = tuple(radii)
         self._page_size = page_size
-        self._max_pages = max_pages
+        self._max_pages = min(max_pages, self.MAX_PAGES)
 
     def collect_competitors(
         self,
         *,
         latitude: float,
         longitude: float,
-    ) -> list[NormalizedPoiFeature]:
+    ) -> PoiCollectionResult:
         collected: dict[str, NormalizedPoiFeature] = {}
+        warnings: list[str] = []
         for group in self._keyword_groups:
             for keyword in group.keywords:
                 for radius in self._radii:
-                    self._collect_query_pages(
+                    warning = self._collect_query_pages(
                         collected,
                         keyword=keyword,
                         classification=group.classification,
@@ -65,7 +82,13 @@ class PoiCollector:
                         longitude=longitude,
                         radius=radius,
                     )
-        return list(collected.values())
+                    if warning is not None:
+                        warnings.append(warning)
+        return PoiCollectionResult(
+            list(collected.values()),
+            truncated=bool(warnings),
+            warnings=warnings,
+        )
 
     def _collect_query_pages(
         self,
@@ -76,8 +99,9 @@ class PoiCollector:
         latitude: float,
         longitude: float,
         radius: int,
-    ) -> None:
+    ) -> str | None:
         retrieved = 0
+        total = 0
         for page_num in range(self._max_pages):
             page = self._client.search_nearby_page(
                 query=keyword,
@@ -96,12 +120,20 @@ class PoiCollector:
                     else self._merge(current, incoming)
                 )
             retrieved += len(page.pois)
+            total = page.total
             if (
                 not page.pois
                 or retrieved >= page.total
                 or len(page.pois) < self._page_size
             ):
                 break
+        if retrieved < total:
+            return (
+                "POI collection truncated for "
+                f"keyword={keyword!r}, radius_meters={radius}: "
+                f"retrieved {retrieved} of {total}"
+            )
+        return None
 
     @staticmethod
     def _to_feature(

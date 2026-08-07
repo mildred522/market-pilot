@@ -151,3 +151,65 @@ def test_collect_competitors_uses_all_default_keywords_and_rings_with_call_cap()
         0,
         1,
     }
+
+
+def test_collect_competitors_collects_baidu_total_150_in_eight_pages():
+    requested_pages: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page_num = int(request.url.params["page_num"])
+        requested_pages.append(page_num)
+        count = 10 if page_num == 7 else 20
+        results = [poi_payload(f"poi-{page_num}-{index}") for index in range(count)]
+        return httpx.Response(
+            200,
+            json={"status": 0, "total": 150, "results": results},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        result = PoiCollector(
+            BaiduMapClient("test-ak", http_client=http_client),
+            keyword_groups=(
+                PoiKeywordGroup(
+                    PoiClassification.DIRECT_COMPETITOR,
+                    ("奶茶",),
+                ),
+            ),
+            radii=(300,),
+        ).collect_competitors(latitude=30.5728, longitude=104.0668)
+
+    assert len(result) == 150
+    assert requested_pages == list(range(8))
+    assert result.complete is True
+    assert result.truncated is False
+    assert result.warnings == ()
+
+
+def test_collect_competitors_reports_truncation_when_page_cap_is_reached():
+    def handler(request: httpx.Request) -> httpx.Response:
+        page_num = int(request.url.params["page_num"])
+        results = [poi_payload(f"poi-{page_num}-{index}") for index in range(20)]
+        return httpx.Response(
+            200,
+            json={"status": 0, "total": 180, "results": results},
+        )
+
+    with httpx.Client(
+        transport=httpx.MockTransport(handler)
+    ) as http_client:
+        result = PoiCollector(
+            BaiduMapClient("test-ak", http_client=http_client),
+            keyword_groups=(
+                PoiKeywordGroup(
+                    PoiClassification.DIRECT_COMPETITOR,
+                    ("奶茶",),
+                ),
+            ),
+            radii=(300,),
+        ).collect_competitors(latitude=30.5728, longitude=104.0668)
+
+    assert len(result) == 160
+    assert result.complete is False
+    assert result.truncated is True
+    assert len(result.warnings) == 1
+    assert "奶茶" in result.warnings[0]

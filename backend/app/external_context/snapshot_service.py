@@ -1,7 +1,8 @@
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,7 +30,9 @@ class ExternalContextSnapshotService:
         context: ExternalContextData,
         keywords: Sequence[str] | None = None,
         radii: Sequence[int] | None = None,
+        keyword_classifications: Mapping[str, object] | None = None,
         scoring_version: str | None = None,
+        max_pages: int = 8,
         page_size: int = 20,
         filter: str = "industry_type:cater",
         scope: int = 2,
@@ -48,7 +51,9 @@ class ExternalContextSnapshotService:
             radius_meters=radius_meters,
             keywords=keywords,
             radii=radii,
+            keyword_classifications=keyword_classifications,
             scoring_version=scoring_version,
+            max_pages=max_pages,
             page_size=page_size,
             filter=filter,
             scope=scope,
@@ -100,7 +105,9 @@ class ExternalContextSnapshotService:
         now: datetime,
         keywords: Sequence[str] | None = None,
         radii: Sequence[int] | None = None,
+        keyword_classifications: Mapping[str, object] | None = None,
         scoring_version: str | None = None,
+        max_pages: int = 8,
         page_size: int = 20,
         filter: str = "industry_type:cater",
         scope: int = 2,
@@ -116,7 +123,9 @@ class ExternalContextSnapshotService:
             radius_meters=radius_meters,
             keywords=keywords,
             radii=radii,
+            keyword_classifications=keyword_classifications,
             scoring_version=scoring_version,
+            max_pages=max_pages,
             page_size=page_size,
             filter=filter,
             scope=scope,
@@ -157,7 +166,9 @@ class ExternalContextSnapshotService:
         radius_meters: int,
         keywords: Sequence[str] | None,
         radii: Sequence[int] | None,
+        keyword_classifications: Mapping[str, object] | None,
         scoring_version: str | None,
+        max_pages: int,
         page_size: int,
         filter: str,
         scope: int,
@@ -174,33 +185,67 @@ class ExternalContextSnapshotService:
         normalized_keywords = sorted(
             {keyword.strip() for keyword in keywords or () if keyword.strip()}
         )
-        normalized_radii = sorted({int(radius) for radius in radii or ()})
+        normalized_radii = sorted(
+            {
+                _canonical_number(radius, name="radius")
+                for radius in radii or ()
+            },
+            key=Decimal,
+        )
+        normalized_mapping = {
+            keyword.strip(): str(
+                getattr(classification, "value", classification)
+            ).strip()
+            for keyword, classification in (keyword_classifications or {}).items()
+        }
+        if any(
+            not keyword or not classification
+            for keyword, classification in normalized_mapping.items()
+        ):
+            raise ValueError("keyword classifications cannot be empty")
         if (
             not normalized_keywords
             or not normalized_radii
             or not scoring_version.strip()
         ):
             raise ValueError("signature-aware query scope cannot be empty")
-        scope = {
+        signature_scope = {
             "provider": provider,
             "city": city,
             "category": category,
-            "latitude": latitude,
-            "longitude": longitude,
-            "radius_meters": radius_meters,
+            "latitude": _canonical_number(latitude, name="latitude"),
+            "longitude": _canonical_number(longitude, name="longitude"),
+            "radius_meters": _canonical_number(
+                radius_meters, name="radius_meters"
+            ),
             "keywords": normalized_keywords,
             "radii": normalized_radii,
-            "scoring_version": scoring_version,
-            "page_size": page_size,
+            "keyword_classifications": dict(sorted(normalized_mapping.items())),
+            "scoring_version": scoring_version.strip(),
+            "max_pages": _canonical_number(max_pages, name="max_pages"),
+            "page_size": _canonical_number(page_size, name="page_size"),
             "filter": filter,
-            "scope": scope,
-            "coord_type": coord_type,
+            "scope": _canonical_number(scope, name="scope"),
+            "coord_type": _canonical_number(coord_type, name="coord_type"),
             "radius_limit": radius_limit,
         }
         canonical = json.dumps(
-            scope,
+            signature_scope,
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _canonical_number(value: object, *, name: str) -> str:
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be numeric")
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValueError(f"{name} must be numeric") from None
+    if not number.is_finite():
+        raise ValueError(f"{name} must be finite")
+    normalized = format(number.normalize(), "f")
+    return "0" if normalized in {"-0", "-0.0"} else normalized
