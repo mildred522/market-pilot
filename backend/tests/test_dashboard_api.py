@@ -6,7 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.api import dashboard
 from app.agent_runtime.llm_client import OpenAiCompatibleLlmClient, llm_client_from_environment
+from app.external_context.baidu_client import BaiduMapErrorKind, BaiduMapResponseError
 from app.db.models import AnalysisResult, Base, LocationAnalysis, Project, UploadedFile
 from app.db.session import get_db
 from app.main import app
@@ -104,3 +106,48 @@ def test_runtime_integrations_never_echo_credentials(client: TestClient) -> None
 )
 def test_invalid_integration_config_is_rejected(client: TestClient, path: str, payload: dict[str, str]) -> None:
     assert client.put(path, json=payload).status_code == 422
+
+
+def test_unconfigured_agent_probe_returns_readable_result(client: TestClient) -> None:
+    response = client.post("/dashboard/integrations/agent/test")
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is False
+    assert response.json()["code"] == "agent_request_failed"
+    assert "尚未配置" in response.json()["message"]
+
+
+def test_successful_probe_returns_latency_and_safe_details(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        dashboard,
+        "_probe_baidu",
+        lambda: {"provider": "baidu-place", "sample_total": 12},
+    )
+
+    response = client.post("/dashboard/integrations/baidu/test")
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["latency_ms"] >= 0
+    assert response.json()["details"]["sample_total"] == 12
+    assert "api_key" not in response.text.lower()
+
+
+def test_baidu_probe_translates_ip_restriction(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_probe() -> None:
+        raise BaiduMapResponseError(
+            "provider detail",
+            provider_status=210,
+            kind=BaiduMapErrorKind.IP_RESTRICTION,
+        )
+
+    monkeypatch.setattr(dashboard, "_probe_baidu", fail_probe)
+    body = client.post("/dashboard/integrations/baidu/test").json()
+
+    assert body["ok"] is False
+    assert body["code"] == "baidu_ip_restriction"
+    assert body["message"] == "当前服务器出口 IP 不在百度白名单中"

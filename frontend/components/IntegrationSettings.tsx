@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { clearIntegration, updateAgentIntegration, updateBaiduIntegration } from "../lib/api";
-import type { DashboardOverview, IntegrationStatus } from "../lib/types";
+import { clearIntegration, testIntegration, updateAgentIntegration, updateBaiduIntegration } from "../lib/api";
+import type { DashboardOverview, IntegrationStatus, IntegrationTestResult } from "../lib/types";
 
 type Props = {
   integrations: DashboardOverview["integrations"];
@@ -18,6 +18,19 @@ function Status({ value }: { value: IntegrationStatus }) {
   );
 }
 
+function TestResult({ value }: { value?: IntegrationTestResult }) {
+  if (!value) return null;
+  const detail = value.details.sample_total !== undefined
+    ? `样本区域返回 ${value.details.sample_total} 个结果`
+    : [value.details.provider, value.details.model].filter(Boolean).join(" · ");
+  return (
+    <p className={`connection-test-result ${value.ok ? "is-success" : "is-failed"}`} role="status">
+      <i aria-hidden="true" />
+      <span><strong>{value.ok ? "连接成功" : "连接失败"}</strong>{value.message} · {value.latency_ms} ms{detail ? ` · ${detail}` : ""}</span>
+    </p>
+  );
+}
+
 export default function IntegrationSettings({ integrations, onChange }: Props) {
   const [baiduKey, setBaiduKey] = useState("");
   const [agentKey, setAgentKey] = useState("");
@@ -26,13 +39,14 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
   const [provider, setProvider] = useState(integrations.agent.provider || "openai-compatible");
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [testResults, setTestResults] = useState<Partial<Record<"baidu" | "agent", IntegrationTestResult>>>({});
 
   async function saveBaidu(event: FormEvent) {
     event.preventDefault();
     setBusy("baidu"); setMessage("");
     try {
       const status = await updateBaiduIntegration(baiduKey);
-      onChange("baidu", status); setBaiduKey(""); setMessage("百度地图配置已在本次后端运行中生效。");
+      onChange("baidu", status); setBaiduKey(""); setTestResults((value) => ({ ...value, baidu: undefined })); setMessage("百度地图配置已在本次后端运行中生效。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "保存失败"); }
     finally { setBusy(null); }
   }
@@ -42,7 +56,7 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
     setBusy("agent"); setMessage("");
     try {
       const status = await updateAgentIntegration({ apiKey: agentKey, model, baseUrl, provider });
-      onChange("agent", status); setAgentKey(""); setMessage("Agent 模型配置已在本次后端运行中生效。");
+      onChange("agent", status); setAgentKey(""); setTestResults((value) => ({ ...value, agent: undefined })); setMessage("Agent 模型配置已在本次后端运行中生效。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "保存失败"); }
     finally { setBusy(null); }
   }
@@ -51,9 +65,19 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
     setBusy(`clear-${name}`); setMessage("");
     try {
       const status = await clearIntegration(name);
-      onChange(name, status); setMessage("运行时配置已清除；环境变量配置如存在仍会生效。");
+      onChange(name, status); setTestResults((value) => ({ ...value, [name]: undefined })); setMessage("运行时配置已清除；环境变量配置如存在仍会生效。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "清除失败"); }
     finally { setBusy(null); }
+  }
+
+  async function runTest(name: "baidu" | "agent") {
+    setBusy(`test-${name}`); setMessage("");
+    try {
+      const result = await testIntegration(name);
+      setTestResults((value) => ({ ...value, [name]: result }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "连接测试失败");
+    } finally { setBusy(null); }
   }
 
   return (
@@ -72,7 +96,8 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
           </summary>
           <form className="integration-form" onSubmit={saveBaidu}>
             <label>服务端 AK<input type="password" autoComplete="new-password" value={baiduKey} onChange={(e) => setBaiduKey(e.target.value)} minLength={8} placeholder="输入百度地图服务端 AK" required /></label>
-            <div className="integration-actions"><button disabled={busy !== null} type="submit">{busy === "baidu" ? "保存中…" : "保存并启用"}</button>{integrations.baidu.source === "runtime" && <button className="button-quiet" type="button" onClick={() => remove("baidu")}>清除本次配置</button>}</div>
+            <div className="integration-actions"><button disabled={busy !== null} type="submit">{busy === "baidu" ? "保存中…" : "保存并启用"}</button><button className="button-test" disabled={busy !== null || !integrations.baidu.configured} type="button" onClick={() => runTest("baidu")}>{busy === "test-baidu" ? "测试中…" : "测试连接"}</button>{integrations.baidu.source === "runtime" && <button className="button-quiet" type="button" onClick={() => remove("baidu")}>清除本次配置</button>}</div>
+            <TestResult value={testResults.baidu} />
           </form>
         </details>
 
@@ -87,12 +112,13 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
             <label>模型<input value={model} onChange={(e) => setModel(e.target.value)} required /></label>
             <label>API Base URL<input type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required /></label>
             <label>Provider 标识<input value={provider} onChange={(e) => setProvider(e.target.value)} required /></label>
-            <div className="integration-actions"><button disabled={busy !== null} type="submit">{busy === "agent" ? "保存中…" : "保存并启用"}</button>{integrations.agent.source === "runtime" && <button className="button-quiet" type="button" onClick={() => remove("agent")}>清除本次配置</button>}</div>
+            <div className="integration-actions"><button disabled={busy !== null} type="submit">{busy === "agent" ? "保存中…" : "保存并启用"}</button><button className="button-test" disabled={busy !== null || !integrations.agent.configured} type="button" onClick={() => runTest("agent")}>{busy === "test-agent" ? "测试中…" : "测试连接"}</button>{integrations.agent.source === "runtime" && <button className="button-quiet" type="button" onClick={() => remove("agent")}>清除本次配置</button>}</div>
+            <TestResult value={testResults.agent} />
           </form>
         </details>
       </div>
       {message && <p className="integration-message" role="status">{message}</p>}
-      <p className="security-note">后端重启后需重新输入运行时密钥。正式部署应改用密钥管理服务，并为配置接口增加账号认证与权限控制。</p>
+      <p className="security-note">连接测试会发起一次最小真实请求，可能计入服务额度。后端重启后需重新输入运行时密钥；正式部署应改用密钥管理服务并增加配置权限控制。</p>
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import type { AnalysisFollowupResponse, AnalysisReport, DashboardOverview, IntegrationStatus, LocationResult, ManualLocationRequest, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AnalysisFollowupResponse, AnalysisReport, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -81,6 +81,12 @@ export function updateAgentIntegration(payload: {
 export function clearIntegration(integration: "baidu" | "agent"): Promise<IntegrationStatus> {
   return request<IntegrationStatus>(`/dashboard/integrations/${integration}`, {
     method: "DELETE"
+  });
+}
+
+export function testIntegration(integration: "baidu" | "agent"): Promise<IntegrationTestResult> {
+  return request<IntegrationTestResult>(`/dashboard/integrations/${integration}/test`, {
+    method: "POST"
   });
 }
 

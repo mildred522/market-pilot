@@ -8,6 +8,18 @@ export type IntegrationStatus = {
   base_url?: string;
 };
 
+export type IntegrationTestResult = {
+  ok: boolean;
+  latency_ms: number;
+  message: string;
+  code?: string;
+  details: {
+    provider?: string;
+    model?: string | null;
+    sample_total?: number;
+  };
+};
+
 export type DashboardOverview = {
   workspace: {
     name: string;

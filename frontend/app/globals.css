@@ -1229,6 +1229,12 @@ h1 {
 .integration-form input { width: 100%; padding: 12px 13px; border: 1px solid #c9c6bd; border-radius: 4px; outline: none; background: rgb(255 255 255 / 65%); color: var(--ink); }.integration-form input:focus { border-color: #397b68; box-shadow: 0 0 0 3px rgb(57 123 104 / 10%); }
 .integration-actions { display: flex; gap: 9px; align-self: end; }.agent-config-grid .integration-actions { grid-column: 1 / -1; }
 .integration-actions button { min-height: 40px; padding: 0 16px; border: 1px solid #17483b; border-radius: 4px; background: #17483b; color: white; cursor: pointer; font-weight: 700; }.integration-actions button:disabled { opacity: .55; }.integration-actions .button-quiet { background: transparent; color: #17483b; }
+.integration-actions .button-test { border-color: #739487; background: #e7eee8; color: #17483b; }
+.connection-test-result { grid-column: 1 / -1; display: flex; gap: 9px; align-items: flex-start; margin: 0; padding: 11px 13px; border-left: 2px solid #918980; background: rgb(255 255 255 / 48%); color: #626862; font-size: 11px; line-height: 1.55; }
+.connection-test-result i { flex: 0 0 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: #918980; }
+.connection-test-result strong { margin-right: 8px; color: var(--ink); }
+.connection-test-result.is-success { border-color: #3d916f; color: #316451; }.connection-test-result.is-success i { background: #3d916f; }
+.connection-test-result.is-failed { border-color: #a85843; color: #8a4937; }.connection-test-result.is-failed i { background: #a85843; }
 .integration-message { margin: 16px 0 0; color: #23624f; font-size: 12px; }.security-note { margin: 14px 0 0; color: #8b8177; font-size: 10px; line-height: 1.6; }
 
 @media (max-width: 780px) {
