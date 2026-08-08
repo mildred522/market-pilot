@@ -6,13 +6,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.agent_runtime import llm_client as llm_client_module
 from app.api import dashboard
 from app.agent_runtime.llm_client import OpenAiCompatibleLlmClient, llm_client_from_environment
+from app.external_context import baidu_client as baidu_client_module
 from app.external_context.baidu_client import BaiduMapErrorKind, BaiduMapResponseError
 from app.db.models import AnalysisResult, Base, LocationAnalysis, Project, UploadedFile
 from app.db.session import get_db
 from app.main import app
-from app.services.runtime_config import runtime_config
+from app.services.runtime_config import RuntimeConfigStore
 
 
 @pytest.fixture
@@ -25,8 +27,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient]:
         "AGENT_LLM_PROVIDER",
     ):
         monkeypatch.delenv(name, raising=False)
-    runtime_config.clear("baidu")
-    runtime_config.clear("agent")
+    test_runtime_config = RuntimeConfigStore()
+    monkeypatch.setattr(dashboard, "runtime_config", test_runtime_config)
+    monkeypatch.setattr(llm_client_module, "runtime_config", test_runtime_config)
+    monkeypatch.setattr(baidu_client_module, "runtime_config", test_runtime_config)
 
     engine = create_engine(
         "sqlite://",
@@ -44,8 +48,6 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-    runtime_config.clear("baidu")
-    runtime_config.clear("agent")
     engine.dispose()
 
 

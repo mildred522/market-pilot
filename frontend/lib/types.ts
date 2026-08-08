@@ -2,7 +2,7 @@ export type Stage = "pre_open" | "operating";
 
 export type IntegrationStatus = {
   configured: boolean;
-  source: "runtime" | "environment" | null;
+  source: "saved" | "runtime" | "environment" | null;
   model?: string | null;
   provider?: string;
   base_url?: string;

@@ -10,10 +10,13 @@ type Props = {
 };
 
 function Status({ value }: { value: IntegrationStatus }) {
+  const sourceLabel = value.source === "environment"
+    ? "环境变量"
+    : value.source === "saved" ? "本机加密" : "本次运行";
   return (
     <span className={`connection-status ${value.configured ? "is-connected" : "is-idle"}`}>
       <i aria-hidden="true" />
-      {value.configured ? `已连接 · ${value.source === "environment" ? "环境变量" : "本次运行"}` : "待配置"}
+      {value.configured ? `已连接 · ${sourceLabel}` : "待配置"}
     </span>
   );
 }
@@ -46,7 +49,7 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
     setBusy("baidu"); setMessage("");
     try {
       const status = await updateBaiduIntegration(baiduKey);
-      onChange("baidu", status); setBaiduKey(""); setTestResults((value) => ({ ...value, baidu: undefined })); setMessage("百度地图配置已在本次后端运行中生效。");
+      onChange("baidu", status); setBaiduKey(""); setTestResults((value) => ({ ...value, baidu: undefined })); setMessage("百度地图配置已加密保存到本机并生效。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "保存失败"); }
     finally { setBusy(null); }
   }
@@ -56,7 +59,7 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
     setBusy("agent"); setMessage("");
     try {
       const status = await updateAgentIntegration({ apiKey: agentKey, model, baseUrl, provider });
-      onChange("agent", status); setAgentKey(""); setTestResults((value) => ({ ...value, agent: undefined })); setMessage("Agent 模型配置已在本次后端运行中生效。");
+      onChange("agent", status); setAgentKey(""); setTestResults((value) => ({ ...value, agent: undefined })); setMessage("Agent 模型配置已加密保存到本机并生效。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "保存失败"); }
     finally { setBusy(null); }
   }
@@ -65,7 +68,7 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
     setBusy(`clear-${name}`); setMessage("");
     try {
       const status = await clearIntegration(name);
-      onChange(name, status); setTestResults((value) => ({ ...value, [name]: undefined })); setMessage("运行时配置已清除；环境变量配置如存在仍会生效。");
+      onChange(name, status); setTestResults((value) => ({ ...value, [name]: undefined })); setMessage("本机保存的配置已清除；环境变量配置如存在仍会生效。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "清除失败"); }
     finally { setBusy(null); }
   }
@@ -84,7 +87,7 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
     <section className="integration-panel" id="integrations" aria-labelledby="integration-title">
       <div className="dashboard-section-head">
         <div><p className="dashboard-eyebrow">Connections</p><h2 id="integration-title">数据与智能集成</h2></div>
-        <p>密钥不回显、不写入浏览器存储，仅保留在当前后端进程内存。</p>
+        <p>密钥不回显、不写入浏览器存储，使用 Windows 用户级加密保存在本机。</p>
       </div>
 
       <div className="integration-list">
@@ -96,7 +99,7 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
           </summary>
           <form className="integration-form" onSubmit={saveBaidu}>
             <label>服务端 AK<input type="password" autoComplete="new-password" value={baiduKey} onChange={(e) => setBaiduKey(e.target.value)} minLength={8} placeholder="输入百度地图服务端 AK" required /></label>
-            <div className="integration-actions"><button disabled={busy !== null} type="submit">{busy === "baidu" ? "保存中…" : "保存并启用"}</button><button className="button-test" disabled={busy !== null || !integrations.baidu.configured} type="button" onClick={() => runTest("baidu")}>{busy === "test-baidu" ? "测试中…" : "测试连接"}</button>{integrations.baidu.source === "runtime" && <button className="button-quiet" type="button" onClick={() => remove("baidu")}>清除本次配置</button>}</div>
+            <div className="integration-actions"><button disabled={busy !== null} type="submit">{busy === "baidu" ? "保存中…" : "加密保存并启用"}</button><button className="button-test" disabled={busy !== null || !integrations.baidu.configured} type="button" onClick={() => runTest("baidu")}>{busy === "test-baidu" ? "测试中…" : "测试连接"}</button>{["saved", "runtime"].includes(integrations.baidu.source ?? "") && <button className="button-quiet" type="button" onClick={() => remove("baidu")}>清除保存配置</button>}</div>
             <TestResult value={testResults.baidu} />
           </form>
         </details>
@@ -112,13 +115,13 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
             <label>模型<input value={model} onChange={(e) => setModel(e.target.value)} required /></label>
             <label>API Base URL<input type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required /></label>
             <label>Provider 标识<input value={provider} onChange={(e) => setProvider(e.target.value)} required /></label>
-            <div className="integration-actions"><button disabled={busy !== null} type="submit">{busy === "agent" ? "保存中…" : "保存并启用"}</button><button className="button-test" disabled={busy !== null || !integrations.agent.configured} type="button" onClick={() => runTest("agent")}>{busy === "test-agent" ? "测试中…" : "测试连接"}</button>{integrations.agent.source === "runtime" && <button className="button-quiet" type="button" onClick={() => remove("agent")}>清除本次配置</button>}</div>
+            <div className="integration-actions"><button disabled={busy !== null} type="submit">{busy === "agent" ? "保存中…" : "加密保存并启用"}</button><button className="button-test" disabled={busy !== null || !integrations.agent.configured} type="button" onClick={() => runTest("agent")}>{busy === "test-agent" ? "测试中…" : "测试连接"}</button>{["saved", "runtime"].includes(integrations.agent.source ?? "") && <button className="button-quiet" type="button" onClick={() => remove("agent")}>清除保存配置</button>}</div>
             <TestResult value={testResults.agent} />
           </form>
         </details>
       </div>
       {message && <p className="integration-message" role="status">{message}</p>}
-      <p className="security-note">连接测试会发起一次最小真实请求，可能计入服务额度。后端重启后需重新输入运行时密钥；正式部署应改用密钥管理服务并增加配置权限控制。</p>
+      <p className="security-note">连接测试会发起一次最小真实请求，可能计入服务额度。密钥由当前 Windows 用户凭据加密保存在本机，后端重启会自动恢复；正式部署仍应改用集中式密钥管理服务。</p>
     </section>
   );
 }
