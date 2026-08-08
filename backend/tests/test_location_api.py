@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.external_context.baidu_client import (
     BaiduMapConfigurationError,
     BaiduMapErrorKind,
+    BaiduPlaceSuggestion,
     BaiduMapResponseError,
 )
 from app.location.evidence import EvidenceVerificationError
@@ -21,9 +22,10 @@ from app.api import location as location_api
 
 
 class FakeClient:
-    def __init__(self, *, geocode=None, error=None):
+    def __init__(self, *, geocode=None, error=None, suggestions=None):
         self.geocode_result = geocode
         self.error = error
+        self.suggestions = suggestions or []
         self.calls = []
 
     def geocode(self, *, address, city):
@@ -31,6 +33,12 @@ class FakeClient:
         if self.error:
             raise self.error
         return self.geocode_result
+
+    def suggest_places(self, *, query, region, city_limit=True):
+        self.calls.append((query, region, city_limit))
+        if self.error:
+            raise self.error
+        return self.suggestions
 
 
 class FakeService:
@@ -180,6 +188,53 @@ def test_manual_coordinate_request_calls_service_without_geocoding(api_setup):
     assert response.json()["mode"] == "manual"
     assert client.calls == []
     assert service.manual_calls[0]["latitude"] == 30.5728
+
+
+def test_city_suggestions_use_baidu_city_fields_and_deduplicate(api_setup):
+    _, _, client, _ = api_setup
+    client.suggestions = [
+        BaiduPlaceSuggestion(name="泉州市", city="泉州市", district="丰泽区"),
+        BaiduPlaceSuggestion(name="泉州站", city="泉州市", district="丰泽区"),
+    ]
+
+    with TestClient(app) as http:
+        response = http.get(
+            "/pre-open/location/suggestions", params={"kind": "city", "query": "泉州"}
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"options": ["泉州市"], "source": "baidu"}
+    assert client.calls[-1] == ("泉州", "全国", False)
+
+
+def test_district_suggestions_follow_city_and_use_default_query(api_setup):
+    _, _, client, _ = api_setup
+    client.suggestions = [
+        BaiduPlaceSuggestion(name="丰泽区政府", city="泉州市", district="丰泽区"),
+        BaiduPlaceSuggestion(name="洛江区政府", city="泉州市", district="洛江区"),
+    ]
+
+    with TestClient(app) as http:
+        response = http.get(
+            "/pre-open/location/suggestions",
+            params={"kind": "district", "query": "", "city": "泉州市"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["options"] == ["丰泽区", "洛江区"]
+    assert client.calls[-1] == ("区政府", "泉州市", True)
+
+
+def test_district_suggestions_require_city(api_setup):
+    _, _, client, _ = api_setup
+    with TestClient(app) as http:
+        response = http.get(
+            "/pre-open/location/suggestions", params={"kind": "district", "query": "丰"}
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "city_required"
+    assert client.calls == []
 
 
 def test_manual_finance_inputs_reach_service_and_response(api_setup):

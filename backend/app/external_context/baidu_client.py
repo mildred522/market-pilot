@@ -51,6 +51,13 @@ class BaiduGeocodeResult(BaseModel):
     source: str = "baidu_geocoding"
 
 
+class BaiduPlaceSuggestion(BaseModel):
+    name: str
+    city: str = ""
+    district: str = ""
+    adcode: str = ""
+
+
 _PROVIDER_STATUS_KINDS = {
     1: BaiduMapErrorKind.RETRYABLE,
     2: BaiduMapErrorKind.REQUEST,
@@ -78,6 +85,7 @@ _PROVIDER_STATUS_KINDS = {
 
 class BaiduMapClient:
     BASE_URL = "https://api.map.baidu.com/place/v2/search"
+    SUGGESTION_URL = "https://api.map.baidu.com/place/v2/suggestion"
     GEOCODING_URL = "https://api.map.baidu.com/geocoding/v3"
 
     def __init__(
@@ -148,6 +156,41 @@ class BaiduMapClient:
                 "Baidu geocoding returned an invalid location",
                 kind=BaiduMapErrorKind.REQUEST,
             ) from None
+
+    def suggest_places(
+        self,
+        *,
+        query: str,
+        region: str,
+        city_limit: bool = True,
+    ) -> list[BaiduPlaceSuggestion]:
+        if not query.strip():
+            raise ValueError("suggestion query is required")
+        if not region.strip():
+            raise ValueError("suggestion region is required")
+        payload = self._execute(
+            {
+                "query": query,
+                "region": region,
+                "city_limit": str(city_limit).lower(),
+                "output": "json",
+                "ak": self._ak,
+            },
+            url=self.SUGGESTION_URL,
+        )
+        suggestions: list[BaiduPlaceSuggestion] = []
+        for item in payload.get("result", []):
+            if not isinstance(item, dict) or not _optional_text(item.get("name")):
+                continue
+            suggestions.append(
+                BaiduPlaceSuggestion(
+                    name=str(item["name"]),
+                    city=str(item.get("city") or ""),
+                    district=str(item.get("district") or ""),
+                    adcode=str(item.get("adcode") or ""),
+                )
+            )
+        return suggestions
 
     def search_nearby_page(
         self,
@@ -259,10 +302,18 @@ class BaiduMapClient:
         radius_meters: int | None = None,
         region: str | None = None,
     ) -> BaiduPoiSearchResult:
-        pois = [
-            self._normalize_poi(item)
-            for item in payload.get("results", [])
-        ]
+        pois: list[BaiduPoi] = []
+        for item in payload.get("results", []):
+            if not isinstance(item, dict):
+                continue
+            try:
+                pois.append(self._normalize_poi(item))
+            except (KeyError, TypeError, ValueError):
+                # Region searches occasionally include administrative or
+                # aggregate entries without a usable point coordinate. One
+                # malformed provider item must not discard the valid POIs in
+                # the same response.
+                continue
         return BaiduPoiSearchResult(
             query=query,
             center_latitude=center_latitude,

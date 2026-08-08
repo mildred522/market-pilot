@@ -2,7 +2,8 @@
 
 import { ChangeEvent, useState } from "react";
 import Link from "next/link";
-import { analyzeOperatingSample, createProject, uploadCsv } from "@/lib/api";
+import { ColumnMapper } from "@/components/ColumnMapper";
+import { analyzeOperatingSample, analyzeOperatingUploads, createProject, uploadCsv } from "@/lib/api";
 import type { UploadedFileResult } from "@/lib/types";
 
 const fileTypes = [
@@ -15,6 +16,18 @@ export function CsvUploader() {
   const [projectName, setProjectName] = useState("已开面馆经营诊断");
   const [projectId, setProjectId] = useState<number | null>(null);
   const [uploads, setUploads] = useState<UploadedFileResult[]>([]);
+  const [mappings, setMappings] = useState<Record<string, Record<string, string>>>({});
+  const [question, setQuestion] = useState("分析订单、菜品和差评，找出当前经营问题和整改重点");
+  const [costs, setCosts] = useState({
+    monthly_rent: 18000,
+    monthly_labor: 24000,
+    monthly_utilities: 3000,
+    monthly_marketing: 2000,
+    other_fixed_costs: 3000,
+    cash_balance: 120000,
+    delivery_commission_rate: 0.2,
+    delivery_packaging_per_order: 1.5
+  });
   const [analysisId, setAnalysisId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [loadingType, setLoadingType] = useState<string | null>(null);
@@ -40,8 +53,41 @@ export function CsvUploader() {
       const id = await ensureProject();
       const result = await uploadCsv(id, fileType, file);
       setUploads((current) => [...current.filter((item) => item.file_type !== fileType), result]);
+      setMappings((current) => ({ ...current, [fileType]: result.suggested_mapping }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "上传失败");
+    } finally {
+      setLoadingType(null);
+    }
+  }
+
+  function updateMapping(fileType: string, standardField: string, sourceColumn: string) {
+    setMappings((current) => ({
+      ...current,
+      [fileType]: { ...current[fileType], [standardField]: sourceColumn }
+    }));
+  }
+
+  const requiredTypes = ["orders", "menu_items", "reviews"] as const;
+  const readyForAnalysis = requiredTypes.every((fileType) => {
+    const upload = uploads.find((item) => item.file_type === fileType);
+    const mapping = mappings[fileType] ?? {};
+    return upload?.required_columns.every((field) => Boolean(mapping[field]));
+  });
+
+  async function handleUploadedAnalyze() {
+    if (!projectId || !readyForAnalysis) return;
+    setError("");
+    setLoadingType("analysis");
+    try {
+      const selections = Object.fromEntries(requiredTypes.map((fileType) => {
+        const upload = uploads.find((item) => item.file_type === fileType)!;
+        return [fileType, { file_id: upload.file_id, mapping: mappings[fileType] }];
+      })) as Parameters<typeof analyzeOperatingUploads>[2];
+      const report = await analyzeOperatingUploads(projectId, question, selections, costs);
+      setAnalysisId(report.analysis_id);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "分析失败");
     } finally {
       setLoadingType(null);
     }
@@ -81,8 +127,46 @@ export function CsvUploader() {
             </label>
           ))}
         </div>
-        <button disabled={loadingType !== null} onClick={() => void handleSampleAnalyze()} type="button">
-          {loadingType === "analysis" ? "诊断中..." : "生成样例经营诊断"}
+        <label>
+          诊断问题
+          <input value={question} onChange={(event) => setQuestion(event.target.value)} />
+        </label>
+        <details>
+          <summary>成本与现金假设</summary>
+          <p className="form-help">用于计算保本线和现金压力，不会被当作真实财务流水。</p>
+          <div className="field-grid compact-fields">
+            {[
+              ["monthly_rent", "月租金"],
+              ["monthly_labor", "月人工"],
+              ["monthly_utilities", "月水电杂费"],
+              ["monthly_marketing", "月营销活动"],
+              ["other_fixed_costs", "其他固定成本"],
+              ["cash_balance", "可用现金余额"],
+              ["delivery_commission_rate", "外卖佣金率（0-1）"],
+              ["delivery_packaging_per_order", "外卖单均包材"]
+            ].map(([field, label]) => (
+              <label key={field}>
+                {label}
+                <input
+                  min="0"
+                  max={field === "delivery_commission_rate" ? "1" : undefined}
+                  step={field === "delivery_commission_rate" ? "0.01" : "1"}
+                  type="number"
+                  value={costs[field as keyof typeof costs]}
+                  onChange={(event) => setCosts((current) => ({
+                    ...current,
+                    [field]: Number(event.target.value)
+                  }))}
+                />
+              </label>
+            ))}
+          </div>
+        </details>
+        <button disabled={loadingType !== null || !readyForAnalysis} onClick={() => void handleUploadedAnalyze()} type="button">
+          {loadingType === "analysis" ? "诊断中..." : "分析已上传数据"}
+        </button>
+        <button className="secondary-action" disabled={loadingType !== null} onClick={() => void handleSampleAnalyze()} type="button">
+          使用样例数据演示
         </button>
       </section>
 
@@ -102,8 +186,9 @@ export function CsvUploader() {
             查看完整报告
           </Link>
         ) : null}
-        <p className="muted-text">经营诊断执行会在后续轮次接入字段映射和 Agent 报告。</p>
+        <p className="muted-text">上传三类数据并确认字段后，即可生成真实经营诊断。</p>
       </section>
+      <ColumnMapper uploads={uploads} mappings={mappings} onChange={updateMapping} />
     </div>
   );
 }

@@ -1,7 +1,15 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { analyzeLocationManually, createProject, recommendLocations } from "@/lib/api";
+import { AutocompleteField } from "@/components/AutocompleteField";
+import { analyzeLocationManually, createProject, getLocationSuggestions, recommendLocations } from "@/lib/api";
+import {
+  ALL_DISTRICT_OPTIONS,
+  CITY_OPTIONS,
+  DISTRICTS_BY_CITY,
+  normalizeCity,
+  TARGET_CUSTOMER_OPTIONS
+} from "@/lib/location-options";
 import type { LocationResult } from "@/lib/types";
 
 type Mode = "manual" | "recommendations";
@@ -32,9 +40,20 @@ export function LocationAnalysis() {
   const [result, setResult] = useState<LocationResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const matchedCity = normalizeCity(form.city);
+  const districtOptions = DISTRICTS_BY_CITY[matchedCity] ?? ALL_DISTRICT_OPTIONS;
 
   function update(name: keyof typeof initial, value: string | number) {
     setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function selectCity(city: string) {
+    const districts = DISTRICTS_BY_CITY[normalizeCity(city)];
+    setForm((current) => ({
+      ...current,
+      city,
+      district: districts?.includes(current.district) ? current.district : (districts?.[0] ?? "")
+    }));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -98,14 +117,14 @@ export function LocationAnalysis() {
         <form className="form-surface" onSubmit={submit}>
           <label>项目名称<input value={form.projectName} onChange={(e) => update("projectName", e.target.value)} /></label>
           <div className="field-grid">
-            <label>城市<input value={form.city} onChange={(e) => update("city", e.target.value)} /></label>
-            <label>行政区<input value={form.district} onChange={(e) => update("district", e.target.value)} /></label>
+            <AutocompleteField label="城市" value={form.city} options={CITY_OPTIONS} onChange={(value) => update("city", value)} onSelect={selectCity} loadOptions={(query) => getLocationSuggestions("city", query)} placeholder="选择或输入城市" />
+            <AutocompleteField key={`district-${form.city}`} label="行政区" value={form.district} options={districtOptions} onChange={(value) => update("district", value)} loadOptions={(query) => getLocationSuggestions("district", query, form.city)} minimumQueryLength={0} replaceOptionsWhenLoaded placeholder="选择或输入行政区" />
           </div>
           <div className="field-grid">
             <label>经营品类<input value={form.category} onChange={(e) => update("category", e.target.value)} /></label>
             <label>计划客单价<input type="number" value={form.planned_average_order_value} onChange={(e) => update("planned_average_order_value", Number(e.target.value))} /></label>
           </div>
-          <label>目标客群<input value={form.target_customer} onChange={(e) => update("target_customer", e.target.value)} /></label>
+          <AutocompleteField label="目标客群" value={form.target_customer} options={TARGET_CUSTOMER_OPTIONS} onChange={(value) => update("target_customer", value)} placeholder="选择或描述目标客群" />
           {mode === "manual" ? (
             <div className="field-grid">
               <label>BD-09 纬度<input type="number" step="0.000001" value={form.latitude} onChange={(e) => update("latitude", Number(e.target.value))} /></label>

@@ -67,6 +67,122 @@ export type OperatingMetrics = {
     review_count: number;
     negative_review_count: number;
   };
+  survival?: SurvivalMetrics;
+  channels?: ChannelMetrics;
+  time_patterns?: TimePatternMetrics;
+  discounts?: DiscountMetrics;
+};
+
+export type DiscountSegment = {
+  key: "regular" | "discounted";
+  label: string;
+  order_count: number;
+  listed_amount: number;
+  revenue: number;
+  average_order_value: number;
+  discount_amount: number;
+  discount_rate: number;
+  food_cost: number;
+  contribution_profit: number;
+  contribution_margin: number;
+};
+
+export type DiscountMetrics = {
+  segments: DiscountSegment[];
+  discounted_order_count: number;
+  discounted_order_share: number;
+  total_discount_amount: number;
+  discounted_contribution_profit: number;
+  discounted_contribution_margin: number;
+  margin_gap_vs_regular: number | null;
+  assumption_note: string;
+};
+
+export type DaypartMetric = {
+  key: string;
+  label: string;
+  order_count: number;
+  revenue: number;
+  revenue_share: number;
+  average_order_value: number;
+};
+
+export type RevenueAnomaly = {
+  date: string;
+  revenue: number;
+  orders: number;
+  direction: "high" | "low";
+  deviation_from_median: number | null;
+};
+
+export type TimePatternMetrics = {
+  observed_days: number;
+  dayparts: DaypartMetric[];
+  peak_daypart: string | null;
+  peak_daypart_label: string | null;
+  trend: {
+    status: "insufficient_data" | "declining" | "stable" | "growing";
+    change_rate: number | null;
+    previous_average_revenue: number | null;
+    recent_average_revenue: number | null;
+    note: string;
+  };
+  anomalies: RevenueAnomaly[];
+  coverage_note: string;
+};
+
+export type ChannelMetric = {
+  channel: string;
+  channel_type: "delivery" | "direct";
+  order_count: number;
+  revenue: number;
+  revenue_share: number;
+  average_order_value: number;
+  food_cost: number;
+  platform_fee: number;
+  packaging_cost: number;
+  contribution_profit: number;
+  contribution_margin: number;
+};
+
+export type ChannelMetrics = {
+  channels: ChannelMetric[];
+  delivery_commission_rate: number;
+  delivery_packaging_per_order: number;
+  delivery_revenue: number;
+  delivery_contribution_profit: number;
+  assumption_note: string;
+};
+
+export type SurvivalMetrics = {
+  observed_days: number;
+  observed_revenue: number;
+  observed_food_cost: number;
+  observed_gross_profit: number;
+  observed_gross_margin: number;
+  average_daily_revenue: number;
+  projected_monthly_revenue: number;
+  monthly_fixed_cost: number;
+  break_even_monthly_revenue: number;
+  break_even_daily_revenue: number;
+  break_even_daily_orders: number;
+  projected_monthly_profit: number;
+  monthly_revenue_gap: number;
+  cash_balance: number;
+  cash_runway_months: number | null;
+  risk_level: "stable" | "watch" | "high";
+  assumption_note: string;
+};
+
+export type OperatingCostAssumptions = {
+  monthly_rent: number;
+  monthly_labor: number;
+  monthly_utilities: number;
+  monthly_marketing: number;
+  other_fixed_costs: number;
+  cash_balance: number;
+  delivery_commission_rate: number;
+  delivery_packaging_per_order: number;
 };
 
 export type AnalysisReport = {
@@ -81,10 +197,20 @@ export type AnalysisReport = {
 };
 
 export type UploadedFileResult = {
+  file_id: number;
   project_id: number;
   file_type: string;
   filename: string;
-  storage_path: string;
+  columns: string[];
+  required_columns: string[];
+  suggested_mapping: Record<string, string>;
+  missing_columns: string[];
+  row_count: number;
+};
+
+export type OperatingFileSelection = {
+  file_id: number;
+  mapping: Record<string, string>;
 };
 
 export type FinanceAssumptions = {

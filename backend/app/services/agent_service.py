@@ -17,6 +17,7 @@ class AgentService:
         orders: pd.DataFrame,
         menu: pd.DataFrame,
         reviews: pd.DataFrame,
+        cost_assumptions: dict | None = None,
     ) -> dict[str, object]:
         state = AgentState(
             project_id=project_id,
@@ -24,7 +25,13 @@ class AgentService:
             stage=detect_stage(question),
         )
         state = create_plan(state)
-        state = execute_plan(state, orders=orders, menu=menu, reviews=reviews)
+        state = execute_plan(
+            state,
+            orders=orders,
+            menu=menu,
+            reviews=reviews,
+            cost_assumptions=cost_assumptions,
+        )
         state = synthesize(state)
         state = verify_evidence(state)
 

@@ -176,4 +176,9 @@ class LocationAnalysisResponse(BaseModel):
     candidates: list[RecommendationCandidate] = Field(default_factory=list)
 
 
+class LocationSuggestionsResponse(BaseModel):
+    options: list[str] = Field(default_factory=list)
+    source: Literal["baidu"] = "baidu"
+
+
 ManualLocationAnalysisResponse = LocationAnalysisResponse

@@ -571,7 +571,7 @@ class SelectiveScreeningCollector(ScreeningCollector):
         )
 
 
-def test_recommendations_deep_analyzes_at_most_ten_and_returns_requested_five():
+def test_recommendations_bound_screening_and_deep_analysis_to_requested_count():
     session = make_session()
     collector = Collector()
     source = CandidateSource(12)
@@ -592,19 +592,19 @@ def test_recommendations_deep_analyzes_at_most_ten_and_returns_requested_five():
         max_candidates=5,
     )
 
-    assert len(screening.calls) == 12
+    assert len(screening.calls) == 10
     assert all(call["radius_meters"] == 1500 for call in screening.calls)
-    assert len(collector.calls) == 10
+    assert len(collector.calls) == 5
     assert {call["latitude"] for call in collector.calls} == {
-        30 + index / 100 for index in range(2, 12)
+        30 + index / 100 for index in range(5, 10)
     }
     assert len(analysis.result_json["candidates"]) == 5
     assert analysis.mode == "recommendations"
     assert analysis.center_latitude is None
     assert source.generated_regions == ["High-tech Zone"]
     assert analysis.result_json["candidates"][0]["transition_input"] == {
-        "latitude": 30.02,
-        "longitude": 104.02,
+        "latitude": 30.05,
+        "longitude": 104.05,
         "coordinate_system": "bd09ll",
     }
 

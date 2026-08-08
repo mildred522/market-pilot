@@ -6,6 +6,10 @@ def create_plan(state: AgentState) -> AgentState:
         state.intent = "operating_diagnosis"
         state.plan = [
             "analyze_revenue",
+            "analyze_survival_line",
+            "analyze_channel_profitability",
+            "analyze_time_patterns",
+            "analyze_discount_profitability",
             "analyze_menu_matrix",
             "analyze_review_topics",
             "generate_recommendations",

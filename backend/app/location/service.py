@@ -357,10 +357,17 @@ class LocationAnalysisService:
                 commit=False,
             )
 
+        # Full screening costs three provider calls per candidate. Pre-rank
+        # anchor clusters and keep a bounded exploration pool so requesting a
+        # few recommendations does not screen every generated cluster.
+        screening_pool = generator.screen(generated)[: max_candidates * 2]
+
         screened, warnings, screening_failures = self._screen_candidates(
-            generated, radius_meters=radius_meters
+            screening_pool, radius_meters=radius_meters
         )
-        screened = screened[:10]
+        # Deep analysis is substantially more expensive than screening. Only
+        # analyze the number of candidates the caller can actually receive.
+        screened = screened[:max_candidates]
         if not screened and screening_failures:
             status = (
                 "degraded"

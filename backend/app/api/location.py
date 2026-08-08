@@ -1,8 +1,8 @@
 from collections.abc import Callable
 from math import isfinite
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,7 @@ from app.schemas.location import (
     FinanceSummary,
     LocationAnalysisResponse,
     LocationRecommendationsRequest,
+    LocationSuggestionsResponse,
     ManualLocationAnalysisRequest,
     OpportunitySummary,
     RecommendationCandidate,
@@ -56,6 +57,46 @@ def get_location_service_factory() -> Callable[[Session, BaiduMapClient], Locati
 
 def get_location_evidence_verifier() -> LocationEvidenceVerifier:
     return LocationEvidenceVerifier()
+
+
+@router.get("/suggestions", response_model=LocationSuggestionsResponse)
+def location_suggestions(
+    kind: Literal["city", "district"],
+    query: str = Query(default="", max_length=80),
+    city: str | None = Query(default=None, min_length=1, max_length=80),
+    client_factory: Callable[[], BaiduMapClient] = Depends(get_baidu_client_factory),
+) -> LocationSuggestionsResponse:
+    normalized_query = query.strip()
+    if kind == "city" and not normalized_query:
+        return LocationSuggestionsResponse()
+    if kind == "district" and not city:
+        raise _structured_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "city_required",
+            "city is required for district suggestions",
+        )
+    try:
+        suggestions = client_factory().suggest_places(
+            query=normalized_query or "区政府",
+            region="全国" if kind == "city" else str(city).strip(),
+            city_limit=kind == "district",
+        )
+        values = (
+            (item.city for item in suggestions)
+            if kind == "city"
+            else (item.district for item in suggestions)
+        )
+        return LocationSuggestionsResponse(
+            options=list(dict.fromkeys(value for value in values if value))
+        )
+    except BaiduMapConfigurationError as error:
+        raise _structured_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "baidu_configuration_error",
+            "Baidu map configuration is unavailable",
+        ) from error
+    except BaiduMapResponseError as error:
+        raise _provider_http_error(error) from error
 
 
 @router.post("/manual-analysis", response_model=LocationAnalysisResponse)

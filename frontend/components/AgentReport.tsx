@@ -5,6 +5,10 @@ import { MetricCards } from "@/components/MetricCards";
 import { RevenueChart } from "@/components/RevenueChart";
 import { ReviewTopics } from "@/components/ReviewTopics";
 import { RiskPanel } from "@/components/RiskPanel";
+import { SurvivalPanel } from "@/components/SurvivalPanel";
+import { ChannelProfitPanel } from "@/components/ChannelProfitPanel";
+import { TimePatternPanel } from "@/components/TimePatternPanel";
+import { DiscountProfitPanel } from "@/components/DiscountProfitPanel";
 import type { AnalysisReport, OperatingMetrics } from "@/lib/types";
 
 function isOperatingMetrics(metrics: AnalysisReport["metrics"]): metrics is OperatingMetrics {
@@ -39,6 +43,10 @@ export function AgentReport({ report }: { report: AnalysisReport }) {
       {operatingMetrics ? (
         <>
           <RevenueChart data={operatingMetrics.revenue.daily_revenue} />
+          {operatingMetrics.time_patterns ? <TimePatternPanel metrics={operatingMetrics.time_patterns} /> : null}
+          {operatingMetrics.survival ? <SurvivalPanel metrics={operatingMetrics.survival} /> : null}
+          {operatingMetrics.channels ? <ChannelProfitPanel metrics={operatingMetrics.channels} /> : null}
+          {operatingMetrics.discounts ? <DiscountProfitPanel metrics={operatingMetrics.discounts} /> : null}
           <MenuMatrix items={operatingMetrics.menu.items} />
           <ReviewTopics topics={operatingMetrics.reviews.topics} />
         </>

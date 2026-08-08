@@ -133,6 +133,75 @@ def test_search_region_page_uses_region_search_parameters():
     assert result.radius_meters is None
 
 
+def test_suggest_places_uses_baidu_suggestion_and_normalizes_administrative_fields():
+    captured_request: httpx.Request | None = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal captured_request
+        captured_request = request
+        return httpx.Response(
+            200,
+            json={
+                "status": 0,
+                "result": [
+                    {
+                        "name": "泉州市",
+                        "city": "泉州市",
+                        "district": "丰泽区",
+                        "adcode": "350503",
+                    }
+                ],
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        result = BaiduMapClient("test-ak", http_client=http_client).suggest_places(
+            query="泉州", region="全国", city_limit=False
+        )
+
+    assert captured_request is not None
+    assert captured_request.url.path == "/place/v2/suggestion"
+    assert captured_request.url.params["query"] == "泉州"
+    assert captured_request.url.params["region"] == "全国"
+    assert captured_request.url.params["city_limit"] == "false"
+    assert result[0].city == "泉州市"
+    assert result[0].district == "丰泽区"
+
+
+def test_search_region_skips_provider_items_without_point_coordinates():
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(
+            200,
+            json={
+                "status": 0,
+                "total": 2,
+                "results": [
+                    {"uid": "administrative-entry", "name": "泉州市"},
+                    {
+                        "uid": "valid-anchor",
+                        "name": "泉州中心站",
+                        "location": {"lat": 24.9, "lng": 118.6},
+                    },
+                ],
+            },
+        )
+    )
+
+    with httpx.Client(transport=transport) as http_client:
+        result = BaiduMapClient("test-ak", http_client=http_client).search_region_page(
+            query="交通枢纽", region="泉州市", filter=None
+        )
+
+    assert result.total == 2
+    assert [item.uid for item in result.pois] == ["valid-anchor"]
+
+
+@pytest.mark.parametrize(("query", "region"), [("", "全国"), ("泉州", "")])
+def test_suggest_places_requires_query_and_region(query, region):
+    with pytest.raises(ValueError, match="required"):
+        BaiduMapClient("test-ak").suggest_places(query=query, region=region)
+
+
 @pytest.mark.parametrize("page_size", [True, 1.5, 0, 21])
 def test_search_page_rejects_invalid_page_size(page_size):
     with pytest.raises(ValueError, match="page_size"):

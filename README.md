@@ -12,7 +12,7 @@
 - `backend/`：FastAPI 后端，包含 `/health` 健康检查。
 - `backend/app/tools/`：保本线、营收、菜品矩阵和评论主题等确定性分析工具。
 - `backend/app/agents/`：轻量 Plan-and-Execute Agent 骨架。
-- `frontend/`：Next.js + React + TypeScript 前端，包含业务入口、开店前问卷、开店后 CSV 上传页和诊断报告页。
+- `frontend/`：Next.js + React + TypeScript 前端，包含业务入口、开店前问卷、开店后 CSV 上传、自动字段映射和诊断报告页。
 - `frontend/components/`：指标卡、营收图、菜品矩阵、评论主题、风险、证据和行动清单组件。
 - `frontend/app/demo/`：面试演示入口。
 - `docs/`：业务指标体系、系统架构、MVP 架构方案和固定轮次实施计划。
@@ -66,6 +66,8 @@ http://localhost:3000/demo
 
 1. `http://localhost:3000/pre-open`：提交默认问卷后点击“查看完整报告”。
 2. `http://localhost:3000/operating`：点击“生成样例经营诊断”后点击“查看完整报告”。
+
+经营诊断也支持上传真实 CSV：依次上传订单、菜品成本和评论文件，确认系统建议的字段映射，填写租金、人工、水电、营销、其他固定成本、可用现金、外卖佣金率和单均包材成本，再点击“分析已上传数据”。报告会计算实际毛利率、保本营业额、保本订单数、月利润投影和现金支撑期，并按堂食、外卖等渠道对比营收、客单价、渠道费用和贡献利润。CSV 支持 UTF-8、UTF-8 BOM 和 GB18030 编码，单文件最大 5 MB。
 
 ## 项目亮点
 

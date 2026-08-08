@@ -94,7 +94,7 @@ Response:
 
 ## POST /files/upload
 
-上传 CSV 文件。Round 7 中用于保存文件，正式字段映射和导入会在后续扩展。
+上传 CSV 文件、读取表头并返回自动字段映射建议。上传记录会保存到数据库，后续通过文件 ID 发起真实经营诊断。
 
 Form fields:
 
@@ -102,16 +102,89 @@ Form fields:
 - `file_type`
 - `file`
 
-Response:
+Response（系统会自动识别常见中英文表头）：
+
+```json
+{
+  "file_id": 12,
+  "project_id": 1,
+  "file_type": "orders",
+  "filename": "orders.csv",
+  "columns": ["订单号", "下单时间", "渠道", "菜品名称", "数量", "实收金额"],
+  "required_columns": ["order_id", "order_time", "channel", "item_name", "quantity", "actual_amount"],
+  "suggested_mapping": {
+    "order_id": "订单号",
+    "order_time": "下单时间",
+    "channel": "渠道",
+    "item_name": "菜品名称",
+    "quantity": "数量",
+    "actual_amount": "实收金额"
+  },
+  "missing_columns": [],
+  "row_count": 100
+}
+```
+
+限制：仅支持 `orders`、`menu_items`、`reviews` 三种文件类型；文件必须是 CSV，支持 UTF-8、UTF-8 BOM、GB18030，单文件最大 5 MB。
+
+## POST /operating/analyze
+
+使用已上传并完成字段映射的三类 CSV 生成真实经营诊断。
+
+Request：
 
 ```json
 {
   "project_id": 1,
-  "file_type": "orders",
-  "filename": "orders.csv",
-  "storage_path": "storage/uploads/1-orders-orders.csv"
+  "question": "分析订单、菜品和差评，找出当前经营问题",
+  "orders": {
+    "file_id": 12,
+    "mapping": {
+      "order_id": "订单号",
+      "order_time": "下单时间",
+      "channel": "渠道",
+      "item_name": "菜品名称",
+      "quantity": "数量",
+      "actual_amount": "实收金额"
+    }
+  },
+  "menu_items": {
+    "file_id": 13,
+    "mapping": {
+      "item_name": "菜品名称",
+      "category": "菜品分类",
+      "sale_price": "售价",
+      "unit_cost": "单位成本"
+    }
+  },
+  "reviews": {
+    "file_id": 14,
+    "mapping": {
+      "review_time": "评论时间",
+      "rating": "评分",
+      "content": "评论内容",
+      "channel": "渠道"
+    }
+  },
+  "cost_assumptions": {
+    "monthly_rent": 18000.0,
+    "monthly_labor": 24000.0,
+    "monthly_utilities": 3000.0,
+    "monthly_marketing": 2000.0,
+    "other_fixed_costs": 3000.0,
+    "cash_balance": 120000.0,
+    "delivery_commission_rate": 0.2,
+    "delivery_packaging_per_order": 1.5
+  }
 }
 ```
+
+服务会校验文件归属、文件类型、映射完整性、日期和数值格式、评分范围，以及订单菜品是否存在对应成本记录。成功响应结构与样例经营诊断一致：
+
+- `metrics.survival` 返回实际毛利率、固定成本、月/日保本营业额、保本日订单、月利润投影、距保本线差额、现金支撑期和风险等级。月度结果按照样本日均营业额外推 30 天，属于经营规划估算，不等同于财务报表。
+- `metrics.channels` 按订单渠道返回营收、占比、订单数、客单价、食材成本、平台佣金、包材成本、贡献利润和贡献率。名称包含 `delivery`、`外卖`、`美团` 或 `饿了么` 的渠道按外卖计算；其余渠道按堂食/直销计算。渠道贡献利润不分摊房租、人工等固定成本。
+- `metrics.time_patterns` 返回早餐、午市、下午、晚市、夜宵和深夜的营收贡献，识别峰值时段，并在至少 6 个有订单营业日时比较样本前后半段趋势；至少 7 个营业日时使用稳健偏差规则标记异常高/低营收日。未出现在 CSV 中的日期不会自动当作零营收。
+- `metrics.discounts` 将菜单标价乘以销量后与订单实收比较，区分原价订单和折扣订单，返回让利额、让利率、食材成本、贡献利润和贡献率。未上传活动 ID、优惠券或满减名称时，只能识别发生了让利，不能归因到具体营销活动。
 
 ## POST /operating/analyze-sample
 
@@ -176,4 +249,3 @@ Response:
   "risks": []
 }
 ```
-

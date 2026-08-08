@@ -2,7 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { analyzePreOpen, createProject } from "@/lib/api";
+import { AutocompleteField } from "@/components/AutocompleteField";
+import { analyzePreOpen, createProject, getLocationSuggestions } from "@/lib/api";
+import { CITY_OPTIONS } from "@/lib/location-options";
 import type { PreOpenReport } from "@/lib/types";
 
 const initialForm = {
@@ -84,10 +86,14 @@ export function PreOpenForm() {
           品类
           <input value={form.category} onChange={(event) => updateField("category", event.target.value)} />
         </label>
-        <label>
-          城市
-          <input value={form.city} onChange={(event) => updateField("city", event.target.value)} />
-        </label>
+        <AutocompleteField
+          label="城市"
+          value={form.city}
+          options={CITY_OPTIONS}
+          onChange={(value) => updateField("city", value)}
+          loadOptions={(query) => getLocationSuggestions("city", query)}
+          placeholder="选择或输入城市"
+        />
         <label>
           月租金
           <input

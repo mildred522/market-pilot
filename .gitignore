@@ -8,12 +8,15 @@ __pycache__/
 *.py[cod]
 *.pyo
 .pytest_cache/
+.playwright-cli/
 .coverage
 htmlcov/
 
 # Local runtime data
 backend/restaurant_agent.db
 backend/storage/
+/restaurant_agent.db
+/storage/
 *.sqlite
 *.sqlite3
 
