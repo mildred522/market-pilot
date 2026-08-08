@@ -55,6 +55,8 @@ AGENT_LLM_TIMEOUT_SECONDS=20
 
 `AGENT_LLM_API_KEY` 和 `AGENT_LLM_MODEL` 均存在时，经营诊断使用结构化 AI Planner 和 Synthesizer；缺少配置、请求失败、输出不符合 Schema 或引用不存在的指标时，自动退回确定性分析。密钥只允许配置在后端环境中。
 
+经营报告支持有限 ReAct 追问：模型最多进行 3 轮，只能调用读取指标、列出指标分区和读取报告摘要三个只读工具；不能修改数据、读取任意文件或重新调用百度 API。
+
 ### 前端
 
 ```powershell

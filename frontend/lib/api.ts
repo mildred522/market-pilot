@@ -1,4 +1,4 @@
-import type { AnalysisReport, LocationResult, ManualLocationRequest, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AnalysisFollowupResponse, AnalysisReport, LocationResult, ManualLocationRequest, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -59,6 +59,16 @@ export function analyzePreOpen(payload: PreOpenInput): Promise<PreOpenReport> {
 
 export function getAnalysis(analysisId: number): Promise<AnalysisReport> {
   return request<AnalysisReport>(`/analysis/${analysisId}`);
+}
+
+export function askAnalysis(
+  analysisId: number,
+  question: string
+): Promise<AnalysisFollowupResponse> {
+  return request<AnalysisFollowupResponse>(`/analysis/${analysisId}/chat`, {
+    method: "POST",
+    body: JSON.stringify({ question })
+  });
 }
 
 export function analyzeLocationManually(payload: ManualLocationRequest): Promise<LocationResult> {

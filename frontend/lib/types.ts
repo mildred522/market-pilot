@@ -211,6 +211,18 @@ export type AnalysisReport = {
   agent_trace?: AgentTrace | null;
 };
 
+export type AnalysisFollowupResponse = {
+  answer: string;
+  evidence_refs: string[];
+  confidence: number;
+  mode: "llm" | "deterministic";
+  steps: number;
+  tool_calls: Array<{ tool: string; arguments: Record<string, unknown> }>;
+  fallback_reason?: string;
+  supporting_evidence?: string[];
+  prompt_version: string;
+};
+
 export type UploadedFileResult = {
   file_id: number;
   project_id: number;

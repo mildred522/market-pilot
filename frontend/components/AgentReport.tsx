@@ -10,6 +10,7 @@ import { ChannelProfitPanel } from "@/components/ChannelProfitPanel";
 import { TimePatternPanel } from "@/components/TimePatternPanel";
 import { DiscountProfitPanel } from "@/components/DiscountProfitPanel";
 import { AgentRunStatus } from "@/components/AgentRunStatus";
+import { AnalysisFollowup } from "@/components/AnalysisFollowup";
 import type { AnalysisReport, OperatingMetrics } from "@/lib/types";
 
 function isOperatingMetrics(metrics: AnalysisReport["metrics"]): metrics is OperatingMetrics {
@@ -59,6 +60,7 @@ export function AgentReport({ report }: { report: AnalysisReport }) {
         <EvidencePanel evidence={report.evidence} />
         <ActionList actions={report.actions} />
       </div>
+      {report.stage === "operating" ? <AnalysisFollowup analysisId={report.analysis_id} /> : null}
     </div>
   );
 }

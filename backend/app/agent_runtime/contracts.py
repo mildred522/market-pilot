@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -62,3 +62,14 @@ class AgentTrace(BaseModel):
     synthesis_used_llm: bool
     fallback_reasons: list[str] = Field(default_factory=list)
     duration_ms: int = Field(ge=0)
+
+
+class FollowupStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["tool", "answer"]
+    tool_name: str | None = Field(default=None, max_length=80)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    answer: str | None = Field(default=None, max_length=1600)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=8)
+    confidence: float = Field(default=0, ge=0, le=1)

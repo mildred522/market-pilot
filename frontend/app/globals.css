@@ -945,6 +945,46 @@ h1 {
   padding-left: 18px;
 }
 
+.followup-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+}
+
+.followup-form input {
+  min-width: 0;
+}
+
+.followup-answer {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.followup-answer > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.followup-answer strong {
+  color: var(--accent-strong);
+}
+
+.followup-answer span,
+.followup-answer small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.followup-answer p {
+  max-width: 820px;
+  margin: 0;
+  line-height: 1.7;
+}
+
 .metric-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1132,6 +1172,10 @@ h1 {
   }
 
   .agent-run-status {
+    grid-template-columns: 1fr;
+  }
+
+  .followup-form {
     grid-template-columns: 1fr;
   }
 

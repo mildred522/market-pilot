@@ -251,3 +251,17 @@ Response:
   "risks": []
 }
 ```
+
+## POST /analysis/{analysis_id}/chat
+
+对已生成的经营报告进行有限 ReAct 追问。
+
+Request：
+
+```json
+{
+  "question": "外卖贡献率为什么偏低？"
+}
+```
+
+模型最多执行 3 轮，只能使用 `list_metric_sections`、`read_metric` 和 `read_report_summary` 三个只读工具。回答必须引用有效的 `metrics.*` 路径。模型未配置、调用失败、越权调用工具或引用不存在的指标时返回确定性报告摘要，并在 `fallback_reason` 说明降级原因。
