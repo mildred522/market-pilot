@@ -1,5 +1,40 @@
 export type Stage = "pre_open" | "operating";
 
+export type IntegrationStatus = {
+  configured: boolean;
+  source: "runtime" | "environment" | null;
+  model?: string | null;
+  provider?: string;
+  base_url?: string;
+};
+
+export type DashboardOverview = {
+  workspace: {
+    name: string;
+    role: string;
+    account_mode: "local";
+  };
+  counts: {
+    projects: number;
+    pre_open_projects: number;
+    operating_projects: number;
+    analyses: number;
+    uploaded_files: number;
+    location_analyses: number;
+  };
+  integrations: {
+    baidu: IntegrationStatus;
+    agent: IntegrationStatus;
+  };
+  recent_analyses: Array<{
+    id: number;
+    project_id: number;
+    project_name: string;
+    stage: Stage;
+    summary: string;
+  }>;
+};
+
 export type Project = {
   id: number;
   name: string;

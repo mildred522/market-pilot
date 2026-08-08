@@ -1,4 +1,4 @@
-import type { AnalysisFollowupResponse, AnalysisReport, LocationResult, ManualLocationRequest, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AnalysisFollowupResponse, AnalysisReport, DashboardOverview, IntegrationStatus, LocationResult, ManualLocationRequest, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -47,6 +47,40 @@ export function createProject(name: string, stage: Stage): Promise<Project> {
   return request<Project>("/projects", {
     method: "POST",
     body: JSON.stringify({ name, stage })
+  });
+}
+
+export function getDashboardOverview(): Promise<DashboardOverview> {
+  return request<DashboardOverview>("/dashboard/overview", { cache: "no-store" });
+}
+
+export function updateBaiduIntegration(apiKey: string): Promise<IntegrationStatus> {
+  return request<IntegrationStatus>("/dashboard/integrations/baidu", {
+    method: "PUT",
+    body: JSON.stringify({ api_key: apiKey })
+  });
+}
+
+export function updateAgentIntegration(payload: {
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+  provider: string;
+}): Promise<IntegrationStatus> {
+  return request<IntegrationStatus>("/dashboard/integrations/agent", {
+    method: "PUT",
+    body: JSON.stringify({
+      api_key: payload.apiKey,
+      model: payload.model,
+      base_url: payload.baseUrl,
+      provider: payload.provider
+    })
+  });
+}
+
+export function clearIntegration(integration: "baidu" | "agent"): Promise<IntegrationStatus> {
+  return request<IntegrationStatus>(`/dashboard/integrations/${integration}`, {
+    method: "DELETE"
   });
 }
 

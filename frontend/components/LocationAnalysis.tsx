@@ -100,7 +100,7 @@ export function LocationAnalysis() {
   }
 
   return (
-    <section className="location-workspace">
+    <section className="location-workspace" id="location">
       <div className="location-intro">
         <div>
           <p className="kicker">Location intelligence</p>

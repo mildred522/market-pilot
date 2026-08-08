@@ -8,6 +8,8 @@ from typing import Protocol, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from app.services.runtime_config import runtime_config
+
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
 
@@ -149,15 +151,19 @@ class OpenAiCompatibleLlmClient:
 
 
 def llm_client_from_environment() -> LlmClient:
-    api_key = os.getenv("AGENT_LLM_API_KEY", "").strip()
-    model = os.getenv("AGENT_LLM_MODEL", "").strip()
+    api_key = runtime_config.get("agent_api_key", "AGENT_LLM_API_KEY")
+    model = runtime_config.get("agent_model", "AGENT_LLM_MODEL")
     if not api_key or not model:
         return DisabledLlmClient()
     return OpenAiCompatibleLlmClient(
         api_key=api_key,
         model=model,
-        base_url=os.getenv("AGENT_LLM_BASE_URL", "https://api.openai.com/v1").strip(),
-        provider=os.getenv("AGENT_LLM_PROVIDER", "openai-compatible").strip(),
+        base_url=runtime_config.get(
+            "agent_base_url", "AGENT_LLM_BASE_URL", "https://api.openai.com/v1"
+        ),
+        provider=runtime_config.get(
+            "agent_provider", "AGENT_LLM_PROVIDER", "openai-compatible"
+        ),
         timeout_seconds=float(os.getenv("AGENT_LLM_TIMEOUT_SECONDS", "20")),
     )
 

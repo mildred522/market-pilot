@@ -1,4 +1,3 @@
-import os
 from enum import Enum
 from math import isfinite
 from typing import Any
@@ -7,6 +6,7 @@ import httpx
 from pydantic import BaseModel
 
 from app.external_context.contracts import BaiduPoi, BaiduPoiSearchResult
+from app.services.runtime_config import runtime_config
 
 
 class BaiduMapConfigurationError(ValueError):
@@ -107,7 +107,7 @@ class BaiduMapClient:
         *,
         http_client: httpx.Client | None = None,
     ) -> "BaiduMapClient":
-        ak = os.getenv("BAIDU_MAP_AK", "")
+        ak = runtime_config.get("baidu_api_key", "BAIDU_MAP_AK")
         if not ak.strip():
             raise BaiduMapConfigurationError(
                 "BAIDU_MAP_AK is required for Baidu Place API"
