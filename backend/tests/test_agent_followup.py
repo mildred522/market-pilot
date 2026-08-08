@@ -79,3 +79,55 @@ def test_followup_agent_rejects_non_whitelisted_tool():
 
     assert result["mode"] == "deterministic"
     assert "not allowed" in result["fallback_reason"]
+
+
+def test_followup_agent_can_answer_from_persisted_report_in_first_step():
+    client = FollowupFakeClient(
+        [
+            FollowupStep(
+                action="answer",
+                answer="应优先处理现有中差评。",
+                evidence_refs=["report.risks.0", "report.actions.0"],
+                confidence=0.92,
+            )
+        ]
+    )
+
+    result = ReportFollowupAgent(client).answer(
+        question="最优先处理什么？",
+        summary="样本经营诊断",
+        metrics={"revenue": {"total_revenue": 336}},
+        evidence=["订单数 8"],
+        actions=["检查高峰出餐流程"],
+        risks=["存在中差评"],
+    )
+
+    assert result["mode"] == "llm"
+    assert result["steps"] == 1
+    assert result["evidence_refs"] == ["report.risks.0", "report.actions.0"]
+    assert '"ref": "report.risks.0"' in client.prompts[0]
+
+
+def test_followup_agent_normalizes_legacy_summary_tool_reference():
+    client = FollowupFakeClient(
+        [
+            FollowupStep(
+                action="answer",
+                answer="当前结论来自已保存报告。",
+                evidence_refs=["read_report_summary"],
+                confidence=0.8,
+            )
+        ]
+    )
+
+    result = ReportFollowupAgent(client).answer(
+        question="报告结论是什么？",
+        summary="样本经营诊断",
+        metrics={},
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+
+    assert result["mode"] == "llm"
+    assert result["evidence_refs"] == ["report.summary"]

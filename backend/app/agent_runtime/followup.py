@@ -37,8 +37,8 @@ class ReportFollowupAgent:
         tool_calls: list[dict[str, Any]] = []
         base_context = {
             "question": question,
-            "report_summary": summary,
             "metric_sections": [key for key in metrics if not key.startswith("_")],
+            "report": _report_context(summary, evidence, actions, risks),
             "read_only_tools": READ_ONLY_TOOLS,
         }
         for step_number in range(1, self._max_steps + 1):
@@ -54,10 +54,22 @@ class ReportFollowupAgent:
                     temperature=0.3,
                 )
                 if step.action == "answer":
-                    self._validate_answer(step, metrics)
+                    references = [
+                        _canonical_reference(reference)
+                        for reference in step.evidence_refs
+                    ]
+                    self._validate_answer(
+                        step,
+                        references,
+                        metrics,
+                        summary,
+                        evidence,
+                        actions,
+                        risks,
+                    )
                     return {
                         "answer": step.answer,
-                        "evidence_refs": step.evidence_refs,
+                        "evidence_refs": references,
                         "confidence": step.confidence,
                         "mode": "llm",
                         "steps": step_number,
@@ -98,11 +110,26 @@ class ReportFollowupAgent:
             return _resolve_metric(metrics, path)
         raise ValueError(f"follow-up tool is not allowed: {name}")
 
-    def _validate_answer(self, step: FollowupStep, metrics: dict[str, Any]) -> None:
-        if not step.answer or not step.evidence_refs:
+    def _validate_answer(
+        self,
+        step: FollowupStep,
+        references: list[str],
+        metrics: dict[str, Any],
+        summary: str,
+        evidence: list[str],
+        actions: list[str],
+        risks: list[str],
+    ) -> None:
+        if not step.answer or not references:
             raise ValueError("follow-up answer is missing text or evidence")
-        for reference in step.evidence_refs:
-            _resolve_metric(metrics, reference)
+        report = {
+            "summary": summary,
+            "evidence": evidence,
+            "actions": actions,
+            "risks": risks,
+        }
+        for reference in references:
+            _resolve_reference(metrics, report, reference)
 
     def _fallback(
         self,
@@ -138,3 +165,50 @@ def _resolve_metric(metrics: dict[str, Any], reference: str) -> Any:
         else:
             raise ValueError(f"unknown metric reference: {reference}")
     return current
+
+
+def _resolve_reference(
+    metrics: dict[str, Any], report: dict[str, Any], reference: str
+) -> Any:
+    if reference.startswith("metrics."):
+        return _resolve_metric(metrics, reference)
+    if not reference.startswith("report."):
+        raise ValueError(f"invalid evidence reference: {reference}")
+    current: Any = report
+    for part in reference.removeprefix("report.").split("."):
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+            current = current[int(part)]
+        else:
+            raise ValueError(f"unknown evidence reference: {reference}")
+    return current
+
+
+def _canonical_reference(reference: str) -> str:
+    if reference == "read_report_summary":
+        return "report.summary"
+    return reference
+
+
+def _report_context(
+    summary: str,
+    evidence: list[str],
+    actions: list[str],
+    risks: list[str],
+) -> dict[str, object]:
+    return {
+        "summary": {"ref": "report.summary", "value": summary},
+        "evidence": [
+            {"ref": f"report.evidence.{index}", "value": value}
+            for index, value in enumerate(evidence)
+        ],
+        "actions": [
+            {"ref": f"report.actions.{index}", "value": value}
+            for index, value in enumerate(actions)
+        ],
+        "risks": [
+            {"ref": f"report.risks.{index}", "value": value}
+            for index, value in enumerate(risks)
+        ],
+    }

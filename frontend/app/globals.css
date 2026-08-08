@@ -955,6 +955,24 @@ h1 {
   min-width: 0;
 }
 
+.followup-progress {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.followup-progress i {
+  width: 9px;
+  height: 9px;
+  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: followup-spin 750ms linear infinite;
+}
+
 .followup-answer {
   display: grid;
   gap: 10px;
@@ -983,6 +1001,33 @@ h1 {
   max-width: 820px;
   margin: 0;
   line-height: 1.7;
+}
+
+.followup-answer > .followup-fallback-note {
+  display: grid;
+  justify-content: stretch;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 12px 14px;
+  border-left: 2px solid #b88949;
+  background: #f5efe4;
+}
+
+.followup-fallback-note strong {
+  color: #75531f;
+  font-size: 12px;
+}
+
+.followup-fallback-note ul {
+  margin: 3px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@keyframes followup-spin {
+  to { transform: rotate(360deg); }
 }
 
 .metric-strip {

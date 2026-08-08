@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { askAnalysis } from "@/lib/api";
 import type { AnalysisFollowupResponse } from "@/lib/types";
 
@@ -9,12 +9,21 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
   const [result, setResult] = useState<AnalysisFollowupResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!loading) return;
+    setElapsedSeconds(0);
+    const timer = window.setInterval(() => setElapsedSeconds((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!question.trim()) return;
     setLoading(true);
     setError("");
+    setResult(null);
     try {
       setResult(await askAnalysis(analysisId, question.trim()));
     } catch (caught) {
@@ -41,17 +50,41 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
           value={question}
         />
         <button disabled={loading || !question.trim()} type="submit">
-          {loading ? "分析中…" : "追问"}
+          {loading ? `分析中 ${elapsedSeconds}s` : "追问"}
         </button>
       </form>
+      {loading ? (
+        <p className="followup-progress" role="status">
+          <i aria-hidden="true" />
+          {elapsedSeconds < 10 ? "正在读取报告与指标…" : "模型仍在生成回答，复杂问题可能需要 10–30 秒。"}
+        </p>
+      ) : null}
       {error ? <p className="error-text">{error}</p> : null}
       {result ? (
         <div className="followup-answer" aria-live="polite">
           <div><strong>{result.mode === "llm" ? "AI 回答" : "确定性回退"}</strong><span>{result.steps} 轮 · 置信度 {(result.confidence * 100).toFixed(0)}%</span></div>
           <p>{result.answer}</p>
           {result.evidence_refs.length > 0 ? <small>依据：{result.evidence_refs.join("、")}</small> : null}
+          {result.mode === "deterministic" ? (
+            <div className="followup-fallback-note">
+              <strong>已使用报告回退</strong>
+              <span>{friendlyFallbackReason(result.fallback_reason)}</span>
+              {result.supporting_evidence?.length ? (
+                <ul>{result.supporting_evidence.map((item) => <li key={item}>{item}</li>)}</ul>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
   );
+}
+
+function friendlyFallbackReason(reason?: string): string {
+  if (!reason) return "模型未生成可验证回答，已返回保存的报告结论。";
+  if (reason.includes("not configured")) return "模型尚未配置，已返回保存的报告结论。";
+  if (reason.includes("timed out") || reason.includes("network")) return "模型响应超时，已返回保存的报告结论。";
+  if (reason.includes("reference") || reason.includes("evidence")) return "模型返回的证据引用未通过校验，已返回保存的报告结论。";
+  if (reason.includes("maximum")) return "三轮只读分析后仍未形成答案，已返回保存的报告结论。";
+  return "模型回答未通过安全校验，已返回保存的报告结论。";
 }
