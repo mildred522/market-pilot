@@ -1,14 +1,12 @@
 import pandas as pd
 
-from app.agents.executor import execute_plan
-from app.agents.planner import create_plan
-from app.agents.router import detect_stage
-from app.agents.state import AgentState
-from app.agents.synthesizer import synthesize
-from app.agents.verifier import verify_evidence
+from app.agent_runtime.orchestrator import OperatingAgentOrchestrator
 
 
 class AgentService:
+    def __init__(self, orchestrator: OperatingAgentOrchestrator | None = None) -> None:
+        self._orchestrator = orchestrator or OperatingAgentOrchestrator()
+
     def analyze_operating(
         self,
         *,
@@ -19,21 +17,20 @@ class AgentService:
         reviews: pd.DataFrame,
         cost_assumptions: dict | None = None,
     ) -> dict[str, object]:
-        state = AgentState(
+        run = self._orchestrator.run(
             project_id=project_id,
             question=question,
-            stage=detect_stage(question),
-        )
-        state = create_plan(state)
-        state = execute_plan(
-            state,
             orders=orders,
             menu=menu,
             reviews=reviews,
             cost_assumptions=cost_assumptions,
         )
-        state = synthesize(state)
-        state = verify_evidence(state)
+        state = run.state
+        metrics = {
+            **state.tool_results,
+            "_agent": run.trace.model_dump(mode="json"),
+            "_agent_plan": run.plan.model_dump(mode="json"),
+        }
 
         return {
             "project_id": state.project_id,
@@ -41,8 +38,9 @@ class AgentService:
             "intent": state.intent,
             "plan": state.plan,
             "summary": state.summary,
-            "metrics": state.tool_results,
+            "metrics": metrics,
             "evidence": state.evidence,
             "actions": state.actions,
             "warnings": state.warnings,
+            "agent_trace": run.trace.model_dump(mode="json"),
         }

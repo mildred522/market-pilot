@@ -4,7 +4,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.models import AnalysisResult, Project, UploadedFile
+from app.db.models import AnalysisResult, AnalysisRun, Project, UploadedFile
 from app.db.session import get_db
 from app.schemas.operating import (
     OperatingAnalyzeRequest,
@@ -89,11 +89,23 @@ def analyze_operating_sample(
 
 
 def _persist_report(db: Session, report: dict[str, object]) -> dict[str, object]:
+    run = AnalysisRun(
+        project_id=int(report["project_id"]),
+        stage="operating",
+        intent=str(report["intent"]),
+        status="completed",
+    )
+    db.add(run)
+    db.flush()
+    metrics = dict(report["metrics"])  # type: ignore[arg-type]
+    agent_trace = dict(report.get("agent_trace", {}))  # type: ignore[arg-type]
+    agent_trace["run_id"] = run.id
+    metrics["_agent"] = agent_trace
     result = AnalysisResult(
         project_id=int(report["project_id"]),
         stage="operating",
         summary=str(report["summary"]),
-        metrics_json=report["metrics"],  # type: ignore[arg-type]
+        metrics_json=metrics,
         evidence_json=report["evidence"],  # type: ignore[arg-type]
         actions_json=report["actions"],  # type: ignore[arg-type]
         warnings_json=report["warnings"],  # type: ignore[arg-type]
@@ -105,6 +117,9 @@ def _persist_report(db: Session, report: dict[str, object]) -> dict[str, object]
     return {
         "analysis_id": result.id,
         **report,
+        "run_id": run.id,
+        "metrics": metrics,
+        "agent_trace": agent_trace,
     }
 
 

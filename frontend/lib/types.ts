@@ -71,6 +71,20 @@ export type OperatingMetrics = {
   channels?: ChannelMetrics;
   time_patterns?: TimePatternMetrics;
   discounts?: DiscountMetrics;
+  _agent?: AgentTrace;
+};
+
+export type AgentTrace = {
+  mode: "llm" | "hybrid" | "deterministic";
+  provider: string;
+  model: string | null;
+  prompt_version: string;
+  selected_tools: string[];
+  planning_used_llm: boolean;
+  synthesis_used_llm: boolean;
+  fallback_reasons: string[];
+  duration_ms: number;
+  run_id?: number;
 };
 
 export type DiscountSegment = {
@@ -194,6 +208,7 @@ export type AnalysisReport = {
   evidence: string[];
   actions: string[];
   risks: string[];
+  agent_trace?: AgentTrace | null;
 };
 
 export type UploadedFileResult = {

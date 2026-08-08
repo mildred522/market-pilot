@@ -9,6 +9,7 @@ import { SurvivalPanel } from "@/components/SurvivalPanel";
 import { ChannelProfitPanel } from "@/components/ChannelProfitPanel";
 import { TimePatternPanel } from "@/components/TimePatternPanel";
 import { DiscountProfitPanel } from "@/components/DiscountProfitPanel";
+import { AgentRunStatus } from "@/components/AgentRunStatus";
 import type { AnalysisReport, OperatingMetrics } from "@/lib/types";
 
 function isOperatingMetrics(metrics: AnalysisReport["metrics"]): metrics is OperatingMetrics {
@@ -20,6 +21,7 @@ export function AgentReport({ report }: { report: AnalysisReport }) {
   const operatingMetrics: OperatingMetrics | null = isOperating
     ? (report.metrics as OperatingMetrics)
     : null;
+  const agentTrace = report.agent_trace ?? operatingMetrics?._agent ?? null;
   const metricCards = operatingMetrics
     ? [
         { label: "总营收", value: operatingMetrics.revenue.total_revenue },
@@ -39,6 +41,7 @@ export function AgentReport({ report }: { report: AnalysisReport }) {
         <h1>{report.stage === "operating" ? "经营诊断报告" : "开店潜力报告"}</h1>
         <p>{report.summary}</p>
       </section>
+      {agentTrace ? <AgentRunStatus trace={agentTrace} /> : null}
       <MetricCards metrics={metricCards} />
       {operatingMetrics ? (
         <>

@@ -24,4 +24,6 @@ def get_analysis(
         "evidence": result.evidence_json,
         "actions": result.actions_json,
         "risks": result.warnings_json,
+        "agent_trace": result.metrics_json.get("_agent"),
+        "agent_plan": result.metrics_json.get("_agent_plan"),
     }

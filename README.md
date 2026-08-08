@@ -11,7 +11,8 @@
 
 - `backend/`：FastAPI 后端，包含 `/health` 健康检查。
 - `backend/app/tools/`：保本线、营收、菜品矩阵和评论主题等确定性分析工具。
-- `backend/app/agents/`：轻量 Plan-and-Execute Agent 骨架。
+- `backend/app/agent_runtime/`：结构化 Plan-and-Execute 运行时，包含模型客户端、工具白名单、动态规划、证据引用校验和确定性降级。
+- `backend/app/agents/`：确定性报告与兼容降级逻辑。
 - `frontend/`：Next.js + React + TypeScript 前端，包含业务入口、开店前问卷、开店后 CSV 上传、自动字段映射和诊断报告页。
 - `frontend/components/`：指标卡、营收图、菜品矩阵、评论主题、风险、证据和行动清单组件。
 - `frontend/app/demo/`：面试演示入口。
@@ -39,6 +40,20 @@ GET http://127.0.0.1:8000/health
 ```json
 { "status": "ok" }
 ```
+
+### 配置 Agent 模型
+
+后端支持 OpenAI-compatible Chat Completions 接口。复制 `.env.example` 中的配置到本地 `.env` 或进程环境变量：
+
+```text
+AGENT_LLM_PROVIDER=openai-compatible
+AGENT_LLM_BASE_URL=https://api.openai.com/v1
+AGENT_LLM_API_KEY=your-server-side-key
+AGENT_LLM_MODEL=your-model-name
+AGENT_LLM_TIMEOUT_SECONDS=20
+```
+
+`AGENT_LLM_API_KEY` 和 `AGENT_LLM_MODEL` 均存在时，经营诊断使用结构化 AI Planner 和 Synthesizer；缺少配置、请求失败、输出不符合 Schema 或引用不存在的指标时，自动退回确定性分析。密钥只允许配置在后端环境中。
 
 ### 前端
 

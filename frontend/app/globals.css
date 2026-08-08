@@ -902,6 +902,49 @@ h1 {
   line-height: 1.7;
 }
 
+.agent-run-status {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  align-items: start;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.agent-run-status > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.agent-run-status strong {
+  color: var(--accent-strong);
+}
+
+.agent-run-hybrid strong {
+  color: #9a5b16;
+}
+
+.agent-run-deterministic strong {
+  color: var(--muted);
+}
+
+.agent-run-status details {
+  max-width: 360px;
+}
+
+.agent-run-status summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.agent-run-status ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
 .metric-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1086,6 +1129,10 @@ h1 {
 
   .section-heading {
     display: grid;
+  }
+
+  .agent-run-status {
+    grid-template-columns: 1fr;
   }
 
   .location-intro {
