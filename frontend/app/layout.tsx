@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AppNavigation } from "@/components/AppNavigation";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body><AppNavigation />{children}</body>
     </html>
   );
 }

@@ -1,11 +1,9 @@
 import { PreOpenForm } from "@/components/PreOpenForm";
 import { LocationAnalysis } from "@/components/LocationAnalysis";
-import { StageSelector } from "@/components/StageSelector";
 
 export default function PreOpenPage() {
   return (
     <main className="shell">
-      <StageSelector />
       <section className="page-header">
         <p className="kicker">Pre-open analysis</p>
         <h1>开店前潜力分析</h1>

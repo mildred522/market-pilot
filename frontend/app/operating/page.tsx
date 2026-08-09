@@ -1,10 +1,8 @@
 import { CsvUploader } from "@/components/CsvUploader";
-import { StageSelector } from "@/components/StageSelector";
 
 export default function OperatingPage() {
   return (
     <main className="shell">
-      <StageSelector />
       <section className="page-header">
         <p className="kicker">Operating diagnosis</p>
         <h1>开店后经营诊断</h1>

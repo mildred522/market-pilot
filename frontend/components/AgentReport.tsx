@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ActionList } from "@/components/ActionList";
 import { EvidencePanel } from "@/components/EvidencePanel";
 import { MenuMatrix } from "@/components/MenuMatrix";
@@ -37,6 +38,13 @@ export function AgentReport({ report }: { report: AnalysisReport }) {
 
   return (
     <div className="report-layout">
+      <nav className="report-context-nav" aria-label="报告导航">
+        <Link href={report.stage === "operating" ? "/operating#diagnosis" : "/pre-open#feasibility"}>
+          <span aria-hidden="true">←</span>
+          返回{report.stage === "operating" ? "经营诊断" : "开店测算"}
+        </Link>
+        <Link href="/">回到控制台</Link>
+      </nav>
       <section className="report-hero">
         <p className="kicker">{report.stage === "operating" ? "Operating report" : "Pre-open report"}</p>
         <h1>{report.stage === "operating" ? "经营诊断报告" : "开店潜力报告"}</h1>

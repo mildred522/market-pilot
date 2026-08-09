@@ -73,7 +73,7 @@ export function PreOpenForm() {
   }
 
   return (
-    <div className="workspace">
+    <div className="workspace anchored-section" id="feasibility">
       <form className="form-surface" onSubmit={handleSubmit}>
         <label>
           项目名称

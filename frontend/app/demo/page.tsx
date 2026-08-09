@@ -1,23 +1,21 @@
 import Link from "next/link";
-import { StageSelector } from "@/components/StageSelector";
 
 const demoSteps = [
   {
     title: "开店前：加盟奶茶店风险排雷",
     description: "使用默认问卷数据，提交后查看投资、租金、竞品和加盟风险。",
-    href: "/pre-open"
+    href: "/pre-open#feasibility"
   },
   {
     title: "开店后：面馆经营诊断",
     description: "进入经营诊断页，点击生成样例经营诊断，查看营收图、菜品矩阵和行动清单。",
-    href: "/operating"
+    href: "/operating#diagnosis"
   }
 ];
 
 export default function DemoPage() {
   return (
     <main className="shell">
-      <StageSelector />
       <section className="page-header">
         <p className="kicker">Demo flow</p>
         <h1>面试演示路径</h1>

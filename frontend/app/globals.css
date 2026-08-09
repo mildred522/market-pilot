@@ -32,6 +32,56 @@ a {
   text-decoration: none;
 }
 
+.app-navigation {
+  position: sticky;
+  z-index: 40;
+  top: 0;
+  border-bottom: 1px solid rgb(203 199 189 / 86%);
+  background: rgb(245 243 239 / 92%);
+  backdrop-filter: blur(14px);
+}
+
+.app-navigation-inner {
+  width: min(1120px, calc(100% - 48px));
+  min-height: 66px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+}
+
+.app-navigation-brand {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  color: #173f35;
+}
+
+.app-navigation-brand span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid #789086;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.app-navigation-brand strong { font-size: 14px; }
+.app-navigation nav { display: flex; align-self: stretch; align-items: stretch; gap: 24px; }
+.app-navigation nav a { position: relative; display: flex; align-items: center; color: #6b746f; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.app-navigation nav a::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: transparent; content: ""; transform: scaleX(0); transition: transform 160ms ease; }
+.app-navigation nav a:hover, .app-navigation nav a.is-active { color: #17483b; }
+.app-navigation nav a:hover::after, .app-navigation nav a.is-active::after { background: #2f6f5e; transform: scaleX(1); }
+
+.anchored-section,
+.location-workspace {
+  scroll-margin-top: 88px;
+}
+
 .shell {
   width: min(1120px, calc(100% - 48px));
   min-height: 100vh;
@@ -1147,6 +1197,25 @@ h1 {
   gap: 22px;
 }
 
+.report-context-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 28px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.report-context-nav a {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.report-context-nav a:first-child { color: var(--accent-strong); }
+.report-context-nav a span { display: inline-block; margin-right: 7px; transition: transform 150ms ease; }
+.report-context-nav a:first-child:hover span { transform: translateX(-3px); }
+
 .report-list,
 .action-list {
   margin: 0;
@@ -1283,6 +1352,25 @@ h1 {
 .integration-message { margin: 16px 0 0; color: #23624f; font-size: 12px; }.security-note { margin: 14px 0 0; color: #8b8177; font-size: 10px; line-height: 1.6; }
 
 @media (max-width: 780px) {
+  .app-navigation-inner {
+    width: 100%;
+    min-height: 0;
+    padding: 14px 18px 0;
+    display: grid;
+    gap: 12px;
+  }
+
+  .app-navigation nav {
+    width: calc(100vw - 36px);
+    min-height: 40px;
+    gap: 22px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .app-navigation nav::-webkit-scrollbar { display: none; }
+  .anchored-section, .location-workspace { scroll-margin-top: 118px; }
+
   .control-shell { display: block; }
   .control-rail { position: static; height: auto; padding: 20px; }
   .control-rail nav { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 24px; }

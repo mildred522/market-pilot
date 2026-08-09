@@ -108,7 +108,7 @@ export function CsvUploader() {
   }
 
   return (
-    <div className="workspace">
+    <div className="workspace anchored-section" id="diagnosis">
       <section className="form-surface">
         <label>
           项目名称
