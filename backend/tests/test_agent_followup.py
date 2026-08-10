@@ -1,5 +1,6 @@
 from app.agent_runtime.contracts import FollowupStep
 from app.agent_runtime.followup import ReportFollowupAgent
+from app.agent_runtime.llm_client import LlmOutputError
 
 
 class FollowupFakeClient:
@@ -131,3 +132,59 @@ def test_followup_agent_normalizes_legacy_summary_tool_reference():
 
     assert result["mode"] == "llm"
     assert result["evidence_refs"] == ["report.summary"]
+
+
+def test_followup_preserves_candidate_when_answer_evidence_is_invalid():
+    client = FollowupFakeClient(
+        [
+            FollowupStep(
+                action="answer",
+                answer="模型认为应该增加广告预算。",
+                evidence_refs=["metrics.missing.value"],
+                confidence=0.7,
+            )
+        ]
+    )
+
+    result = ReportFollowupAgent(client).answer(
+        question="下一步做什么？",
+        summary="样本经营诊断",
+        metrics={"revenue": {"total_revenue": 336}},
+        evidence=["订单数 8"],
+        actions=[],
+        risks=[],
+    )
+
+    assert result["mode"] == "deterministic"
+    assert result["failure_detail"] == {
+        "stage": "answer_validation",
+        "reason": "unknown metric reference: metrics.missing.value",
+        "candidate": "模型认为应该增加广告预算。",
+    }
+
+
+class InvalidOutputClient:
+    configured = True
+    provider = "fake"
+    model = "fake-model"
+
+    def generate_json(self, **kwargs):
+        raise LlmOutputError(
+            "LLM returned invalid JSON",
+            candidate_content="这是一段未包装成 JSON 的候选回答。",
+            error_code="invalid_json",
+        )
+
+
+def test_followup_preserves_invalid_json_candidate():
+    result = ReportFollowupAgent(InvalidOutputClient()).answer(
+        question="下一步做什么？",
+        summary="样本经营诊断",
+        metrics={},
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+
+    assert result["failure_detail"]["stage"] == "invalid_json"
+    assert result["failure_detail"]["candidate"] == "这是一段未包装成 JSON 的候选回答。"

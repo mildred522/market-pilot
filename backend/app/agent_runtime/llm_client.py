@@ -18,6 +18,19 @@ class LlmError(RuntimeError):
     """Safe LLM boundary error that never includes credentials."""
 
 
+class LlmOutputError(LlmError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        candidate_content: str | None,
+        error_code: str,
+    ) -> None:
+        self.candidate_content = candidate_content
+        self.error_code = error_code
+        super().__init__(message)
+
+
 class LlmClient(Protocol):
     @property
     def configured(self) -> bool: ...
@@ -108,10 +121,35 @@ class OpenAiCompatibleLlmClient:
         data = self._post_with_retry(payload)
         try:
             content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise LlmOutputError(
+                "LLM response did not contain message content",
+                candidate_content=None,
+                error_code="missing_content",
+            ) from error
+        if not isinstance(content, str):
+            raise LlmOutputError(
+                "LLM message content was not text",
+                candidate_content=None,
+                error_code="non_text_content",
+            )
+        candidate = _safe_candidate_content(content, self._api_key)
+        try:
             parsed = json.loads(_strip_code_fence(content))
+        except json.JSONDecodeError as error:
+            raise LlmOutputError(
+                "LLM returned invalid JSON",
+                candidate_content=candidate,
+                error_code="invalid_json",
+            ) from error
+        try:
             return response_model.model_validate(parsed)
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as error:
-            raise LlmError("LLM returned invalid structured output") from error
+        except ValidationError as error:
+            raise LlmOutputError(
+                "LLM output did not match the required schema",
+                candidate_content=_candidate_answer(parsed) or candidate,
+                error_code="schema_validation",
+            ) from error
 
     def _post_with_retry(self, payload: dict[str, object]) -> dict[str, object]:
         headers = {
@@ -175,3 +213,14 @@ def _strip_code_fence(content: str) -> str:
         if lines and lines[-1].strip() == "```":
             return "\n".join(lines[1:-1]).strip()
     return text
+
+
+def _safe_candidate_content(content: str, api_key: str) -> str | None:
+    redacted = content.replace(api_key, "[redacted]").strip()
+    return redacted[:4000] or None
+
+
+def _candidate_answer(parsed: object) -> str | None:
+    if isinstance(parsed, dict) and isinstance(parsed.get("answer"), str):
+        return parsed["answer"].strip()[:4000] or None
+    return None

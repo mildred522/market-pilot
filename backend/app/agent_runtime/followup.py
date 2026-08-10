@@ -4,7 +4,12 @@ import json
 from typing import Any
 
 from app.agent_runtime.contracts import FollowupStep
-from app.agent_runtime.llm_client import LlmClient, LlmError, llm_client_from_environment
+from app.agent_runtime.llm_client import (
+    LlmClient,
+    LlmError,
+    LlmOutputError,
+    llm_client_from_environment,
+)
 from app.agent_runtime.prompts import FOLLOWUP_SYSTEM_PROMPT, PROMPT_VERSION
 
 
@@ -42,6 +47,7 @@ class ReportFollowupAgent:
             "read_only_tools": READ_ONLY_TOOLS,
         }
         for step_number in range(1, self._max_steps + 1):
+            step: FollowupStep | None = None
             try:
                 step = self._client.generate_json(
                     system_prompt=FOLLOWUP_SYSTEM_PROMPT,
@@ -85,9 +91,39 @@ class ReportFollowupAgent:
                 observations.append(
                     {"tool": step.tool_name, "result": observation}
                 )
-            except (LlmError, ValueError) as error:
-                return self._fallback(summary, evidence, str(error), tool_calls)
-        return self._fallback(summary, evidence, "maximum follow-up steps reached", tool_calls)
+            except LlmOutputError as error:
+                return self._fallback(
+                    summary,
+                    evidence,
+                    str(error),
+                    tool_calls,
+                    candidate=error.candidate_content,
+                    failure_stage=error.error_code,
+                )
+            except ValueError as error:
+                return self._fallback(
+                    summary,
+                    evidence,
+                    str(error),
+                    tool_calls,
+                    candidate=_step_candidate(step),
+                    failure_stage="answer_validation",
+                )
+            except LlmError as error:
+                return self._fallback(
+                    summary,
+                    evidence,
+                    str(error),
+                    tool_calls,
+                    failure_stage="model_request",
+                )
+        return self._fallback(
+            summary,
+            evidence,
+            "maximum follow-up steps reached",
+            tool_calls,
+            failure_stage="step_limit",
+        )
 
     def _execute_tool(
         self,
@@ -137,6 +173,9 @@ class ReportFollowupAgent:
         evidence: list[str],
         reason: str,
         tool_calls: list[dict[str, Any]] | None = None,
+        *,
+        candidate: str | None = None,
+        failure_stage: str = "configuration",
     ) -> dict[str, Any]:
         return {
             "answer": f"当前报告结论：{summary}",
@@ -147,6 +186,11 @@ class ReportFollowupAgent:
             "tool_calls": tool_calls or [],
             "fallback_reason": reason,
             "supporting_evidence": evidence[:3],
+            "failure_detail": {
+                "stage": failure_stage,
+                "reason": reason,
+                "candidate": candidate,
+            },
             "prompt_version": PROMPT_VERSION,
         }
 
@@ -212,3 +256,11 @@ def _report_context(
             for index, value in enumerate(risks)
         ],
     }
+
+
+def _step_candidate(step: FollowupStep | None) -> str | None:
+    if step is None:
+        return None
+    if step.answer:
+        return step.answer[:4000]
+    return json.dumps(step.model_dump(), ensure_ascii=False)[:4000]

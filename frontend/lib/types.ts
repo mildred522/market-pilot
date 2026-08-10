@@ -267,6 +267,11 @@ export type AnalysisFollowupResponse = {
   tool_calls: Array<{ tool: string; arguments: Record<string, unknown> }>;
   fallback_reason?: string;
   supporting_evidence?: string[];
+  failure_detail?: {
+    stage: string;
+    reason: string;
+    candidate: string | null;
+  };
   prompt_version: string;
 };
 

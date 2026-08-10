@@ -1076,6 +1076,51 @@ h1 {
   line-height: 1.6;
 }
 
+.followup-failure-detail {
+  margin-top: 7px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(117 83 31 / 18%);
+}
+
+.followup-failure-detail summary {
+  width: fit-content;
+  cursor: pointer;
+  color: #75531f;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.followup-failure-detail dl {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+}
+
+.followup-failure-detail dl div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.followup-failure-detail dt { color: #8a7352; }
+.followup-failure-detail dd { margin: 0; color: #4f4b45; overflow-wrap: anywhere; }
+.followup-candidate { margin-top: 14px; }
+.followup-candidate > p { margin-top: 4px; color: #806c4e; font-size: 11px; }
+.followup-candidate pre {
+  max-height: 280px;
+  margin: 10px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid rgb(117 83 31 / 16%);
+  background: rgb(255 255 255 / 55%);
+  color: #34332f;
+  font: 11px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 @keyframes followup-spin {
   to { transform: rotate(360deg); }
 }

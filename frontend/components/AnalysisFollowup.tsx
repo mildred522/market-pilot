@@ -72,12 +72,42 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
               {result.supporting_evidence?.length ? (
                 <ul>{result.supporting_evidence.map((item) => <li key={item}>{item}</li>)}</ul>
               ) : null}
+              {result.failure_detail ? (
+                <details className="followup-failure-detail">
+                  <summary>{result.failure_detail.candidate ? "查看模型候选回答与失败原因" : "查看失败诊断"}</summary>
+                  <dl>
+                    <div><dt>失败阶段</dt><dd>{failureStageLabel(result.failure_detail.stage)}</dd></div>
+                    <div><dt>技术原因</dt><dd>{result.failure_detail.reason}</dd></div>
+                  </dl>
+                  {result.failure_detail.candidate ? (
+                    <div className="followup-candidate">
+                      <strong>未经验证的模型候选</strong>
+                      <p>以下内容未通过结构或证据校验，仅用于排查，不应直接作为经营结论执行。</p>
+                      <pre>{result.failure_detail.candidate}</pre>
+                    </div>
+                  ) : null}
+                </details>
+              ) : null}
             </div>
           ) : null}
         </div>
       ) : null}
     </section>
   );
+}
+
+function failureStageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    configuration: "模型配置",
+    model_request: "模型请求",
+    missing_content: "响应内容",
+    non_text_content: "响应内容",
+    invalid_json: "JSON 解析",
+    schema_validation: "结构校验",
+    answer_validation: "答案与证据校验",
+    step_limit: "Agent 轮次限制"
+  };
+  return labels[stage] ?? stage;
 }
 
 function friendlyFallbackReason(reason?: string): string {

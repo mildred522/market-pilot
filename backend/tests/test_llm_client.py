@@ -3,13 +3,16 @@ import json
 import httpx
 import pytest
 
+from app.agent_runtime import llm_client as llm_client_module
 from app.agent_runtime.contracts import AgentPlan
 from app.agent_runtime.llm_client import (
     DisabledLlmClient,
     LlmError,
+    LlmOutputError,
     OpenAiCompatibleLlmClient,
     llm_client_from_environment,
 )
+from app.services.runtime_config import RuntimeConfigStore
 
 
 def test_openai_compatible_client_validates_structured_response():
@@ -74,7 +77,31 @@ def test_openai_compatible_client_rejects_invalid_schema():
         transport=transport,
     )
 
-    with pytest.raises(LlmError, match="invalid structured output"):
+    with pytest.raises(LlmOutputError, match="required schema") as captured:
+        client.generate_json(
+            system_prompt="plan",
+            user_prompt="question",
+            response_model=AgentPlan,
+            temperature=0.1,
+        )
+    assert captured.value.error_code == "schema_validation"
+    assert captured.value.candidate_content == '{"intent": "missing"}'
+
+
+def test_openai_compatible_client_preserves_and_redacts_invalid_json_candidate():
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "candidate test-key answer"}}]},
+        )
+    )
+    client = OpenAiCompatibleLlmClient(
+        api_key="test-key",
+        model="test-model",
+        transport=transport,
+    )
+
+    with pytest.raises(LlmOutputError, match="invalid JSON") as captured:
         client.generate_json(
             system_prompt="plan",
             user_prompt="question",
@@ -82,9 +109,13 @@ def test_openai_compatible_client_rejects_invalid_schema():
             temperature=0.1,
         )
 
+    assert captured.value.error_code == "invalid_json"
+    assert captured.value.candidate_content == "candidate [redacted] answer"
+
 
 def test_environment_factory_is_disabled_without_credentials(monkeypatch):
     monkeypatch.delenv("AGENT_LLM_API_KEY", raising=False)
     monkeypatch.delenv("AGENT_LLM_MODEL", raising=False)
+    monkeypatch.setattr(llm_client_module, "runtime_config", RuntimeConfigStore())
 
     assert isinstance(llm_client_from_environment(), DisabledLlmClient)
