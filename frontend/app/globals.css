@@ -1053,7 +1053,8 @@ h1 {
   line-height: 1.7;
 }
 
-.followup-answer > .followup-fallback-note {
+.followup-answer > .followup-fallback-note,
+.followup-answer > .followup-insufficient-note {
   display: grid;
   justify-content: stretch;
   gap: 6px;
@@ -1063,10 +1064,19 @@ h1 {
   background: #f5efe4;
 }
 
-.followup-fallback-note strong {
+.followup-fallback-note strong,
+.followup-insufficient-note strong {
   color: #75531f;
   font-size: 12px;
 }
+
+.followup-answer > .followup-insufficient-note {
+  border-left-color: #527b86;
+  background: #e8f0f2;
+}
+
+.followup-insufficient-note strong { color: #315b65; }
+.followup-insufficient-note small { overflow-wrap: anywhere; }
 
 .followup-fallback-note ul {
   margin: 3px 0 0;

@@ -4,6 +4,7 @@ import json
 
 from app.agent_runtime.contracts import AgentPlan, PlannedTool
 from app.agent_runtime.llm_client import LlmClient, LlmError
+from app.agent_runtime.metric_registry import definitions_for_sections
 from app.agent_runtime.prompts import PLANNER_SYSTEM_PROMPT
 from app.agent_runtime.tools import (
     CORE_OPERATING_TOOLS,
@@ -27,6 +28,12 @@ def create_operating_plan(
             "name": spec.name,
             "description": spec.description,
             "required_inputs": list(spec.required_inputs),
+            "output_section": spec.output_section,
+            "use_when": list(spec.use_when),
+            "limitations": list(spec.limitations),
+            "output_contract": definitions_for_sections(
+                {spec.output_section}, compact=True
+            ),
         }
         for spec in available_tool_specs(context)
     ]
@@ -55,21 +62,21 @@ def _apply_plan_policy(
     plan: AgentPlan, context: OperatingToolContext
 ) -> AgentPlan:
     available = {spec.name for spec in available_tool_specs(context)}
-    selected: list[PlannedTool] = []
-    seen: set[str] = set()
+    candidate_by_name: dict[str, PlannedTool] = {}
     for tool in plan.tools:
         if tool.name not in available:
             raise ValueError(f"tool is not allowed: {tool.name}")
-        if tool.name not in seen:
-            selected.append(tool)
-            seen.add(tool.name)
-    for name in reversed(CORE_OPERATING_TOOLS):
-        if name not in seen:
-            selected.insert(
-                0,
-                PlannedTool(name=name, reason="required for a complete operating report"),
-            )
-            seen.add(name)
+        candidate_by_name.setdefault(tool.name, tool)
+    selected = [
+        candidate_by_name.get(name)
+        or PlannedTool(name=name, reason="required for a complete operating report")
+        for name in CORE_OPERATING_TOOLS
+        if name in available
+    ]
+    seen = {tool.name for tool in selected}
+    selected.extend(
+        tool for tool in candidate_by_name.values() if tool.name not in seen
+    )
     return plan.model_copy(
         update={"tools": selected[:8], "requires_external_api": False}
     )

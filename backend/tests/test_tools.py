@@ -120,7 +120,12 @@ def test_channel_profitability_deducts_delivery_commission_and_packaging():
     assert by_channel["delivery"]["packaging_cost"] == 4.5
     assert by_channel["delivery"]["contribution_profit"] == 41.1
     assert by_channel["delivery"]["contribution_margin"] == 0.367
+    assert result["delivery_revenue_share"] == 0.3333
+    assert result["delivery_food_cost"] == 44
+    assert result["delivery_platform_fee"] == 22.4
+    assert result["delivery_packaging_cost"] == 4.5
     assert result["delivery_contribution_profit"] == 41.1
+    assert result["delivery_contribution_margin"] == 0.367
 
 
 def test_time_patterns_split_dayparts_without_overstating_short_trend():

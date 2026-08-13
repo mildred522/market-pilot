@@ -75,7 +75,7 @@ class OpenAiCompatibleLlmClient:
         model: str,
         base_url: str = "https://api.openai.com/v1",
         provider: str = "openai-compatible",
-        timeout_seconds: float = 20.0,
+        timeout_seconds: float = 75.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._api_key = api_key
@@ -146,7 +146,8 @@ class OpenAiCompatibleLlmClient:
             return response_model.model_validate(parsed)
         except ValidationError as error:
             raise LlmOutputError(
-                "LLM output did not match the required schema",
+                "LLM output did not match the required schema: "
+                + _validation_error_summary(error),
                 candidate_content=_candidate_answer(parsed) or candidate,
                 error_code="schema_validation",
             ) from error
@@ -202,7 +203,7 @@ def llm_client_from_environment() -> LlmClient:
         provider=runtime_config.get(
             "agent_provider", "AGENT_LLM_PROVIDER", "openai-compatible"
         ),
-        timeout_seconds=float(os.getenv("AGENT_LLM_TIMEOUT_SECONDS", "20")),
+        timeout_seconds=float(os.getenv("AGENT_LLM_TIMEOUT_SECONDS", "75")),
     )
 
 
@@ -224,3 +225,14 @@ def _candidate_answer(parsed: object) -> str | None:
     if isinstance(parsed, dict) and isinstance(parsed.get("answer"), str):
         return parsed["answer"].strip()[:4000] or None
     return None
+
+
+def _validation_error_summary(error: ValidationError, limit: int = 4) -> str:
+    summaries: list[str] = []
+    for item in error.errors(include_url=False, include_context=False)[:limit]:
+        location = ".".join(str(part) for part in item.get("loc", ())) or "root"
+        summaries.append(f"{location}: {item.get('msg', 'invalid value')}")
+    remaining = max(0, error.error_count() - len(summaries))
+    if remaining:
+        summaries.append(f"and {remaining} more validation errors")
+    return "; ".join(summaries)

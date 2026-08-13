@@ -40,7 +40,7 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
           <p className="kicker">Bounded ReAct</p>
           <h2>追问这份报告</h2>
         </div>
-        <p>最多读取三次已保存指标，不会修改数据或重新调用外部地图。</p>
+        <p>最多进行四轮只读分析，不会修改数据或重新调用外部地图。</p>
       </div>
       <form className="followup-form" onSubmit={submit}>
         <input
@@ -62,7 +62,14 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
       {error ? <p className="error-text">{error}</p> : null}
       {result ? (
         <div className="followup-answer" aria-live="polite">
-          <div><strong>{result.mode === "llm" ? "AI 回答" : "确定性回退"}</strong><span>{result.steps} 轮 · 置信度 {(result.confidence * 100).toFixed(0)}%</span></div>
+          <div>
+            <strong>{followupModeLabel(result.mode)}</strong>
+            <span>
+              {result.mode === "insufficient_data"
+                ? `${result.steps} 轮 · 已核验数据范围`
+                : `${result.steps} 轮 · 置信度 ${(result.confidence * 100).toFixed(0)}%`}
+            </span>
+          </div>
           <p>{result.answer}</p>
           {result.evidence_refs.length > 0 ? <small>依据：{result.evidence_refs.join("、")}</small> : null}
           {result.mode === "deterministic" ? (
@@ -90,6 +97,32 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
               ) : null}
             </div>
           ) : null}
+          {result.mode === "insufficient_data" ? (
+            <div className="followup-insufficient-note">
+              <strong>当前报告缺少所需指标</strong>
+              <span>系统没有用其他指标猜测答案。重新生成经营报告后，将自动纳入可用的渠道分析。</span>
+              {result.available_sections?.length ? (
+                <small>当前已有：{result.available_sections.join("、")}</small>
+              ) : null}
+              {result.failure_detail ? (
+                <details className="followup-failure-detail">
+                  <summary>查看数据可用性诊断</summary>
+                  <dl>
+                    <div><dt>诊断阶段</dt><dd>{failureStageLabel(result.failure_detail.stage)}</dd></div>
+                    <div><dt>缺失指标</dt><dd>{result.missing_metrics?.join("、") || "未能确定具体指标"}</dd></div>
+                    <div><dt>技术原因</dt><dd>{result.failure_detail.reason}</dd></div>
+                  </dl>
+                  {result.failure_detail.candidate ? (
+                    <div className="followup-candidate">
+                      <strong>模型最后一次请求</strong>
+                      <p>该请求仅用于诊断，没有作为经营结论展示。</p>
+                      <pre>{result.failure_detail.candidate}</pre>
+                    </div>
+                  ) : null}
+                </details>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -105,6 +138,7 @@ function failureStageLabel(stage: string): string {
     invalid_json: "JSON 解析",
     schema_validation: "结构校验",
     answer_validation: "答案与证据校验",
+    data_availability: "数据可用性",
     step_limit: "Agent 轮次限制"
   };
   return labels[stage] ?? stage;
@@ -115,6 +149,12 @@ function friendlyFallbackReason(reason?: string): string {
   if (reason.includes("not configured")) return "模型尚未配置，已返回保存的报告结论。";
   if (reason.includes("timed out") || reason.includes("network")) return "模型响应超时，已返回保存的报告结论。";
   if (reason.includes("reference") || reason.includes("evidence")) return "模型返回的证据引用未通过校验，已返回保存的报告结论。";
-  if (reason.includes("maximum")) return "三轮只读分析后仍未形成答案，已返回保存的报告结论。";
+  if (reason.includes("maximum")) return "四轮只读分析后仍未形成答案，已返回保存的报告结论。";
   return "模型回答未通过安全校验，已返回保存的报告结论。";
+}
+
+function followupModeLabel(mode: AnalysisFollowupResponse["mode"]): string {
+  if (mode === "llm") return "AI 回答";
+  if (mode === "insufficient_data") return "数据不足";
+  return "确定性回退";
 }

@@ -54,13 +54,33 @@ def analyze_channel_profitability(
         )
     channels.sort(key=lambda item: (-item["revenue"], item["channel"]))
     delivery_channels = [item for item in channels if item["channel_type"] == "delivery"]
+    delivery_revenue = round(sum(item["revenue"] for item in delivery_channels), 2)
+    delivery_food_cost = round(sum(item["food_cost"] for item in delivery_channels), 2)
+    delivery_platform_fee = round(
+        sum(item["platform_fee"] for item in delivery_channels), 2
+    )
+    delivery_packaging_cost = round(
+        sum(item["packaging_cost"] for item in delivery_channels), 2
+    )
+    delivery_contribution_profit = round(
+        sum(item["contribution_profit"] for item in delivery_channels), 2
+    )
     return {
         "channels": channels,
         "delivery_commission_rate": commission_rate,
         "delivery_packaging_per_order": packaging_per_order,
-        "delivery_revenue": round(sum(item["revenue"] for item in delivery_channels), 2),
-        "delivery_contribution_profit": round(
-            sum(item["contribution_profit"] for item in delivery_channels), 2
+        "delivery_revenue": delivery_revenue,
+        "delivery_revenue_share": (
+            round(delivery_revenue / total_revenue, 4) if total_revenue else 0.0
+        ),
+        "delivery_food_cost": delivery_food_cost,
+        "delivery_platform_fee": delivery_platform_fee,
+        "delivery_packaging_cost": delivery_packaging_cost,
+        "delivery_contribution_profit": delivery_contribution_profit,
+        "delivery_contribution_margin": (
+            round(delivery_contribution_profit / delivery_revenue, 4)
+            if delivery_revenue
+            else 0.0
         ),
         "assumption_note": "渠道贡献利润未分摊房租、人工等固定成本。",
     }

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,32 +22,21 @@ class AgentPlan(BaseModel):
     requires_external_api: bool = False
 
 
-class AgentFinding(BaseModel):
+class SynthesisFinding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     claim: str = Field(min_length=1, max_length=500)
-    kind: Literal["observed", "inferred", "assumption", "unknown"]
-    evidence_refs: list[str] = Field(default_factory=list, max_length=8)
-    confidence: float = Field(ge=0, le=1)
+    evidence_refs: list[str] = Field(min_length=1, max_length=6)
 
 
-class AgentAction(BaseModel):
+class CompactAgentSynthesis(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    action: str = Field(min_length=1, max_length=500)
-    metric: str | None = Field(default=None, max_length=120)
-    target: str | None = Field(default=None, max_length=120)
-    deadline_days: int | None = Field(default=None, ge=1, le=365)
-
-
-class AgentSynthesis(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    summary: str = Field(min_length=1, max_length=1200)
-    findings: list[AgentFinding] = Field(min_length=1, max_length=8)
-    actions: list[AgentAction] = Field(min_length=1, max_length=8)
-    warnings: list[str] = Field(default_factory=list, max_length=8)
-    limitations: list[str] = Field(default_factory=list, max_length=8)
+    summary: str = Field(min_length=1, max_length=800)
+    findings: list[SynthesisFinding] = Field(min_length=1, max_length=4)
+    actions: list[str] = Field(min_length=1, max_length=4)
+    warnings: list[str] = Field(default_factory=list, max_length=4)
+    limitations: list[str] = Field(default_factory=list, max_length=4)
 
 
 class AgentTrace(BaseModel):
@@ -64,12 +53,37 @@ class AgentTrace(BaseModel):
     duration_ms: int = Field(ge=0)
 
 
+class FollowupToolArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Canonical metrics.section.field path for read_metric.",
+    )
+    field: str | None = Field(
+        default=None, max_length=240, description="Compatible alias for path."
+    )
+    metric: str | None = Field(
+        default=None, max_length=240, description="Compatible alias for path."
+    )
+    reference: str | None = Field(
+        default=None, max_length=240, description="Compatible alias for path."
+    )
+
+
 class FollowupStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    action: Literal["tool", "answer"]
+    action: Literal["tool", "answer", "insufficient_data"]
     tool_name: str | None = Field(default=None, max_length=80)
-    arguments: dict[str, Any] = Field(default_factory=dict)
+    arguments: FollowupToolArguments = Field(
+        default_factory=FollowupToolArguments,
+        description=(
+            'For read_metric use {"path":"metrics.section.field"}. '
+            "Other read-only tools use an empty object."
+        ),
+    )
     answer: str | None = Field(default=None, max_length=1600)
     evidence_refs: list[str] = Field(default_factory=list, max_length=8)
     confidence: float = Field(default=0, ge=0, le=1)

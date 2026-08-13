@@ -211,7 +211,12 @@ export type ChannelMetrics = {
   delivery_commission_rate: number;
   delivery_packaging_per_order: number;
   delivery_revenue: number;
+  delivery_revenue_share: number;
+  delivery_food_cost: number;
+  delivery_platform_fee: number;
+  delivery_packaging_cost: number;
   delivery_contribution_profit: number;
+  delivery_contribution_margin: number;
   assumption_note: string;
 };
 
@@ -244,6 +249,9 @@ export type OperatingCostAssumptions = {
   cash_balance: number;
   delivery_commission_rate: number;
   delivery_packaging_per_order: number;
+  target_avg_order_value?: number;
+  target_delivery_contribution_margin?: number;
+  target_monthly_profit?: number;
 };
 
 export type AnalysisReport = {
@@ -262,11 +270,13 @@ export type AnalysisFollowupResponse = {
   answer: string;
   evidence_refs: string[];
   confidence: number;
-  mode: "llm" | "deterministic";
+  mode: "llm" | "deterministic" | "insufficient_data";
   steps: number;
   tool_calls: Array<{ tool: string; arguments: Record<string, unknown> }>;
   fallback_reason?: string;
   supporting_evidence?: string[];
+  missing_metrics?: string[];
+  available_sections?: string[];
   failure_detail?: {
     stage: string;
     reason: string;

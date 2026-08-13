@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ColumnMapper } from "@/components/ColumnMapper";
 import { analyzeOperatingSample, analyzeOperatingUploads, createProject, uploadCsv } from "@/lib/api";
 import type { UploadedFileResult } from "@/lib/types";
+import type { OperatingCostAssumptions } from "@/lib/types";
 
 const fileTypes = [
   { id: "orders", label: "订单 CSV" },
@@ -27,6 +28,11 @@ export function CsvUploader() {
     cash_balance: 120000,
     delivery_commission_rate: 0.2,
     delivery_packaging_per_order: 1.5
+  });
+  const [targets, setTargets] = useState({
+    target_avg_order_value: "",
+    target_delivery_contribution_margin: "",
+    target_monthly_profit: ""
   });
   const [analysisId, setAnalysisId] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -84,7 +90,13 @@ export function CsvUploader() {
         const upload = uploads.find((item) => item.file_type === fileType)!;
         return [fileType, { file_id: upload.file_id, mapping: mappings[fileType] }];
       })) as Parameters<typeof analyzeOperatingUploads>[2];
-      const report = await analyzeOperatingUploads(projectId, question, selections, costs);
+      const configuredTargets = Object.fromEntries(
+        Object.entries(targets)
+          .filter(([, value]) => value.trim() !== "")
+          .map(([key, value]) => [key, Number(value)])
+      );
+      const assumptions: OperatingCostAssumptions = { ...costs, ...configuredTargets };
+      const report = await analyzeOperatingUploads(projectId, question, selections, assumptions);
       setAnalysisId(report.analysis_id);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "分析失败");
@@ -156,6 +168,33 @@ export function CsvUploader() {
                   onChange={(event) => setCosts((current) => ({
                     ...current,
                     [field]: Number(event.target.value)
+                  }))}
+                />
+              </label>
+            ))}
+          </div>
+        </details>
+        <details>
+          <summary>经营目标（可选）</summary>
+          <p className="form-help">用于判断指标是否达到商户自己的目标，不会冒充行业基准。</p>
+          <div className="field-grid compact-fields">
+            {[
+              ["target_avg_order_value", "目标客单价", "1"],
+              ["target_delivery_contribution_margin", "目标外卖贡献率（0-1）", "0.01"],
+              ["target_monthly_profit", "目标月经营利润", "1"]
+            ].map(([field, label, step]) => (
+              <label key={field}>
+                {label}
+                <input
+                  min={field === "target_monthly_profit" ? undefined : "0"}
+                  max={field === "target_delivery_contribution_margin" ? "1" : undefined}
+                  placeholder="未设置"
+                  step={step}
+                  type="number"
+                  value={targets[field as keyof typeof targets]}
+                  onChange={(event) => setTargets((current) => ({
+                    ...current,
+                    [field]: event.target.value
                   }))}
                 />
               </label>

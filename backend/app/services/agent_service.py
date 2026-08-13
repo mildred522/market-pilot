@@ -1,6 +1,7 @@
 import pandas as pd
 
 from app.agent_runtime.orchestrator import OperatingAgentOrchestrator
+from app.agent_runtime.metric_registry import data_resource_context
 
 
 class AgentService:
@@ -26,10 +27,25 @@ class AgentService:
             cost_assumptions=cost_assumptions,
         )
         state = run.state
+        target_fields = {
+            "target_avg_order_value": "metrics.revenue.avg_order_value",
+            "target_delivery_contribution_margin": "metrics.channels.delivery_contribution_margin",
+            "target_monthly_profit": "metrics.survival.projected_monthly_profit",
+        }
+        targets = {
+            metric_path: cost_assumptions[field]
+            for field, metric_path in target_fields.items()
+            if cost_assumptions is not None and cost_assumptions.get(field) is not None
+        }
+        resource_metrics = {**state.tool_results, "_targets": targets}
         metrics = {
             **state.tool_results,
             "_agent": run.trace.model_dump(mode="json"),
             "_agent_plan": run.plan.model_dump(mode="json"),
+            "_data_resources": data_resource_context(
+                resource_metrics, question=question
+            ),
+            "_targets": targets,
         }
 
         return {
