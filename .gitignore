@@ -6,6 +6,10 @@ launcher/**/bin/
 launcher/**/obj/
 dist/
 /.artifact-build/
+/outputs/evals/*.json
+/outputs/evals/*.md
+
+!/outputs/evals/.gitkeep
 
 # Python caches and test artifacts
 __pycache__/

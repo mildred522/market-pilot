@@ -83,20 +83,20 @@ Location collection, pagination, snapshot reuse, and scoring remain deterministi
 - Review: `launcher/MarketPilot.Launcher/Program.cs`
 - Modify: `README.md`
 
-- [ ] Separate metric registry, follow-up hardening, operating targets, and launcher changes into coherent commits.
-- [ ] Correct README drift: four follow-up rounds, implemented map analysis, and actual launcher prerequisites.
-- [ ] Ensure generated launcher `bin`, `obj`, `dist`, database, upload, and local artifact directories are ignored.
-- [ ] Run `git diff --check` and confirm no conflict markers or accidental generated files are tracked.
+- [x] Separate metric registry, follow-up hardening, operating targets, and launcher changes into coherent commits.
+- [x] Correct README drift: four follow-up rounds, implemented map analysis, and actual launcher prerequisites.
+- [x] Ensure generated launcher `bin`, `obj`, `dist`, database, upload, and local artifact directories are ignored.
+- [x] Run `git diff --check` and confirm no conflict markers or accidental generated files are tracked.
 
 ### Task 0.2: Record the release baseline
 
 **Test:** complete project verification
 
-- [ ] Run `cd backend; python -m pytest -q`.
-- [ ] Run `cd frontend; npm run build`.
-- [ ] Run `dotnet build launcher/MarketPilot.Launcher/MarketPilot.Launcher.csproj --configuration Release`.
-- [ ] Record Python, Node, npm, and .NET versions in `docs/release-baseline.md`.
-- [ ] Merge the feature branch only after the worktree is clean and all three checks pass.
+- [x] Run `cd backend; python -m pytest -q`.
+- [x] Run `cd frontend; npm run build`.
+- [x] Run `dotnet build launcher/MarketPilot.Launcher/MarketPilot.Launcher.csproj --configuration Release`.
+- [x] Record Python, Node, npm, and .NET versions in `docs/release-baseline.md`.
+- [x] Merge the feature branch only after the worktree is clean and all three checks pass.
 
 **Exit gate:** The current verified result of 310 passing backend tests, one opt-in skip, a successful frontend build, and a warning-free launcher build is reproducible from the merged branch.
 
@@ -141,10 +141,10 @@ Define aggregate metrics:
 - Create: `backend/evals/fixtures/`
 - Create: `backend/tests/evals/test_offline_agent_eval.py`
 
-- [ ] Add at least 15 operating-plan cases covering revenue, menu, reviews, time pattern, discounts, survival, and channels.
-- [ ] Add at least 15 follow-up cases covering exact metric reads, missing data, old reports, invalid references, merchant targets, and absent benchmarks.
-- [ ] Include adversarial text in review content to verify source text cannot alter Agent instructions.
-- [ ] Keep offline cases deterministic by using scripted LLM clients and synthetic business fixtures.
+- [x] Add at least 15 operating-plan cases covering revenue, menu, reviews, time pattern, discounts, survival, and channels.
+- [x] Add at least 15 follow-up cases covering exact metric reads, missing data, old reports, invalid references, merchant targets, and absent benchmarks.
+- [x] Include adversarial text in review content to verify source text cannot alter Agent instructions.
+- [x] Keep offline cases deterministic by using scripted LLM clients and synthetic business fixtures.
 
 ### Task 1.3: Generate a baseline report
 
@@ -153,9 +153,9 @@ Define aggregate metrics:
 - Create: `outputs/evals/.gitkeep`
 - Modify: `.gitignore`
 
-- [ ] Generate machine-readable JSON and a concise Markdown summary.
-- [ ] Record the current all-tools planner behavior as the baseline rather than changing it in this phase.
-- [ ] Fail CI only on hard safety invariants initially: invalid evidence, invented numerical facts, or failure to abstain when required.
+- [x] Generate machine-readable JSON and a concise Markdown summary.
+- [x] Record the current all-tools planner behavior as the baseline rather than changing it in this phase.
+- [x] Fail CI only on hard safety invariants initially: invalid evidence, invented numerical facts, or failure to abstain when required.
 
 **Exit gate:** At least 30 offline cases run with a reproducible report. Evidence validity is 100%, unsupported numeric claims are zero, and all baseline planning metrics are recorded.
 

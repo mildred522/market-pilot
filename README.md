@@ -84,6 +84,17 @@ npm run dev
 http://localhost:3000
 ```
 
+### Agent 离线评测
+
+评测集使用脚本化模型响应和合成业务数据，不需要配置外部模型或地图密钥：
+
+```powershell
+cd backend
+python -m scripts.run_agent_evals
+```
+
+命令会运行 30 条经营规划与报告追问用例，在 `outputs/evals/` 生成 JSON 和 Markdown 报告。当前 CI 安全门禁检查证据引用、虚构数值、无依据的比较性结论和必要的数据不足声明；工具选择质量作为后续规划优化的量化基线。
+
 ### 演示路径
 
 推荐入口：
@@ -135,4 +146,5 @@ http://localhost:3000/demo
 - [MVP 架构方案](docs/restaurant-agent-mvp-architecture-plan.md)
 - [固定轮次实施计划](docs/superpowers/plans/2026-07-04-restaurant-agent-mvp-rounds.md)
 - [API 契约](docs/api-contract.md)
+- [Agent 评测基线](docs/agent-evaluation.md)
 - [Demo 脚本](docs/demo-script.md)
