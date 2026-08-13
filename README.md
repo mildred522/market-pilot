@@ -12,6 +12,7 @@
 - `backend/`：FastAPI 后端，包含 `/health` 健康检查。
 - `backend/app/tools/`：保本线、营收、菜品矩阵和评论主题等确定性分析工具。
 - `backend/app/agent_runtime/`：结构化 Plan-and-Execute 运行时，包含模型客户端、工具白名单、动态规划、证据引用校验和确定性降级。
+- `backend/app/location/`：百度 POI 候选生成、圈层采集、机会评分、可信度评估、快照复用和降级处理。
 - `backend/app/agents/`：确定性报告与兼容降级逻辑。
 - `frontend/`：Next.js + React + TypeScript 前端，包含业务入口、开店前问卷、开店后 CSV 上传、自动字段映射和诊断报告页。
 - `frontend/components/`：指标卡、营收图、菜品矩阵、评论主题、风险、证据和行动清单组件。
@@ -19,6 +20,18 @@
 - `docs/`：业务指标体系、系统架构、MVP 架构方案和固定轮次实施计划。
 
 ## 本地运行
+
+### Windows 一键启动器
+
+双击 `dist/MarketPilotLauncher.exe`，然后点击“启动并打开”。启动器会检查运行环境、启动前后端、等待服务就绪并打开浏览器。关闭启动器时可选择是否同时停止服务。
+
+首次使用仍需安装 Python、Node.js 及项目依赖。需要重新生成启动器时，在项目根目录运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\launcher\build-launcher.ps1
+```
+
+启动器需要 Windows x64 和 .NET 8 Desktop Runtime，但不会内置 Python、Node.js、依赖、数据库或 API 密钥。应将其保留在当前项目的 `dist` 目录中；如需放到其他位置，可通过 `MARKET_PILOT_ROOT` 环境变量指定项目根目录。
 
 ### 后端
 
@@ -50,12 +63,12 @@ AGENT_LLM_PROVIDER=openai-compatible
 AGENT_LLM_BASE_URL=https://api.openai.com/v1
 AGENT_LLM_API_KEY=your-server-side-key
 AGENT_LLM_MODEL=your-model-name
-AGENT_LLM_TIMEOUT_SECONDS=20
+AGENT_LLM_TIMEOUT_SECONDS=75
 ```
 
-`AGENT_LLM_API_KEY` 和 `AGENT_LLM_MODEL` 均存在时，经营诊断使用结构化 AI Planner 和 Synthesizer；缺少配置、请求失败、输出不符合 Schema 或引用不存在的指标时，自动退回确定性分析。密钥只允许配置在后端环境中。
+`AGENT_LLM_API_KEY` 和 `AGENT_LLM_MODEL` 均存在时，经营诊断使用结构化 AI Planner 和 Synthesizer；缺少配置、请求失败、输出不符合 Schema 或引用不存在的指标时，自动退回确定性分析。也可以在本地工作台配置模型和百度地图密钥；密钥由后端使用，并通过 Windows DPAPI 加密保存，不写入前端持久化存储。
 
-经营报告支持有限 ReAct 追问：模型最多进行 3 轮，只能调用读取指标、列出指标分区和读取报告摘要三个只读工具；不能修改数据、读取任意文件或重新调用百度 API。
+经营报告支持有限 ReAct 追问：模型最多进行 4 轮，只能调用读取指标、列出指标分区、列出指标路径和读取报告摘要等只读工具；不能修改数据、读取任意文件或重新调用百度 API。
 
 ### 前端
 
@@ -102,6 +115,7 @@ http://localhost:3000/demo
 - 两个业务模块清晰分流：开店前看潜力和风险，开店后看经营问题和整改。
 - 数值指标由 pandas/SQL 工具计算，不让 LLM 猜营业额、毛利、客单价。
 - 轻量 Plan-and-Execute Agent：路由、规划、工具执行、总结、证据校验。
+- 百度 POI 支持自动推荐候选商圈和手动铺位分析，并明确区分机会评分与数据可信度。
 - 报告页明确区分结论、指标、证据、风险和行动清单。
 - 使用 TypeScript 约束前端表单、API 响应、图表数据和报告结构。
 
@@ -109,7 +123,7 @@ http://localhost:3000/demo
 
 - 登录注册和复杂权限。
 - 真实外卖平台 API。
-- 自动地图/竞品爬取。
+- 真实客流、营业额和外卖平台数据自动采集。
 - 合同全文法律审查。
 - 多门店集团管理。
 - 自动 PDF 导出。
