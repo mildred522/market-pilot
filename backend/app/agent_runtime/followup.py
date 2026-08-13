@@ -17,6 +17,7 @@ from app.agent_runtime.metric_registry import (
     metric_catalog as registry_metric_catalog,
     metric_label as registry_metric_label,
     metric_snapshot as registry_metric_snapshot,
+    question_requests_normative_comparison,
     relevant_sections as registry_relevant_sections,
     required_reference_for_question,
 )
@@ -370,7 +371,7 @@ class ReportFollowupAgent:
             target_reference
             and isinstance(targets, dict)
             and required_reference in targets
-            and any(marker in question for marker in ("高", "低", "好", "差", "正常", "合理", "达标"))
+            and question_requests_normative_comparison(question)
             and target_reference not in references
         ):
             raise ValueError(

@@ -112,6 +112,14 @@ SECTION_KEYWORDS: dict[str, tuple[str, ...]] = {
     "revenue": ("营收", "营业额", "订单", "客单"),
 }
 
+NORMATIVE_COMPARISON_PHRASES = (
+    "偏高", "偏低", "过高", "过低", "较高", "较低",
+    "高不高", "低不低", "高吗", "低吗", "是否高", "是否低",
+    "好不好", "是否好", "较好", "不好",
+    "较差", "很差", "是否差", "差不差",
+    "正常", "合理", "健康", "异常", "达标",
+)
+
 
 def definition_for(path: str) -> MetricDefinition | None:
     exact = next((item for item in METRICS if item.path == path), None)
@@ -338,7 +346,7 @@ def required_reference_for_question(
 def answer_requires_benchmark_disclaimer(
     question: str, references: list[str], metrics: dict[str, Any]
 ) -> bool:
-    if not any(marker in question for marker in ("高", "低", "好", "差", "正常", "合理", "健康", "异常")):
+    if not question_requests_normative_comparison(question):
         return False
     benchmark_context = data_resource_context(metrics, question=question)["benchmark_status"]
     available = set(benchmark_context["available_for"])
@@ -348,6 +356,10 @@ def answer_requires_benchmark_disclaimer(
         and reference not in available
         for reference in references
     )
+
+
+def question_requests_normative_comparison(question: str) -> bool:
+    return any(phrase in question for phrase in NORMATIVE_COMPARISON_PHRASES)
 
 
 def _path_exists(metrics: dict[str, Any], reference: str) -> bool:

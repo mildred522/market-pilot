@@ -4,6 +4,7 @@ from typing import Any
 import pandas as pd
 
 from app.agent_runtime.metric_registry import (
+    answer_requires_benchmark_disclaimer,
     data_resource_context,
     definition_for,
     metric_evidence,
@@ -161,3 +162,11 @@ def test_every_operating_tool_has_a_complete_contract():
         assert tool.output_section
         assert tool.use_when
         assert tool.limitations
+
+
+def test_negative_review_question_is_not_mistaken_for_normative_comparison():
+    assert answer_requires_benchmark_disclaimer(
+        "中差评数是多少？",
+        ["metrics.reviews.negative_review_count"],
+        _all_metrics(),
+    ) is False
