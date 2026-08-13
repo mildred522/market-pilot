@@ -1,0 +1,153 @@
+[
+  {
+    "case_id": "fu-read-total-revenue",
+    "stage": "followup",
+    "question": "总营收是多少？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": ["read_metric"],
+    "required_evidence_refs": ["metrics.revenue.total_revenue"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "336"}]
+  },
+  {
+    "case_id": "fu-direct-order-count",
+    "stage": "followup",
+    "question": "订单数是多少？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["metrics.revenue.order_count"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "8"}]
+  },
+  {
+    "case_id": "fu-direct-ticket",
+    "stage": "followup",
+    "question": "客单价是多少？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["metrics.revenue.avg_order_value"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "42"}]
+  },
+  {
+    "case_id": "fu-direct-delivery-share",
+    "stage": "followup",
+    "question": "外卖营收占比是多少？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["metrics.channels.delivery_revenue_share"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "33.33%"}]
+  },
+  {
+    "case_id": "fu-margin-no-benchmark",
+    "stage": "followup",
+    "question": "外卖贡献率是不是偏低？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["metrics.channels.delivery_contribution_margin"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "没有保存的行业基准"}],
+    "benchmark_disclaimer_required": true
+  },
+  {
+    "case_id": "fu-margin-target",
+    "stage": "followup",
+    "question": "外卖贡献率达标吗？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:with_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["metrics.channels.delivery_contribution_margin", "targets.metrics.channels.delivery_contribution_margin"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "未达到"}]
+  },
+  {
+    "case_id": "fu-profit-target",
+    "stage": "followup",
+    "question": "月经营利润投影达标吗？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:with_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["metrics.survival.projected_monthly_profit", "targets.metrics.survival.projected_monthly_profit"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "低于商户"}]
+  },
+  {
+    "case_id": "fu-read-runway",
+    "stage": "followup",
+    "question": "现金支撑期是多少？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": ["read_metric"],
+    "required_evidence_refs": ["metrics.survival.cash_runway_months"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "2.5"}]
+  },
+  {
+    "case_id": "fu-direct-negative-reviews",
+    "stage": "followup",
+    "question": "中差评数是多少？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["metrics.reviews.negative_review_count"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "2"}]
+  },
+  {
+    "case_id": "fu-direct-peak-daypart",
+    "stage": "followup",
+    "question": "峰值时段是什么？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["metrics.time_patterns.peak_daypart_label"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "午市"}]
+  },
+  {
+    "case_id": "fu-direct-discount-share",
+    "stage": "followup",
+    "question": "折扣订单占比是多少？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["metrics.discounts.discounted_order_share"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "0%"}]
+  },
+  {
+    "case_id": "fu-missing-channel-data",
+    "stage": "followup",
+    "question": "外卖贡献率是多少？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:legacy_no_channels", "followup_scripts.json"],
+    "expected_tools": [],
+    "expected_facts": [{"path": "mode", "operator": "eq", "expected": "insufficient_data"}],
+    "insufficient_data_required": true
+  },
+  {
+    "case_id": "fu-report-priority",
+    "stage": "followup",
+    "question": "当前最优先处理什么？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": [],
+    "required_evidence_refs": ["report.risks.0", "report.actions.0"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "保本线"}]
+  },
+  {
+    "case_id": "fu-list-sections",
+    "stage": "followup",
+    "question": "这份报告覆盖了哪些方面？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": ["list_metric_sections"],
+    "required_evidence_refs": ["report.summary"],
+    "expected_facts": [{"path": "answer", "operator": "contains", "expected": "营收、菜品、评论、时段、折扣、生存线和渠道"}]
+  },
+  {
+    "case_id": "fu-duplicate-read-guard",
+    "stage": "followup",
+    "question": "总营收是多少？",
+    "analysis_mode": "focused",
+    "fixture_refs": ["report:no_targets", "followup_scripts.json"],
+    "expected_tools": ["read_metric"],
+    "required_evidence_refs": ["metrics.revenue.total_revenue"],
+    "expected_facts": [{"path": "mode", "operator": "eq", "expected": "deterministic"}]
+  }
+]

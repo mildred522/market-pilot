@@ -1,0 +1,41 @@
+{
+  "fu-read-total-revenue": {
+    "report": "no_targets",
+    "steps": [
+      {"action": "tool", "tool_name": "read_metric", "arguments": {"path": "metrics.revenue.total_revenue"}},
+      {"action": "answer", "answer": "样本总营收为 336 元。", "evidence_refs": ["metrics.revenue.total_revenue"], "confidence": 0.98}
+    ]
+  },
+  "fu-direct-order-count": {"report": "no_targets", "steps": [{"action": "answer", "answer": "样本订单数为 8 单。", "evidence_refs": ["metrics.revenue.order_count"], "confidence": 0.98}]},
+  "fu-direct-ticket": {"report": "no_targets", "steps": [{"action": "answer", "answer": "样本客单价为 42 元。", "evidence_refs": ["metrics.revenue.avg_order_value"], "confidence": 0.98}]},
+  "fu-direct-delivery-share": {"report": "no_targets", "steps": [{"action": "answer", "answer": "外卖营收占样本总营收的 33.33%。", "evidence_refs": ["metrics.channels.delivery_revenue_share"], "confidence": 0.96}]},
+  "fu-margin-no-benchmark": {"report": "no_targets", "steps": [{"action": "answer", "answer": "外卖贡献率为 36.7%，但没有保存的行业基准，不能判断它是否偏低。", "evidence_refs": ["metrics.channels.delivery_contribution_margin"], "confidence": 0.94}]},
+  "fu-margin-target": {"report": "with_targets", "steps": [{"action": "answer", "answer": "外卖贡献率为 36.7%，未达到商户设定的 40% 目标。", "evidence_refs": ["metrics.channels.delivery_contribution_margin", "targets.metrics.channels.delivery_contribution_margin"], "confidence": 0.96}]},
+  "fu-profit-target": {"report": "with_targets", "steps": [{"action": "answer", "answer": "月经营利润投影为负，低于商户设定的 0 元目标。", "evidence_refs": ["metrics.survival.projected_monthly_profit", "targets.metrics.survival.projected_monthly_profit"], "confidence": 0.96}]},
+  "fu-read-runway": {
+    "report": "no_targets",
+    "steps": [
+      {"action": "tool", "tool_name": "read_metric", "arguments": {"path": "metrics.survival.cash_runway_months"}},
+      {"action": "answer", "answer": "按当前样本投影，现金支撑期为 2.5 个月。", "evidence_refs": ["metrics.survival.cash_runway_months"], "confidence": 0.95}
+    ]
+  },
+  "fu-direct-negative-reviews": {"report": "no_targets", "steps": [{"action": "answer", "answer": "当前样本包含 2 条中差评。", "evidence_refs": ["metrics.reviews.negative_review_count"], "confidence": 0.98}]},
+  "fu-direct-peak-daypart": {"report": "no_targets", "steps": [{"action": "answer", "answer": "样本营收峰值时段是午市。", "evidence_refs": ["metrics.time_patterns.peak_daypart_label"], "confidence": 0.98}]},
+  "fu-direct-discount-share": {"report": "no_targets", "steps": [{"action": "answer", "answer": "样本折扣订单占比为 0%。", "evidence_refs": ["metrics.discounts.discounted_order_share"], "confidence": 0.98}]},
+  "fu-missing-channel-data": {"report": "legacy_no_channels", "steps": [{"action": "insufficient_data", "answer": "当前报告没有渠道指标。", "confidence": 1.0}]},
+  "fu-report-priority": {"report": "no_targets", "steps": [{"action": "answer", "answer": "应优先把日营收提升到保本线以上。", "evidence_refs": ["report.risks.0", "report.actions.0"], "confidence": 0.9}]},
+  "fu-list-sections": {
+    "report": "no_targets",
+    "steps": [
+      {"action": "tool", "tool_name": "list_metric_sections", "arguments": {}},
+      {"action": "answer", "answer": "报告覆盖营收、菜品、评论、时段、折扣、生存线和渠道。", "evidence_refs": ["report.summary"], "confidence": 0.9}
+    ]
+  },
+  "fu-duplicate-read-guard": {
+    "report": "no_targets",
+    "steps": [
+      {"action": "tool", "tool_name": "read_metric", "arguments": {"path": "metrics.revenue.total_revenue"}},
+      {"action": "tool", "tool_name": "read_metric", "arguments": {"path": "metrics.revenue.total_revenue"}}
+    ]
+  }
+}

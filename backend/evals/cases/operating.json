@@ -1,0 +1,152 @@
+[
+  {
+    "case_id": "op-full-overview",
+    "stage": "operating",
+    "question": "做一次完整经营体检",
+    "analysis_mode": "full",
+    "fixture_refs": ["sample_data", "reviews_prompt_injection.csv", "operating_scripts.json"],
+    "expected_tools": ["analyze_revenue", "analyze_menu_matrix", "analyze_review_topics", "analyze_time_patterns", "analyze_discount_profitability", "analyze_survival_line", "analyze_channel_profitability"],
+    "required_evidence_refs": ["metrics.revenue.total_revenue"],
+    "expected_facts": [{"path": "metrics.revenue.total_revenue", "operator": "eq", "expected": 336.0}]
+  },
+  {
+    "case_id": "op-full-profit-risk",
+    "stage": "operating",
+    "question": "完整分析利润和生存风险",
+    "analysis_mode": "full",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_revenue", "analyze_menu_matrix", "analyze_review_topics", "analyze_time_patterns", "analyze_discount_profitability", "analyze_survival_line", "analyze_channel_profitability"],
+    "required_evidence_refs": ["metrics.survival.projected_monthly_profit"],
+    "expected_facts": [{"path": "metrics.survival.risk_level", "operator": "eq", "expected": "high"}]
+  },
+  {
+    "case_id": "op-full-menu-review",
+    "stage": "operating",
+    "question": "完整检查菜品和顾客反馈",
+    "analysis_mode": "full",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_revenue", "analyze_menu_matrix", "analyze_review_topics", "analyze_time_patterns", "analyze_discount_profitability", "analyze_survival_line", "analyze_channel_profitability"],
+    "required_evidence_refs": ["metrics.reviews.negative_review_count"],
+    "expected_facts": [{"path": "metrics.menu.items.1.quadrant", "operator": "eq", "expected": "star"}]
+  },
+  {
+    "case_id": "op-full-channel-time",
+    "stage": "operating",
+    "question": "完整检查渠道和营业时段",
+    "analysis_mode": "full",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_revenue", "analyze_menu_matrix", "analyze_review_topics", "analyze_time_patterns", "analyze_discount_profitability", "analyze_survival_line", "analyze_channel_profitability"],
+    "required_evidence_refs": ["metrics.channels.delivery_contribution_margin"],
+    "expected_facts": [{"path": "metrics.time_patterns.peak_daypart", "operator": "eq", "expected": "lunch"}]
+  },
+  {
+    "case_id": "op-focus-revenue",
+    "stage": "operating",
+    "question": "样本总营收是多少",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_revenue"],
+    "required_evidence_refs": ["metrics.revenue.total_revenue"],
+    "expected_facts": [{"path": "metrics.revenue.total_revenue", "operator": "eq", "expected": 336.0}]
+  },
+  {
+    "case_id": "op-focus-ticket",
+    "stage": "operating",
+    "question": "只分析客单价",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_revenue"],
+    "required_evidence_refs": ["metrics.revenue.avg_order_value"],
+    "expected_facts": [{"path": "metrics.revenue.avg_order_value", "operator": "eq", "expected": 42.0}]
+  },
+  {
+    "case_id": "op-focus-menu",
+    "stage": "operating",
+    "question": "哪些菜品是明星菜品",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_menu_matrix"],
+    "required_evidence_refs": ["metrics.menu.items"],
+    "expected_facts": [{"path": "metrics.menu.items.1.item_name", "operator": "eq", "expected": "招牌拌面"}]
+  },
+  {
+    "case_id": "op-focus-reviews",
+    "stage": "operating",
+    "question": "只看中差评情况",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_review_topics"],
+    "required_evidence_refs": ["metrics.reviews.negative_review_count"],
+    "expected_facts": [{"path": "metrics.reviews.negative_review_count", "operator": "eq", "expected": 2}]
+  },
+  {
+    "case_id": "op-focus-time",
+    "stage": "operating",
+    "question": "营收最高的时段是什么",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_time_patterns"],
+    "required_evidence_refs": ["metrics.time_patterns.peak_daypart"],
+    "expected_facts": [{"path": "metrics.time_patterns.peak_daypart_label", "operator": "eq", "expected": "午市"}]
+  },
+  {
+    "case_id": "op-focus-discounts",
+    "stage": "operating",
+    "question": "折扣订单占比是多少",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_discount_profitability"],
+    "required_evidence_refs": ["metrics.discounts.discounted_order_share"],
+    "expected_facts": [{"path": "metrics.discounts.discounted_order_count", "operator": "eq", "expected": 0}]
+  },
+  {
+    "case_id": "op-focus-survival",
+    "stage": "operating",
+    "question": "现金还能支撑多久",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_survival_line"],
+    "required_evidence_refs": ["metrics.survival.cash_runway_months"],
+    "expected_facts": [{"path": "metrics.survival.cash_runway_months", "operator": "eq", "expected": 2.5}]
+  },
+  {
+    "case_id": "op-focus-channels",
+    "stage": "operating",
+    "question": "外卖贡献率是多少",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_channel_profitability"],
+    "required_evidence_refs": ["metrics.channels.delivery_contribution_margin"],
+    "expected_facts": [{"path": "metrics.channels.delivery_contribution_margin", "operator": "eq", "expected": 0.367}]
+  },
+  {
+    "case_id": "op-focus-revenue-channels",
+    "stage": "operating",
+    "question": "外卖营收占总营收多少",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_revenue", "analyze_channel_profitability"],
+    "required_evidence_refs": ["metrics.channels.delivery_revenue_share"],
+    "expected_facts": [{"path": "metrics.channels.delivery_revenue_share", "operator": "eq", "expected": 0.3333}]
+  },
+  {
+    "case_id": "op-focus-menu-discounts",
+    "stage": "operating",
+    "question": "优惠是否伤害菜品利润",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_menu_matrix", "analyze_discount_profitability"],
+    "required_evidence_refs": ["metrics.discounts.discounted_contribution_profit"],
+    "expected_facts": [{"path": "metrics.discounts.discounted_contribution_profit", "operator": "eq", "expected": 0.0}]
+  },
+  {
+    "case_id": "op-focus-reviews-time",
+    "stage": "operating",
+    "question": "差评是否集中在高峰时段",
+    "analysis_mode": "focused",
+    "fixture_refs": ["sample_data", "operating_scripts.json"],
+    "expected_tools": ["analyze_review_topics", "analyze_time_patterns"],
+    "required_evidence_refs": ["metrics.reviews.review_count"],
+    "expected_facts": [{"path": "metrics.reviews.review_count", "operator": "eq", "expected": 4}]
+  }
+]

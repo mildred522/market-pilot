@@ -1,0 +1,17 @@
+{
+  "op-full-overview": {"goal": "complete review", "plan_tools": ["analyze_revenue"], "evidence_ref": "metrics.revenue.total_revenue", "summary": "已完成完整经营体检。", "claim": "样本营收已完成核算"},
+  "op-full-profit-risk": {"goal": "review profit risk", "plan_tools": ["analyze_survival_line"], "evidence_ref": "metrics.survival.projected_monthly_profit", "summary": "已完成利润与生存风险分析。", "claim": "月利润投影来自生存线工具"},
+  "op-full-menu-review": {"goal": "review menu and feedback", "plan_tools": ["analyze_menu_matrix", "analyze_review_topics"], "evidence_ref": "metrics.reviews.negative_review_count", "summary": "已完成菜品和反馈分析。", "claim": "中差评数量已完成统计"},
+  "op-full-channel-time": {"goal": "review channels and time", "plan_tools": ["analyze_channel_profitability", "analyze_time_patterns"], "evidence_ref": "metrics.channels.delivery_contribution_margin", "summary": "已完成渠道和时段分析。", "claim": "外卖贡献率来自渠道工具"},
+  "op-focus-revenue": {"goal": "read revenue", "plan_tools": ["analyze_revenue"], "evidence_ref": "metrics.revenue.total_revenue", "summary": "已核算样本总营收。", "claim": "总营收来自订单实收合计"},
+  "op-focus-ticket": {"goal": "read average order value", "plan_tools": ["analyze_revenue"], "evidence_ref": "metrics.revenue.avg_order_value", "summary": "已核算客单价。", "claim": "客单价来自营收与订单数"},
+  "op-focus-menu": {"goal": "find star menu items", "plan_tools": ["analyze_menu_matrix"], "evidence_ref": "metrics.menu.items", "summary": "已完成菜品矩阵分析。", "claim": "菜品象限来自销量和毛利率"},
+  "op-focus-reviews": {"goal": "count negative reviews", "plan_tools": ["analyze_review_topics"], "evidence_ref": "metrics.reviews.negative_review_count", "summary": "已统计中差评。", "claim": "中差评数量来自评论样本"},
+  "op-focus-time": {"goal": "find peak daypart", "plan_tools": ["analyze_time_patterns"], "evidence_ref": "metrics.time_patterns.peak_daypart", "summary": "已分析营业时段。", "claim": "最高营收时段来自订单时间"},
+  "op-focus-discounts": {"goal": "measure discounts", "plan_tools": ["analyze_discount_profitability"], "evidence_ref": "metrics.discounts.discounted_order_share", "summary": "已分析折扣订单。", "claim": "折扣占比来自标价与实收比较"},
+  "op-focus-survival": {"goal": "measure runway", "plan_tools": ["analyze_survival_line"], "evidence_ref": "metrics.survival.cash_runway_months", "summary": "已分析现金支撑期。", "claim": "现金支撑期来自亏损投影"},
+  "op-focus-channels": {"goal": "measure delivery margin", "plan_tools": ["analyze_channel_profitability"], "evidence_ref": "metrics.channels.delivery_contribution_margin", "summary": "已分析外卖贡献率。", "claim": "贡献率扣除了食材佣金和包材"},
+  "op-focus-revenue-channels": {"goal": "compare delivery and total revenue", "plan_tools": ["analyze_revenue", "analyze_channel_profitability"], "evidence_ref": "metrics.channels.delivery_revenue_share", "summary": "已分析外卖营收占比。", "claim": "外卖占比来自渠道营收和总营收"},
+  "op-focus-menu-discounts": {"goal": "review promotion contribution", "plan_tools": ["analyze_menu_matrix", "analyze_discount_profitability"], "evidence_ref": "metrics.discounts.discounted_contribution_profit", "summary": "已分析优惠后的菜品贡献。", "claim": "折扣贡献利润来自实收和食材成本"},
+  "op-focus-reviews-time": {"goal": "review feedback and dayparts", "plan_tools": ["analyze_review_topics", "analyze_time_patterns"], "evidence_ref": "metrics.reviews.review_count", "summary": "已检查评论和时段数据边界。", "claim": "当前报告包含评论样本数量"}
+}
