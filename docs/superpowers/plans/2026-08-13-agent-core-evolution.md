@@ -311,6 +311,8 @@ Add:
 
 Persist the user question and final public answer. Do not persist raw chain-of-thought, API keys, full provider responses, or rejected model content as normal memory. Rejected candidates remain diagnostic data with bounded length and explicit status.
 
+- [x] Persist one conversation per analysis and sanitized public user/assistant messages.
+
 ### Task 4.2: Add a structured project profile
 
 **Files:**
@@ -328,6 +330,9 @@ Persist only stable, user-confirmed facts:
 
 Never infer a stable profile field from one ambiguous user message without confirmation.
 
+- [x] Persist explicit project identity, stage, city, category, targets, costs, preferences, timestamps, and sources.
+- [x] Reuse confirmed targets without overriding targets already persisted on a report.
+
 ### Task 4.3: Retrieve bounded conversational context
 
 **Files:**
@@ -336,11 +341,11 @@ Never infer a stable profile field from one ambiguous user message without confi
 - Modify: `backend/app/agent_runtime/prompts.py`
 - Test: `backend/tests/test_memory_context_builder.py`
 
-- [ ] Supply at most the latest six public messages to the follow-up Agent.
-- [ ] Always include the persisted report independently of chat history.
-- [ ] Label historical messages as untrusted context.
-- [ ] Resolve references against the current report, not against model prose from prior turns.
-- [ ] When the context budget is exceeded, retain structured facts and recent messages; do not generate an opaque long-term summary yet.
+- [x] Supply at most the latest six public messages to the follow-up Agent.
+- [x] Always include the persisted report independently of chat history.
+- [x] Label historical messages as untrusted context.
+- [x] Resolve references against the current report, not against model prose from prior turns.
+- [x] When the context budget is exceeded, retain structured facts and recent messages; do not generate an opaque long-term summary yet.
 
 ### Task 4.4: Add exact historical metric comparison
 
@@ -350,6 +355,8 @@ Never infer a stable profile field from one ambiguous user message without confi
 - Test: `backend/tests/test_metric_history.py`
 
 Expose a read-only `read_metric_history` tool that retrieves the same canonical metric path from prior analyses of the same project. Require matching units and metric definitions before calculating a change. Keep retrieval SQL- and metadata-based.
+
+- [x] Add exact same-project historical metric retrieval with current and prior evidence references.
 
 **Exit gate:** A follow-up can understand the immediately preceding exchange, reuse confirmed project targets, and compare a current metric with a prior report without embeddings.
 

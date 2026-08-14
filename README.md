@@ -12,6 +12,7 @@
 - `backend/`：FastAPI 后端，包含 `/health` 健康检查。
 - `backend/app/tools/`：保本线、营收、菜品矩阵和评论主题等确定性分析工具。
 - `backend/app/agent_runtime/`：结构化 Plan-and-Execute 运行时，包含模型客户端、工具白名单、动态规划、统一工具执行契约、证据引用校验和确定性降级。
+- `backend/app/memory/`：基于 SQLite/SQLAlchemy 的结构化会话、项目档案、受限上下文和历史指标比较，不依赖向量数据库。
 - `backend/app/location/`：百度 POI 候选生成、圈层采集、机会评分、可信度评估、快照复用和降级处理。
 - `backend/app/agents/`：确定性报告与兼容降级逻辑。
 - `frontend/`：Next.js + React + TypeScript 前端，包含业务入口、开店前问卷、开店后 CSV 上传、自动字段映射和诊断报告页。
@@ -128,6 +129,7 @@ http://localhost:3000/demo
 - 轻量 Plan-and-Execute Agent：路由、规划、工具执行、总结、证据校验。
 - 经营分析支持完整体检和聚焦问题两种模式；聚焦模式只调用一至四个必要工具，并允许一次受限重规划。
 - 工具统一返回状态、证据、耗时和安全错误码；可选工具失败时允许带警告的局部结果，必需工具失败时停止综合。
+- 报告追问保存公开问答，最多读取最近 6 条消息，并可通过只读工具比较同一项目的历史指标。
 - 百度 POI 支持自动推荐候选商圈和手动铺位分析，并明确区分机会评分与数据可信度。
 - 报告页明确区分结论、指标、证据、风险和行动清单。
 - 使用 TypeScript 约束前端表单、API 响应、图表数据和报告结构。
@@ -149,4 +151,5 @@ http://localhost:3000/demo
 - [固定轮次实施计划](docs/superpowers/plans/2026-07-04-restaurant-agent-mvp-rounds.md)
 - [API 契约](docs/api-contract.md)
 - [Agent 评测基线](docs/agent-evaluation.md)
+- [Agent Memory](docs/agent-memory.md)
 - [Demo 脚本](docs/demo-script.md)

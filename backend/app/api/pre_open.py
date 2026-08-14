@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.models import AnalysisResult, PreOpenInput
+from app.db.models import AnalysisResult, PreOpenInput, Project
 from app.db.session import get_db
 from app.schemas.pre_open import PreOpenAnalyzeRequest, PreOpenAnalyzeResponse
+from app.memory.project_profile import ProjectProfileService
 
 router = APIRouter(prefix="/pre-open", tags=["pre-open"])
 
@@ -12,6 +13,9 @@ router = APIRouter(prefix="/pre-open", tags=["pre-open"])
 def analyze_pre_open(
     payload: PreOpenAnalyzeRequest, db: Session = Depends(get_db)
 ) -> PreOpenAnalyzeResponse:
+    project = db.get(Project, payload.project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="project not found")
     pre_open_input = PreOpenInput(**payload.model_dump())
     db.add(pre_open_input)
 
@@ -60,6 +64,21 @@ def analyze_pre_open(
         warnings_json=risks,
     )
     db.add(result)
+    ProjectProfileService(db).upsert_confirmed(
+        project=project,
+        city=payload.city,
+        category=payload.category,
+        cost_assumptions={
+            "monthly_rent": payload.monthly_rent,
+            "total_investment": payload.total_investment,
+            "own_capital": payload.own_capital,
+            "debt_amount": payload.debt_amount,
+            "expected_daily_orders": payload.expected_daily_orders,
+            "expected_avg_order_value": payload.expected_avg_order_value,
+            "expected_gross_margin": payload.expected_gross_margin,
+        },
+        source="user_input",
+    )
     db.commit()
     db.refresh(result)
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.agent_runtime.contracts import FollowupStep
 from app.agent_runtime.llm_client import (
@@ -23,6 +23,9 @@ from app.agent_runtime.metric_registry import (
 )
 from app.agent_runtime.prompts import FOLLOWUP_SYSTEM_PROMPT, PROMPT_VERSION
 
+if TYPE_CHECKING:
+    from app.memory.history_service import MetricHistoryService
+
 
 READ_ONLY_TOOLS = {
     "list_metric_sections": {
@@ -41,6 +44,10 @@ READ_ONLY_TOOLS = {
     "read_report_summary": {
         "description": "Read the persisted summary, evidence, risks, and actions.",
         "arguments": {},
+    },
+    "read_metric_history": {
+        "description": "Compare one exact canonical metric with the prior analysis of the same project.",
+        "arguments": {"path": "metrics.section.field"},
     },
 }
 
@@ -75,6 +82,8 @@ class ReportFollowupAgent:
         evidence: list[str],
         actions: list[str],
         risks: list[str],
+        conversation_context: dict[str, object] | None = None,
+        history_service: MetricHistoryService | None = None,
     ) -> dict[str, Any]:
         metrics = _enrich_metrics(metrics)
         if not self._client.configured:
@@ -93,7 +102,13 @@ class ReportFollowupAgent:
             "metric_catalog": metric_catalog,
             "metric_snapshot": _metric_snapshot(metrics, question=question),
             "data_resources": data_resource_context(metrics, question=question),
+            "project_profile": metrics.get("_project_profile", {}),
             "report": _report_context(summary, evidence, actions, risks),
+            "conversation_history": conversation_context
+            or {
+                "trust": "untrusted_historical_context",
+                "messages": [],
+            },
             "read_only_tools": READ_ONLY_TOOLS,
         }
         for step_number in range(1, self._max_steps + 1):
@@ -139,6 +154,7 @@ class ReportFollowupAgent:
                             evidence,
                             actions,
                             risks,
+                            history_service,
                             question,
                         )
                     except ValueError as error:
@@ -208,6 +224,7 @@ class ReportFollowupAgent:
                         evidence,
                         actions,
                         risks,
+                        history_service,
                     )
                 except RecoverableToolError as error:
                     last_recoverable_error = error
@@ -322,6 +339,7 @@ class ReportFollowupAgent:
         evidence: list[str],
         actions: list[str],
         risks: list[str],
+        history_service: MetricHistoryService | None,
     ) -> Any:
         if name == "list_metric_sections":
             return [key for key in metrics if not key.startswith("_")]
@@ -329,6 +347,19 @@ class ReportFollowupAgent:
             return _metric_catalog(metrics)
         if name == "read_report_summary":
             return {"summary": summary, "evidence": evidence, "actions": actions, "risks": risks}
+        if name == "read_metric_history":
+            path = arguments.get("path")
+            if history_service is None:
+                raise RecoverableToolError(
+                    "metric history is unavailable for this report",
+                    code="history_unavailable",
+                )
+            if not isinstance(path, str) or not path.startswith("metrics."):
+                raise RecoverableToolError(
+                    "read_metric_history requires a metrics.* path",
+                    code="invalid_tool_arguments",
+                )
+            return history_service.read(path)
         if name == "read_metric":
             path = arguments.get("path")
             if not isinstance(path, str) or not path.startswith("metrics."):
@@ -348,6 +379,7 @@ class ReportFollowupAgent:
         evidence: list[str],
         actions: list[str],
         risks: list[str],
+        history_service: MetricHistoryService | None,
         question: str,
     ) -> None:
         if not step.answer or not references:
@@ -359,7 +391,7 @@ class ReportFollowupAgent:
             "risks": risks,
         }
         for reference in references:
-            _resolve_reference(metrics, report, reference)
+            _resolve_reference(metrics, report, reference, history_service)
         required_reference = required_reference_for_question(question, metrics)
         if required_reference and required_reference not in references:
             raise ValueError(
@@ -514,7 +546,10 @@ def _resolve_metric(metrics: dict[str, Any], reference: str) -> Any:
 
 
 def _resolve_reference(
-    metrics: dict[str, Any], report: dict[str, Any], reference: str
+    metrics: dict[str, Any],
+    report: dict[str, Any],
+    reference: str,
+    history_service: MetricHistoryService | None = None,
 ) -> Any:
     if reference.startswith("metrics."):
         return _resolve_metric(metrics, reference)
@@ -524,6 +559,10 @@ def _resolve_reference(
         if isinstance(targets, dict) and metric_reference in targets:
             return targets[metric_reference]
         raise ValueError(f"unknown target reference: {reference}")
+    if reference.startswith("history.analysis."):
+        if history_service is None:
+            raise ValueError("metric history is unavailable")
+        return history_service.resolve(reference)
     if not reference.startswith("report."):
         raise ValueError(f"invalid evidence reference: {reference}")
     current: Any = report
@@ -546,7 +585,7 @@ def _canonical_reference(reference: str) -> str:
 def _normalize_tool_arguments(
     tool_name: str | None, arguments: dict[str, Any]
 ) -> dict[str, Any]:
-    if tool_name != "read_metric":
+    if tool_name not in {"read_metric", "read_metric_history"}:
         return {}
     raw_path = next(
         (

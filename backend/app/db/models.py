@@ -115,6 +115,76 @@ class AnalysisResult(Base):
     warnings_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
 
 
+class AnalysisConversation(Base):
+    __tablename__ = "analysis_conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("analysis_results.id"), nullable=False, unique=True, index=True
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
+class AnalysisMessage(Base):
+    __tablename__ = "analysis_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("analysis_conversations.id"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    evidence_refs_json: Mapped[list[str]] = mapped_column(
+        "evidence_refs", JSON, nullable=False, default=list
+    )
+    tool_calls_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        "tool_calls", JSON, nullable=False, default=list
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+
+class ProjectProfile(Base):
+    __tablename__ = "project_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, unique=True, index=True
+    )
+    store_identity: Mapped[str] = mapped_column(String(120), nullable=False)
+    current_stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    city: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    merchant_targets_json: Mapped[dict[str, Any]] = mapped_column(
+        "merchant_targets", JSON, nullable=False, default=dict
+    )
+    cost_assumptions_json: Mapped[dict[str, Any]] = mapped_column(
+        "cost_assumptions", JSON, nullable=False, default=dict
+    )
+    preferences_json: Mapped[dict[str, Any]] = mapped_column(
+        "preferences", JSON, nullable=False, default=dict
+    )
+    sources_json: Mapped[dict[str, str]] = mapped_column(
+        "sources", JSON, nullable=False, default=dict
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
 class ExternalContextSnapshot(Base):
     __tablename__ = "external_context_snapshots"
 

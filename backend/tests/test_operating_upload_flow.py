@@ -1,7 +1,10 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.db.models import ProjectProfile
+from app.db.session import SessionLocal
 from app.main import app
 
 
@@ -77,6 +80,13 @@ def test_uploaded_chinese_csv_files_generate_real_operating_report():
     assert body["metrics"]["channels"]["delivery_contribution_profit"] == 11.3
     assert all(Path(item["filename"]).name == item["filename"] for item in uploaded.values())
     assert all(item["missing_columns"] == [] for item in uploaded.values())
+    with SessionLocal() as db:
+        profile = db.scalar(
+            select(ProjectProfile).where(ProjectProfile.project_id == project["id"])
+        )
+        assert profile is not None
+        assert profile.cost_assumptions_json["monthly_rent"] == 18000.0
+        assert profile.sources_json["cost_assumptions"] == "user_input"
 
 
 def test_operating_analysis_rejects_incomplete_mapping():

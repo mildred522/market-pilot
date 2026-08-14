@@ -1,5 +1,8 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.db.models import ProjectProfile
+from app.db.session import SessionLocal
 from app.main import app
 
 
@@ -57,6 +60,16 @@ def test_pre_open_analyze_returns_basic_risk_report():
         assert body["metrics"]["estimated_daily_gross_profit"] == 1339.2
         assert "risks" in body
         assert "actions" in body
+        with SessionLocal() as db:
+            profile = db.scalar(
+                select(ProjectProfile).where(
+                    ProjectProfile.project_id == project["id"]
+                )
+            )
+            assert profile is not None
+            assert profile.city == "成都"
+            assert profile.category == "粉面"
+            assert profile.store_identity == "社区粉面店"
 
 
 def test_get_analysis_returns_persisted_pre_open_report():

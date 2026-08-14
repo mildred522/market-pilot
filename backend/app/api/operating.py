@@ -11,6 +11,7 @@ from app.schemas.operating import (
     OperatingAnalyzeSampleRequest,
     OperatingFileSelection,
 )
+from app.memory.project_profile import ProjectProfileService
 from app.services.agent_service import AgentService
 from app.services.csv_ingestion_service import (
     CsvIngestionError,
@@ -28,7 +29,7 @@ SAMPLE_DIR = Path(__file__).resolve().parents[2] / "sample_data"
 def analyze_operating(
     payload: OperatingAnalyzeRequest, db: Session = Depends(get_db)
 ) -> dict[str, object]:
-    _require_operating_project(db, payload.project_id)
+    project = _require_operating_project(db, payload.project_id)
     try:
         orders = _load_selection(db, payload.project_id, "orders", payload.orders)
         menu = _load_selection(db, payload.project_id, "menu_items", payload.menu_items)
@@ -58,6 +59,24 @@ def analyze_operating(
         menu=menu,
         reviews=reviews,
         cost_assumptions=payload.cost_assumptions.model_dump(mode="json"),
+    )
+    assumptions = payload.cost_assumptions.model_dump(mode="json")
+    target_fields = {
+        "target_avg_order_value": "metrics.revenue.avg_order_value",
+        "target_delivery_contribution_margin": "metrics.channels.delivery_contribution_margin",
+        "target_monthly_profit": "metrics.survival.projected_monthly_profit",
+    }
+    ProjectProfileService(db).upsert_confirmed(
+        project=project,
+        merchant_targets={
+            metric_path: assumptions[field]
+            for field, metric_path in target_fields.items()
+            if assumptions.get(field) is not None
+        },
+        cost_assumptions={
+            key: value for key, value in assumptions.items() if key not in target_fields
+        },
+        source="user_input",
     )
     return _persist_report(db, report)
 

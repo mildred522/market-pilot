@@ -289,6 +289,7 @@ export type AnalysisReport = {
 };
 
 export type AnalysisFollowupResponse = {
+  conversation_id?: number;
   answer: string;
   evidence_refs: string[];
   confidence: number;
