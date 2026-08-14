@@ -6,6 +6,7 @@ from app.db.models import (
     AnalysisConversation,
     AnalysisMessage,
     AnalysisResult,
+    AgentExecutionTrace,
     Base,
     Project,
 )
@@ -122,3 +123,12 @@ def test_analysis_chat_api_persists_public_question_and_answer():
         assert [message.role for message in messages] == ["user", "assistant"]
         assert messages[0].content == "这份报告的结论是什么？"
         assert messages[1].content == body["answer"]
+        trace = db.scalar(
+            select(AgentExecutionTrace).where(
+                AgentExecutionTrace.analysis_id == report["analysis_id"],
+                AgentExecutionTrace.operation == "followup",
+            )
+        )
+        assert trace is not None
+        assert trace.trace_json["selected_memory_ids"] == []
+        assert "content" not in str(trace.trace_json).lower()

@@ -102,6 +102,9 @@ export function updateAgentIntegration(payload: {
   model: string;
   baseUrl: string;
   provider: string;
+  plannerModel?: string;
+  synthesizerModel?: string;
+  followupModel?: string;
 }): Promise<IntegrationStatus> {
   return request<IntegrationStatus>("/dashboard/integrations/agent", {
     method: "PUT",
@@ -109,7 +112,10 @@ export function updateAgentIntegration(payload: {
       api_key: payload.apiKey,
       model: payload.model,
       base_url: payload.baseUrl,
-      provider: payload.provider
+      provider: payload.provider,
+      planner_model: payload.plannerModel ?? "",
+      synthesizer_model: payload.synthesizerModel ?? "",
+      followup_model: payload.followupModel ?? ""
     })
   });
 }

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from app.agent_runtime.contracts import AgentPlan, CompactAgentSynthesis
-from app.agent_runtime.llm_client import LlmClient, LlmError
+from app.agent_runtime.contracts import AgentPlan, CompactAgentSynthesis, LlmCallMetadata
+from app.agent_runtime.llm_client import LlmClient, LlmError, generate_json_with_metadata
 from app.agent_runtime.metric_registry import (
     data_resource_context,
     format_value,
@@ -20,6 +20,7 @@ def synthesize_operating_report(
     client: LlmClient,
     state: AgentState,
     plan: AgentPlan,
+    metadata_sink: list[LlmCallMetadata] | None = None,
 ) -> tuple[AgentState, bool, list[str]]:
     if not client.configured:
         return _deterministic(state), False, ["synthesizer: LLM not configured"]
@@ -42,12 +43,17 @@ def synthesize_operating_report(
         default=str,
     )
     try:
-        result = client.generate_json(
+        generation = generate_json_with_metadata(
+            client=client,
+            role="synthesizer",
             system_prompt=SYNTHESIZER_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             response_model=CompactAgentSynthesis,
             temperature=0.3,
         )
+        if metadata_sink is not None:
+            metadata_sink.append(generation.metadata)
+        result = generation.output
         _verify_finding_references(result, state.tool_results)
         state.summary = result.summary
         state.evidence = [
@@ -61,6 +67,8 @@ def synthesize_operating_report(
         ]
         return verify_evidence(state), True, []
     except (LlmError, ValueError) as error:
+        if isinstance(error, LlmError) and error.metadata and metadata_sink is not None:
+            metadata_sink.append(error.metadata)
         return _deterministic(state), False, [f"synthesizer: {error}"]
 
 

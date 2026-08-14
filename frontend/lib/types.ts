@@ -6,6 +6,16 @@ export type IntegrationStatus = {
   model?: string | null;
   provider?: string;
   base_url?: string;
+  role_models?: {
+    planner: string | null;
+    synthesizer: string | null;
+    followup: string | null;
+  };
+  effective_role_models?: {
+    planner: string | null;
+    synthesizer: string | null;
+    followup: string | null;
+  };
 };
 
 export type IntegrationTestResult = {

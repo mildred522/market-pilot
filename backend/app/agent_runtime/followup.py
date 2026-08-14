@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
-from app.agent_runtime.contracts import FollowupStep
+from app.agent_runtime.contracts import FollowupStep, LlmCallMetadata
 from app.agent_runtime.llm_client import (
     LlmClient,
     LlmError,
     LlmOutputError,
+    generate_json_with_metadata,
     llm_client_from_environment,
 )
 from app.agent_runtime.metric_registry import (
@@ -70,7 +72,7 @@ class MetricNotFoundError(RecoverableToolError):
 
 class ReportFollowupAgent:
     def __init__(self, client: LlmClient | None = None, max_steps: int = 4) -> None:
-        self._client = client or llm_client_from_environment()
+        self._client = client or llm_client_from_environment("followup")
         self._max_steps = max(1, min(max_steps, 4))
 
     def answer(
@@ -84,10 +86,36 @@ class ReportFollowupAgent:
         risks: list[str],
         conversation_context: dict[str, object] | None = None,
         history_service: MetricHistoryService | None = None,
+        selected_memory_ids: list[int] | None = None,
     ) -> dict[str, Any]:
+        llm_calls: list[LlmCallMetadata] = []
+        request_id = str(uuid4())
+
+        def finish(result: dict[str, Any]) -> dict[str, Any]:
+            failure_detail = result.get("failure_detail")
+            verification_failures = []
+            if isinstance(failure_detail, dict) and failure_detail.get("reason"):
+                verification_failures.append(str(failure_detail["reason"])[:500])
+            fallback_reason = result.get("fallback_reason")
+            return {
+                **result,
+                "llm_calls": [item.model_dump(mode="json") for item in llm_calls],
+                "agent_trace": {
+                    "request_id": request_id,
+                    "llm_calls": [
+                        item.model_dump(mode="json") for item in llm_calls
+                    ],
+                    "selected_memory_ids": list(selected_memory_ids or []),
+                    "verification_failures": verification_failures,
+                    "fallback_reasons": [str(fallback_reason)[:500]]
+                    if fallback_reason
+                    else [],
+                },
+            }
+
         metrics = _enrich_metrics(metrics)
         if not self._client.configured:
-            return self._fallback(summary, evidence, "LLM not configured")
+            return finish(self._fallback(summary, evidence, "LLM not configured"))
 
         observations: list[dict[str, Any]] = []
         tool_calls: list[dict[str, Any]] = []
@@ -114,7 +142,9 @@ class ReportFollowupAgent:
         for step_number in range(1, self._max_steps + 1):
             step: FollowupStep | None = None
             try:
-                step = self._client.generate_json(
+                generation = generate_json_with_metadata(
+                    client=self._client,
+                    role="followup",
                     system_prompt=FOLLOWUP_SYSTEM_PROMPT,
                     user_prompt=json.dumps(
                         {
@@ -132,14 +162,16 @@ class ReportFollowupAgent:
                     response_model=FollowupStep,
                     temperature=0.3,
                 )
+                llm_calls.append(generation.metadata)
+                step = generation.output
                 if step.action == "insufficient_data":
-                    return self._insufficient_data(
+                    return finish(self._insufficient_data(
                         metrics=metrics,
                         tool_calls=tool_calls,
                         steps=step_number,
                         missing_metrics=_missing_metric_references(observations),
                         candidate=step.answer,
-                    )
+                    ))
                 if step.action == "answer":
                     references = [
                         _canonical_reference(reference)
@@ -171,7 +203,7 @@ class ReportFollowupAgent:
                             }
                         )
                         continue
-                    return {
+                    return finish({
                         "answer": step.answer,
                         "evidence_refs": references,
                         "confidence": step.confidence,
@@ -179,7 +211,7 @@ class ReportFollowupAgent:
                         "steps": step_number,
                         "tool_calls": tool_calls,
                         "prompt_version": PROMPT_VERSION,
-                    }
+                    })
                 raw_arguments = step.arguments.model_dump(exclude_none=True)
                 normalized_arguments = raw_arguments
                 try:
@@ -211,7 +243,7 @@ class ReportFollowupAgent:
                             candidate=_step_candidate(step),
                         )
                         if grounded:
-                            return grounded
+                            return finish(grounded)
                         continue
                     tool_calls.append(
                         {"tool": step.tool_name, "arguments": normalized_arguments}
@@ -254,24 +286,28 @@ class ReportFollowupAgent:
                 )
                 successful_tool_results[call_key] = observation
             except LlmOutputError as error:
-                return self._fallback(
+                if error.metadata:
+                    llm_calls.append(error.metadata)
+                return finish(self._fallback(
                     summary,
                     evidence,
                     str(error),
                     tool_calls,
                     candidate=error.candidate_content,
                     failure_stage=error.error_code,
-                )
+                ))
             except ValueError as error:
-                return self._fallback(
+                return finish(self._fallback(
                     summary,
                     evidence,
                     str(error),
                     tool_calls,
                     candidate=_step_candidate(step),
                     failure_stage="answer_validation",
-                )
+                ))
             except LlmError as error:
+                if error.metadata:
+                    llm_calls.append(error.metadata)
                 grounded = self._grounded_fallback(
                     question=question,
                     metrics=metrics,
@@ -282,16 +318,16 @@ class ReportFollowupAgent:
                     failure_stage="model_request",
                 )
                 if grounded:
-                    return grounded
-                return self._fallback(
+                    return finish(grounded)
+                return finish(self._fallback(
                     summary,
                     evidence,
                     str(error),
                     tool_calls,
                     failure_stage="model_request",
-                )
+                ))
         if last_recoverable_error and last_recoverable_error.code == "metric_not_found":
-            return self._insufficient_data(
+            return finish(self._insufficient_data(
                 metrics=metrics,
                 tool_calls=tool_calls,
                 steps=self._max_steps,
@@ -299,16 +335,16 @@ class ReportFollowupAgent:
                 if last_recoverable_error.reference
                 else [],
                 candidate=last_candidate,
-            )
+            ))
         if last_answer_error:
-            return self._fallback(
+            return finish(self._fallback(
                 summary,
                 evidence,
                 last_answer_error,
                 tool_calls,
                 candidate=last_candidate,
                 failure_stage="answer_validation",
-            )
+            ))
         grounded = self._grounded_fallback(
             question=question,
             metrics=metrics,
@@ -320,15 +356,15 @@ class ReportFollowupAgent:
             candidate=last_candidate,
         )
         if grounded:
-            return grounded
-        return self._fallback(
+            return finish(grounded)
+        return finish(self._fallback(
             summary,
             evidence,
             "maximum follow-up steps reached",
             tool_calls,
             candidate=last_candidate,
             failure_stage="step_limit",
-        )
+        ))
 
     def _execute_tool(
         self,

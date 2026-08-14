@@ -29,12 +29,18 @@ class RuntimeConfigStore:
         model: str,
         base_url: str,
         provider: str,
+        planner_model: str = "",
+        synthesizer_model: str = "",
+        followup_model: str = "",
     ) -> None:
         values = {
             "agent_api_key": self._normalize_secret(api_key),
             "agent_model": model,
             "agent_base_url": base_url,
             "agent_provider": provider,
+            "agent_planner_model": planner_model,
+            "agent_synthesizer_model": synthesizer_model,
+            "agent_followup_model": followup_model,
         }
         self._update({key: value.strip() for key, value in values.items()})
 
@@ -72,6 +78,14 @@ class RuntimeConfigStore:
                 "configured": bool(agent_key_source and model),
                 "source": agent_key_source,
                 "model": model or None,
+                "role_models": {
+                    role: self.agent_model_override(role) or None
+                    for role in ("planner", "synthesizer", "followup")
+                },
+                "effective_role_models": {
+                    role: self.agent_model(role) or None
+                    for role in ("planner", "synthesizer", "followup")
+                },
                 "provider": self.get(
                     "agent_provider", "AGENT_LLM_PROVIDER", "openai-compatible"
                 ),
@@ -82,6 +96,20 @@ class RuntimeConfigStore:
                 ),
             },
         }
+
+    def agent_model(self, role: str | None = None) -> str:
+        if role in {"planner", "synthesizer", "followup"}:
+            configured = self.agent_model_override(role)
+            if configured:
+                return configured
+        return self.get("agent_model", "AGENT_LLM_MODEL")
+
+    def agent_model_override(self, role: str) -> str:
+        if role not in {"planner", "synthesizer", "followup"}:
+            return ""
+        return self.get(
+            f"agent_{role}_model", f"AGENT_LLM_{role.upper()}_MODEL"
+        )
 
     def _normalize_secret(self, value: str) -> str:
         normalized = value.strip()

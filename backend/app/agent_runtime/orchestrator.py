@@ -29,8 +29,19 @@ class OperatingAgentRun:
 
 
 class OperatingAgentOrchestrator:
-    def __init__(self, client: LlmClient | None = None) -> None:
-        self._client = client or llm_client_from_environment()
+    def __init__(
+        self,
+        client: LlmClient | None = None,
+        *,
+        planner_client: LlmClient | None = None,
+        synthesizer_client: LlmClient | None = None,
+    ) -> None:
+        self._planner_client = client or planner_client or llm_client_from_environment(
+            "planner"
+        )
+        self._synthesizer_client = (
+            client or synthesizer_client or llm_client_from_environment("synthesizer")
+        )
 
     def run(
         self,
@@ -44,6 +55,7 @@ class OperatingAgentOrchestrator:
         cost_assumptions: dict[str, Any] | None,
     ) -> OperatingAgentRun:
         started = perf_counter()
+        llm_calls = []
         context = OperatingToolContext(
             orders=orders,
             menu=menu,
@@ -51,12 +63,14 @@ class OperatingAgentOrchestrator:
             cost_assumptions=cost_assumptions,
         )
         plan, planning_used_llm, planning_fallbacks = create_operating_plan(
-            client=self._client,
+            client=self._planner_client,
             question=question,
             context=context,
             analysis_mode=analysis_mode,
+            metadata_sink=llm_calls,
         )
         selected_tools = [tool.name for tool in plan.tools]
+        initial_plan = plan.model_copy(deep=True)
         initial_tools = list(selected_tools)
         tool_batch = execute_operating_tools(
             selected_tools,
@@ -72,7 +86,7 @@ class OperatingAgentOrchestrator:
         ]
         if tool_batch.status == "failed" and recoverable_failures:
             replanned, replan_used_llm, replan_fallbacks = create_operating_replan(
-                client=self._client,
+                client=self._planner_client,
                 question=question,
                 context=context,
                 analysis_mode=analysis_mode,
@@ -85,6 +99,7 @@ class OperatingAgentOrchestrator:
                     }
                     for item in recoverable_failures
                 ],
+                metadata_sink=llm_calls,
             )
             planning_used_llm = planning_used_llm or replan_used_llm
             planning_fallbacks.extend(replan_fallbacks)
@@ -155,9 +170,10 @@ class OperatingAgentOrchestrator:
             ]
         else:
             state, synthesis_used_llm, synthesis_fallbacks = synthesize_operating_report(
-                client=self._client,
+                client=self._synthesizer_client,
                 state=state,
                 plan=plan,
+                metadata_sink=llm_calls,
             )
             state.warnings.extend(tool_warnings)
         if planning_used_llm and synthesis_used_llm:
@@ -169,8 +185,8 @@ class OperatingAgentOrchestrator:
         trace = AgentTrace(
             mode=mode,
             analysis_mode=analysis_mode,
-            provider=self._client.provider,
-            model=self._client.model,
+            provider=self._planner_client.provider,
+            model=self._planner_client.model,
             prompt_version=PROMPT_VERSION,
             selected_tools=selected_tools,
             planning_used_llm=planning_used_llm,
@@ -179,7 +195,10 @@ class OperatingAgentOrchestrator:
             duration_ms=max(0, round((perf_counter() - started) * 1000)),
             status=tool_batch.status,
             tool_executions=[item.to_trace() for item in tool_batch.executions],
+            llm_calls=llm_calls,
             replan_count=replan_count,
             replan=replan_trace,
+            initial_plan=initial_plan,
+            final_plan=plan,
         )
         return OperatingAgentRun(state=state, plan=plan, trace=trace)

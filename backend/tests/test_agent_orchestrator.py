@@ -100,6 +100,13 @@ def test_orchestrator_uses_llm_plan_and_grounded_synthesis():
     assert '"label": "总营收"' in client.user_prompts[0]
     assert '"metric_evidence"' in client.user_prompts[1]
     assert '"metric_definitions"' not in client.user_prompts[1]
+    llm_calls = report["agent_trace"]["llm_calls"]
+    assert [item["role"] for item in llm_calls] == ["planner", "synthesizer"]
+    assert all(item["provider"] == "fake" for item in llm_calls)
+    assert "prompt" not in str(llm_calls).lower()
+    assert len(report["agent_trace"]["request_id"]) == 36
+    assert report["agent_trace"]["initial_plan"]["intent"] == "operating_diagnosis"
+    assert report["agent_trace"]["final_plan"]["intent"] == "operating_diagnosis"
 
 
 def test_orchestrator_falls_back_when_llm_cites_unknown_metric():

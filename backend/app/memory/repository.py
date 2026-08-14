@@ -84,6 +84,21 @@ class ConversationRepository:
             for row in rows
         ]
 
+    def list_recent_message_ids(
+        self, conversation_id: int, *, limit: int = 6
+    ) -> list[int]:
+        bounded_limit = max(1, min(limit, 6))
+        values = list(
+            self._db.scalars(
+                select(AnalysisMessage.id)
+                .where(AnalysisMessage.conversation_id == conversation_id)
+                .order_by(AnalysisMessage.id.desc())
+                .limit(bounded_limit)
+            ).all()
+        )
+        values.reverse()
+        return values
+
 
 def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):

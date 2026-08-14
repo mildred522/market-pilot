@@ -40,6 +40,9 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
   const [model, setModel] = useState(integrations.agent.model || "gpt-4.1-mini");
   const [baseUrl, setBaseUrl] = useState(integrations.agent.base_url || "https://api.openai.com/v1");
   const [provider, setProvider] = useState(integrations.agent.provider || "openai-compatible");
+  const [plannerModel, setPlannerModel] = useState(integrations.agent.role_models?.planner || "");
+  const [synthesizerModel, setSynthesizerModel] = useState(integrations.agent.role_models?.synthesizer || "");
+  const [followupModel, setFollowupModel] = useState(integrations.agent.role_models?.followup || "");
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [testResults, setTestResults] = useState<Partial<Record<"baidu" | "agent", IntegrationTestResult>>>({});
@@ -58,7 +61,7 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
     event.preventDefault();
     setBusy("agent"); setMessage("");
     try {
-      const status = await updateAgentIntegration({ apiKey: agentKey, model, baseUrl, provider });
+      const status = await updateAgentIntegration({ apiKey: agentKey, model, baseUrl, provider, plannerModel, synthesizerModel, followupModel });
       onChange("agent", status); setAgentKey(""); setTestResults((value) => ({ ...value, agent: undefined })); setMessage("Agent 模型配置已加密保存到本机并生效。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "保存失败"); }
     finally { setBusy(null); }
@@ -113,6 +116,9 @@ export default function IntegrationSettings({ integrations, onChange }: Props) {
           <form className="integration-form agent-config-grid" onSubmit={saveAgent}>
             <label>API Key<input type="password" autoComplete="new-password" value={agentKey} onChange={(e) => setAgentKey(e.target.value)} minLength={8} placeholder="输入模型服务 API Key" required /></label>
             <label>模型<input value={model} onChange={(e) => setModel(e.target.value)} required /></label>
+            <label>规划模型（可选）<input value={plannerModel} onChange={(e) => setPlannerModel(e.target.value)} placeholder="留空使用基础模型" /></label>
+            <label>报告模型（可选）<input value={synthesizerModel} onChange={(e) => setSynthesizerModel(e.target.value)} placeholder="留空使用基础模型" /></label>
+            <label>追问模型（可选）<input value={followupModel} onChange={(e) => setFollowupModel(e.target.value)} placeholder="留空使用基础模型" /></label>
             <label>API Base URL<input type="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required /></label>
             <label>Provider 标识<input value={provider} onChange={(e) => setProvider(e.target.value)} required /></label>
             <div className="integration-actions"><button disabled={busy !== null} type="submit">{busy === "agent" ? "保存中…" : "加密保存并启用"}</button><button className="button-test" disabled={busy !== null || !integrations.agent.configured} type="button" onClick={() => runTest("agent")}>{busy === "test-agent" ? "测试中…" : "测试连接"}</button>{["saved", "runtime"].includes(integrations.agent.source ?? "") && <button className="button-quiet" type="button" onClick={() => remove("agent")}>清除保存配置</button>}</div>

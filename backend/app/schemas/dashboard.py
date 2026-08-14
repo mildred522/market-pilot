@@ -16,6 +16,9 @@ class AgentIntegrationUpdate(BaseModel):
     model: str = Field(min_length=1, max_length=120)
     base_url: str = Field(default="https://api.openai.com/v1", max_length=500)
     provider: str = Field(default="openai-compatible", min_length=1, max_length=80)
+    planner_model: str = Field(default="", max_length=120)
+    synthesizer_model: str = Field(default="", max_length=120)
+    followup_model: str = Field(default="", max_length=120)
 
     @field_validator("base_url")
     @classmethod

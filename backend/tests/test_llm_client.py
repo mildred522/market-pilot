@@ -119,3 +119,143 @@ def test_environment_factory_is_disabled_without_credentials(monkeypatch):
     monkeypatch.setattr(llm_client_module, "runtime_config", RuntimeConfigStore())
 
     assert isinstance(llm_client_from_environment(), DisabledLlmClient)
+
+
+def test_generation_returns_safe_provider_metadata():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"x-request-id": "req-provider-123"},
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "intent": "operating_diagnosis",
+                                    "goal": "inspect revenue",
+                                    "tools": [],
+                                    "missing_inputs": [],
+                                    "requires_external_api": False,
+                                }
+                            )
+                        }
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 30,
+                    "total_tokens": 150,
+                },
+            },
+        )
+
+    client = OpenAiCompatibleLlmClient(
+        api_key="secret-key",
+        model="planner-model",
+        provider="test-provider",
+        transport=httpx.MockTransport(handler),
+    )
+
+    generation = client.generate_json_with_metadata(
+        role="planner",
+        system_prompt="private system prompt",
+        user_prompt="private user prompt",
+        response_model=AgentPlan,
+        temperature=0.1,
+    )
+
+    assert generation.output.intent == "operating_diagnosis"
+    assert generation.metadata.model_dump() == {
+        "role": "planner",
+        "provider": "test-provider",
+        "model": "planner-model",
+        "response_format": "json_object",
+        "input_tokens": 120,
+        "output_tokens": 30,
+        "total_tokens": 150,
+        "duration_ms": generation.metadata.duration_ms,
+        "retry_count": 0,
+        "provider_request_id": "req-provider-123",
+        "status": "completed",
+        "error_code": None,
+    }
+    assert generation.metadata.duration_ms >= 0
+    serialized = str(generation.metadata.model_dump()).lower()
+    assert "prompt" not in serialized
+    assert "secret-key" not in serialized
+
+
+def test_generation_metadata_counts_provider_retry():
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503, json={"error": "temporarily unavailable"})
+        return httpx.Response(
+            200,
+            json={
+                "id": "body-request-id",
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "intent": "operating_diagnosis",
+                                    "goal": "inspect revenue",
+                                    "tools": [],
+                                    "missing_inputs": [],
+                                    "requires_external_api": False,
+                                }
+                            )
+                        }
+                    }
+                ],
+            },
+        )
+
+    client = OpenAiCompatibleLlmClient(
+        api_key="secret-key",
+        model="planner-model",
+        transport=httpx.MockTransport(handler),
+    )
+
+    generation = client.generate_json_with_metadata(
+        role="planner",
+        system_prompt="plan",
+        user_prompt="question",
+        response_model=AgentPlan,
+        temperature=0.1,
+    )
+
+    assert attempts == 2
+    assert generation.metadata.retry_count == 1
+    assert generation.metadata.provider_request_id == "body-request-id"
+
+
+def test_failed_generation_exposes_safe_failure_metadata():
+    client = OpenAiCompatibleLlmClient(
+        api_key="secret-key",
+        model="planner-model",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(503, json={"error": "private detail"})
+        ),
+    )
+
+    with pytest.raises(LlmError) as captured:
+        client.generate_json_with_metadata(
+            role="planner",
+            system_prompt="private system prompt",
+            user_prompt="private user prompt",
+            response_model=AgentPlan,
+            temperature=0.1,
+        )
+
+    metadata = captured.value.metadata
+    assert metadata is not None
+    assert metadata.status == "failed"
+    assert metadata.retry_count == 1
+    assert metadata.error_code == "model_request_failed"
+    assert "private" not in str(metadata.model_dump()).lower()

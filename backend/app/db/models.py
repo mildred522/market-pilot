@@ -115,6 +115,29 @@ class AnalysisResult(Base):
     warnings_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
 
 
+class AgentExecutionTrace(Base):
+    __tablename__ = "agent_execution_traces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[str] = mapped_column(
+        String(36), nullable=False, unique=True, index=True
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("analysis_runs.id"), nullable=True, index=True
+    )
+    analysis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("analysis_results.id"), nullable=True, index=True
+    )
+    operation: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    trace_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+
 class AnalysisConversation(Base):
     __tablename__ = "analysis_conversations"
 

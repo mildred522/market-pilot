@@ -3,7 +3,7 @@ from dataclasses import replace
 from fastapi.testclient import TestClient
 
 from app.agent_runtime.tools import OPERATING_TOOLS
-from app.db.models import AnalysisRun
+from app.db.models import AgentExecutionTrace, AnalysisRun
 from app.db.session import SessionLocal
 from app.main import app
 
@@ -36,6 +36,13 @@ def test_operating_analyze_sample_returns_persisted_report():
         assert fetched["analysis_id"] == body["analysis_id"]
         assert fetched["stage"] == "operating"
         assert fetched["metrics"]["revenue"]["order_count"] == 8
+        with SessionLocal() as db:
+            trace = db.query(AgentExecutionTrace).filter_by(
+                analysis_id=body["analysis_id"]
+            ).one()
+            assert trace.run_id == body["run_id"]
+            assert trace.request_id == body["agent_trace"]["request_id"]
+            assert trace.trace_json["initial_plan"]["intent"] == "operating_diagnosis"
 
 
 def test_operating_persists_degraded_agent_run_status(monkeypatch):

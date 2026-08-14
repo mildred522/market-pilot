@@ -56,6 +56,11 @@ def test_followup_agent_reads_metric_then_returns_grounded_answer():
         }
     ]
     assert "336" in client.prompts[1]
+    assert [item["role"] for item in result["llm_calls"]] == [
+        "followup",
+        "followup",
+    ]
+    assert "prompt" not in str(result["llm_calls"]).lower()
 
 
 def test_followup_agent_rejects_non_whitelisted_tool():

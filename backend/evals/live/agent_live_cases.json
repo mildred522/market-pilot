@@ -1,0 +1,12 @@
+[
+  {"case_id": "live-revenue", "question": "样本期总营收和订单量是多少？"},
+  {"case_id": "live-aov", "question": "当前客单价是多少？"},
+  {"case_id": "live-reviews", "question": "中差评主要集中在哪些问题？"},
+  {"case_id": "live-menu", "question": "哪些菜品属于高销量高毛利？"},
+  {"case_id": "live-time", "question": "订单高峰集中在哪个时段？"},
+  {"case_id": "live-discount", "question": "折扣是否正在侵蚀利润？"},
+  {"case_id": "live-channel", "question": "外卖渠道的贡献毛利情况如何？"},
+  {"case_id": "live-survival", "question": "按当前成本估算现金还能支撑多久？"},
+  {"case_id": "live-profit", "question": "当前样本推算的月利润如何？"},
+  {"case_id": "live-priority", "question": "现在最应该优先处理的经营问题是什么？"}
+]

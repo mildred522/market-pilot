@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from typing import Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,6 +12,32 @@ from app.agent_runtime.tool_contracts import (
 )
 
 AnalysisMode = Literal["full", "focused"]
+LlmRole = Literal[
+    "planner",
+    "replanner",
+    "synthesizer",
+    "followup",
+    "probe",
+    "live_eval",
+    "unspecified",
+]
+
+
+class LlmCallMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    role: LlmRole
+    provider: str = Field(min_length=1, max_length=80)
+    model: str | None = Field(default=None, max_length=120)
+    response_format: Literal["json_object"] = "json_object"
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    duration_ms: int = Field(ge=0)
+    retry_count: int = Field(default=0, ge=0)
+    provider_request_id: str | None = Field(default=None, max_length=200)
+    status: Literal["completed", "failed"] = "completed"
+    error_code: str | None = Field(default=None, max_length=80)
 
 
 class CapabilityName(StrEnum):
@@ -81,6 +108,7 @@ class ReplanTrace(BaseModel):
 class AgentTrace(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    request_id: str = Field(default_factory=lambda: str(uuid4()))
     mode: Literal["llm", "hybrid", "deterministic"]
     analysis_mode: AnalysisMode = "full"
     provider: str
@@ -93,8 +121,11 @@ class AgentTrace(BaseModel):
     duration_ms: int = Field(ge=0)
     status: ToolExecutionStatus = "completed"
     tool_executions: list[ToolExecutionTrace] = Field(default_factory=list)
+    llm_calls: list[LlmCallMetadata] = Field(default_factory=list)
     replan_count: int = Field(default=0, ge=0, le=1)
     replan: ReplanTrace | None = None
+    initial_plan: AgentPlan
+    final_plan: AgentPlan
 
 
 class FollowupToolArguments(BaseModel):

@@ -82,6 +82,9 @@ def update_agent(payload: AgentIntegrationUpdate) -> dict[str, object]:
         model=payload.model,
         base_url=payload.base_url,
         provider=payload.provider,
+        planner_model=payload.planner_model,
+        synthesizer_model=payload.synthesizer_model,
+        followup_model=payload.followup_model,
     )
     return runtime_config.status()["agent"]
 

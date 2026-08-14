@@ -2,6 +2,8 @@ import os
 
 import pytest
 
+from app.agent_runtime import llm_client as llm_client_module
+from app.agent_runtime.llm_client import OpenAiCompatibleLlmClient, llm_client_from_environment
 from app.services.runtime_config import RuntimeConfigStore
 from app.services.secret_store import EncryptedSecretStore, WindowsDpapiProtector
 
@@ -57,3 +59,36 @@ def test_windows_dpapi_round_trip_is_user_scoped_encryption():
     assert encrypted != plaintext
     assert plaintext not in encrypted
     assert protector.unprotect(encrypted) == plaintext
+
+
+def test_agent_models_can_be_configured_by_role_with_base_fallback(monkeypatch):
+    config = RuntimeConfigStore()
+    config.set_agent(
+        api_key="agent-secret-value",
+        model="base-model",
+        planner_model="small-planner",
+        synthesizer_model="quality-synthesizer",
+        followup_model="",
+        base_url="https://api.example.test/v1",
+        provider="test-provider",
+    )
+    monkeypatch.setattr(llm_client_module, "runtime_config", config)
+
+    planner = llm_client_from_environment("planner")
+    synthesizer = llm_client_from_environment("synthesizer")
+    followup = llm_client_from_environment("followup")
+
+    assert isinstance(planner, OpenAiCompatibleLlmClient)
+    assert planner.model == "small-planner"
+    assert synthesizer.model == "quality-synthesizer"
+    assert followup.model == "base-model"
+    assert config.status()["agent"]["role_models"] == {
+        "planner": "small-planner",
+        "synthesizer": "quality-synthesizer",
+        "followup": None,
+    }
+    assert config.status()["agent"]["effective_role_models"] == {
+        "planner": "small-planner",
+        "synthesizer": "quality-synthesizer",
+        "followup": "base-model",
+    }

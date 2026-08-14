@@ -3,19 +3,40 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Protocol, TypeVar
+from dataclasses import dataclass
+from time import perf_counter
+from typing import Generic, Protocol, TypeVar, cast
 
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from app.agent_runtime.contracts import LlmCallMetadata, LlmRole
 from app.services.runtime_config import runtime_config
 
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
 
 
+@dataclass(frozen=True)
+class LlmGeneration(Generic[ResponseModel]):
+    output: ResponseModel
+    metadata: LlmCallMetadata
+
+
 class LlmError(RuntimeError):
     """Safe LLM boundary error that never includes credentials."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_count: int = 0,
+        duration_ms: int = 0,
+    ) -> None:
+        self.retry_count = retry_count
+        self.duration_ms = duration_ms
+        self.metadata: LlmCallMetadata | None = None
+        super().__init__(message)
 
 
 class LlmOutputError(LlmError):
@@ -105,6 +126,23 @@ class OpenAiCompatibleLlmClient:
         response_model: type[ResponseModel],
         temperature: float,
     ) -> ResponseModel:
+        return self.generate_json_with_metadata(
+            role="unspecified",
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_model=response_model,
+            temperature=temperature,
+        ).output
+
+    def generate_json_with_metadata(
+        self,
+        *,
+        role: LlmRole,
+        system_prompt: str,
+        user_prompt: str,
+        response_model: type[ResponseModel],
+        temperature: float,
+    ) -> LlmGeneration[ResponseModel]:
         schema = response_model.model_json_schema()
         payload = {
             "model": self._model,
@@ -118,41 +156,83 @@ class OpenAiCompatibleLlmClient:
                 {"role": "user", "content": user_prompt},
             ],
         }
-        data = self._post_with_retry(payload)
+        try:
+            data, response, retry_count, duration_ms = self._post_with_retry(payload)
+        except LlmError as error:
+            error.metadata = LlmCallMetadata(
+                role=role,
+                provider=self._provider,
+                model=self._model,
+                duration_ms=error.duration_ms,
+                retry_count=error.retry_count,
+                status="failed",
+                error_code="model_request_failed",
+            )
+            raise
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+        provider_request_id = response.headers.get("x-request-id") or data.get("id")
+        if not isinstance(provider_request_id, str):
+            provider_request_id = None
+        metadata = LlmCallMetadata(
+            role=role,
+            provider=self._provider,
+            model=self._model,
+            input_tokens=_usage_value(usage, "prompt_tokens", "input_tokens"),
+            output_tokens=_usage_value(usage, "completion_tokens", "output_tokens"),
+            total_tokens=_usage_value(usage, "total_tokens"),
+            duration_ms=duration_ms,
+            retry_count=retry_count,
+            provider_request_id=(
+                provider_request_id.strip()[:200] or None
+                if provider_request_id
+                else None
+            ),
+        )
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as error:
-            raise LlmOutputError(
+            raise _output_error(
                 "LLM response did not contain message content",
                 candidate_content=None,
                 error_code="missing_content",
+                metadata=metadata,
             ) from error
         if not isinstance(content, str):
-            raise LlmOutputError(
+            raise _output_error(
                 "LLM message content was not text",
                 candidate_content=None,
                 error_code="non_text_content",
+                metadata=metadata,
             )
         candidate = _safe_candidate_content(content, self._api_key)
         try:
             parsed = json.loads(_strip_code_fence(content))
         except json.JSONDecodeError as error:
-            raise LlmOutputError(
+            raise _output_error(
                 "LLM returned invalid JSON",
                 candidate_content=candidate,
                 error_code="invalid_json",
+                metadata=metadata,
             ) from error
         try:
-            return response_model.model_validate(parsed)
+            output = response_model.model_validate(parsed)
         except ValidationError as error:
-            raise LlmOutputError(
+            raise _output_error(
                 "LLM output did not match the required schema: "
                 + _validation_error_summary(error),
                 candidate_content=_candidate_answer(parsed) or candidate,
                 error_code="schema_validation",
+                metadata=metadata,
             ) from error
+        return LlmGeneration(
+            output=output,
+            metadata=metadata,
+        )
 
-    def _post_with_retry(self, payload: dict[str, object]) -> dict[str, object]:
+    def _post_with_retry(
+        self, payload: dict[str, object]
+    ) -> tuple[dict[str, object], httpx.Response, int, int]:
+        started = perf_counter()
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -176,22 +256,92 @@ class OpenAiCompatibleLlmClient:
                 result = response.json()
                 if not isinstance(result, dict):
                     raise LlmError("LLM response was not an object")
-                return result
+                return (
+                    result,
+                    response,
+                    attempt,
+                    max(0, round((perf_counter() - started) * 1000)),
+                )
             except (httpx.TimeoutException, httpx.NetworkError) as error:
                 if attempt == 0:
                     time.sleep(0.25)
                     continue
-                raise LlmError("LLM request timed out or failed") from error
+                raise LlmError(
+                    "LLM request timed out or failed",
+                    retry_count=attempt,
+                    duration_ms=max(0, round((perf_counter() - started) * 1000)),
+                ) from error
             except httpx.HTTPStatusError as error:
-                raise LlmError(f"LLM request failed with HTTP {error.response.status_code}") from error
+                raise LlmError(
+                    f"LLM request failed with HTTP {error.response.status_code}",
+                    retry_count=attempt,
+                    duration_ms=max(0, round((perf_counter() - started) * 1000)),
+                ) from error
             except (ValueError, json.JSONDecodeError) as error:
-                raise LlmError("LLM response could not be decoded") from error
+                raise LlmError(
+                    "LLM response could not be decoded",
+                    retry_count=attempt,
+                    duration_ms=max(0, round((perf_counter() - started) * 1000)),
+                ) from error
         raise LlmError("LLM request failed")
 
 
-def llm_client_from_environment() -> LlmClient:
+def generate_json_with_metadata(
+    *,
+    client: LlmClient,
+    role: LlmRole,
+    system_prompt: str,
+    user_prompt: str,
+    response_model: type[ResponseModel],
+    temperature: float,
+) -> LlmGeneration[ResponseModel]:
+    method = getattr(client, "generate_json_with_metadata", None)
+    if callable(method):
+        return cast(
+            LlmGeneration[ResponseModel],
+            method(
+                role=role,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                response_model=response_model,
+                temperature=temperature,
+            ),
+        )
+    started = perf_counter()
+    try:
+        output = client.generate_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_model=response_model,
+            temperature=temperature,
+        )
+    except LlmError as error:
+        if error.metadata is None:
+            error.metadata = LlmCallMetadata(
+                role=role,
+                provider=client.provider,
+                model=client.model,
+                duration_ms=max(0, round((perf_counter() - started) * 1000)),
+                status="failed",
+                error_code=getattr(error, "error_code", "model_request_failed"),
+            )
+        raise
+    return LlmGeneration(
+        output=output,
+        metadata=LlmCallMetadata(
+            role=role,
+            provider=client.provider,
+            model=client.model,
+            duration_ms=max(0, round((perf_counter() - started) * 1000)),
+        ),
+    )
+
+
+def llm_client_from_environment(
+    role: str | None = None,
+) -> LlmClient:
     api_key = runtime_config.get("agent_api_key", "AGENT_LLM_API_KEY")
-    model = runtime_config.get("agent_model", "AGENT_LLM_MODEL")
+    model = runtime_config.agent_model(role)
     if not api_key or not model:
         return DisabledLlmClient()
     return OpenAiCompatibleLlmClient(
@@ -236,3 +386,31 @@ def _validation_error_summary(error: ValidationError, limit: int = 4) -> str:
     if remaining:
         summaries.append(f"and {remaining} more validation errors")
     return "; ".join(summaries)
+
+
+def _usage_value(usage: object, *keys: str) -> int | None:
+    if not isinstance(usage, dict):
+        return None
+    for key in keys:
+        value = usage.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+    return None
+
+
+def _output_error(
+    message: str,
+    *,
+    candidate_content: str | None,
+    error_code: str,
+    metadata: LlmCallMetadata,
+) -> LlmOutputError:
+    error = LlmOutputError(
+        message,
+        candidate_content=candidate_content,
+        error_code=error_code,
+    )
+    error.metadata = metadata.model_copy(
+        update={"status": "failed", "error_code": error_code}
+    )
+    return error

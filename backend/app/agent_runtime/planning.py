@@ -2,8 +2,17 @@ from __future__ import annotations
 
 import json
 
-from app.agent_runtime.contracts import AnalysisMode, AgentPlan, PlannedTool
-from app.agent_runtime.llm_client import LlmClient, LlmError
+from app.agent_runtime.contracts import (
+    AnalysisMode,
+    AgentPlan,
+    LlmCallMetadata,
+    PlannedTool,
+)
+from app.agent_runtime.llm_client import (
+    LlmClient,
+    LlmError,
+    generate_json_with_metadata,
+)
 from app.agent_runtime.metric_registry import definitions_for_sections
 from app.agent_runtime.plan_policy import (
     apply_operating_plan_policy,
@@ -22,6 +31,7 @@ def create_operating_plan(
     question: str,
     context: OperatingToolContext,
     analysis_mode: AnalysisMode = "full",
+    metadata_sink: list[LlmCallMetadata] | None = None,
 ) -> tuple[AgentPlan, bool, list[str]]:
     fallback = _fallback_plan(context, question, analysis_mode)
     if not client.configured:
@@ -39,16 +49,23 @@ def create_operating_plan(
         ensure_ascii=False,
     )
     try:
-        candidate = client.generate_json(
+        generation = generate_json_with_metadata(
+            client=client,
+            role="planner",
             system_prompt=PLANNER_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             response_model=AgentPlan,
             temperature=0.1,
         )
+        if metadata_sink is not None:
+            metadata_sink.append(generation.metadata)
+        candidate = generation.output
         return apply_operating_plan_policy(
             candidate, context, analysis_mode=analysis_mode
         ), True, []
     except (LlmError, ValueError) as error:
+        if isinstance(error, LlmError) and error.metadata and metadata_sink is not None:
+            metadata_sink.append(error.metadata)
         return fallback, False, [f"planner: {error}"]
 
 
@@ -60,6 +77,7 @@ def create_operating_replan(
     analysis_mode: AnalysisMode,
     previous_plan: AgentPlan,
     failed_tools: list[dict[str, str | bool | None]],
+    metadata_sink: list[LlmCallMetadata] | None = None,
 ) -> tuple[AgentPlan | None, bool, list[str]]:
     if not client.configured:
         return None, False, ["replanner: LLM not configured"]
@@ -77,12 +95,17 @@ def create_operating_replan(
         ensure_ascii=False,
     )
     try:
-        candidate = client.generate_json(
+        generation = generate_json_with_metadata(
+            client=client,
+            role="replanner",
             system_prompt=PLANNER_SYSTEM_PROMPT,
             user_prompt=user_prompt,
             response_model=AgentPlan,
             temperature=0.1,
         )
+        if metadata_sink is not None:
+            metadata_sink.append(generation.metadata)
+        candidate = generation.output
         return (
             apply_operating_plan_policy(
                 candidate, context, analysis_mode=analysis_mode
@@ -91,6 +114,8 @@ def create_operating_replan(
             [],
         )
     except (LlmError, ValueError) as error:
+        if isinstance(error, LlmError) and error.metadata and metadata_sink is not None:
+            metadata_sink.append(error.metadata)
         return None, False, [f"replanner: {error}"]
 
 

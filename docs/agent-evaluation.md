@@ -86,3 +86,23 @@ Planning mismatches remain visible in the report but do not fail the safety gate
 - Scripted responses measure orchestration and validation deterministically; they do not estimate live-model variability, latency, or cost.
 - The current dataset is synthetic and small enough for fast pull-request checks. It is not a statistically representative benchmark of restaurant operations.
 - Provider smoke tests and production traces belong to the later LLM operations phase and must remain separate from the offline safety gate.
+
+## Opt-In Live Evaluation
+
+The live suite is intentionally excluded from normal test runs because it consumes
+model quota and measures provider-dependent behavior. It contains ten focused
+operating questions and runs each question three times.
+
+```powershell
+cd backend
+$env:RUN_AGENT_LIVE_EVALS="1"
+$env:AGENT_LIVE_INPUT_USD_PER_MILLION="0.40"
+$env:AGENT_LIVE_OUTPUT_USD_PER_MILLION="1.60"
+pytest -q tests/test_agent_live_eval.py
+```
+
+Configure the Agent integration first through the application or environment.
+The generated `outputs/evals/agent-live-eval.json` reports schema success,
+evidence validity, tool-selection stability, latency, token usage, and estimated
+cost. Pricing is explicit configuration rather than a hard-coded claim because
+provider and model prices can change.

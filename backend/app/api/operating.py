@@ -12,6 +12,7 @@ from app.schemas.operating import (
     OperatingFileSelection,
 )
 from app.memory.project_profile import ProjectProfileService
+from app.observability.agent_trace import AgentTraceRecorder
 from app.services.agent_service import AgentService
 from app.services.csv_ingestion_service import (
     CsvIngestionError,
@@ -135,6 +136,29 @@ def _persist_report(db: Session, report: dict[str, object]) -> dict[str, object]
         warnings_json=report["warnings"],  # type: ignore[arg-type]
     )
     db.add(result)
+    db.flush()
+    AgentTraceRecorder(db).record(
+        request_id=str(agent_trace["request_id"]),
+        project_id=int(report["project_id"]),
+        operation="operating_analysis",
+        run_id=run.id,
+        analysis_id=result.id,
+        initial_plan=dict(agent_trace.get("initial_plan", {})),
+        revised_plan=(
+            dict(agent_trace.get("final_plan", {}))
+            if agent_trace.get("replan_count", 0)
+            else None
+        ),
+        tool_executions=list(agent_trace.get("tool_executions", [])),
+        llm_calls=list(agent_trace.get("llm_calls", [])),
+        selected_memory_ids=[],
+        verification_failures=[
+            str(item)
+            for item in agent_trace.get("fallback_reasons", [])
+            if "evidence" in str(item).lower() or "validation" in str(item).lower()
+        ],
+        fallback_reasons=list(agent_trace.get("fallback_reasons", [])),
+    )
     db.commit()
     db.refresh(result)
 
