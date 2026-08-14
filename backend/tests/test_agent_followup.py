@@ -11,10 +11,12 @@ class FollowupFakeClient:
     def __init__(self, steps: list[FollowupStep]) -> None:
         self.steps = steps
         self.prompts: list[str] = []
+        self.system_prompts: list[str] = []
 
     def generate_json(
         self, *, system_prompt, user_prompt, response_model, temperature
     ):
+        self.system_prompts.append(system_prompt)
         self.prompts.append(user_prompt)
         return self.steps.pop(0)
 
@@ -266,6 +268,60 @@ def test_followup_returns_data_insufficient_for_metric_missing_from_old_report()
     ]
     assert "未包含" in result["answer"]
     assert "channels" not in result["available_sections"]
+
+
+def test_followup_recommends_existing_menu_items_when_model_claims_data_is_insufficient():
+    client = FollowupFakeClient(
+        [
+            FollowupStep(
+                action="insufficient_data",
+                answer="当前报告没有潜在新菜品或市场偏好信息。",
+            )
+        ]
+    )
+
+    result = ReportFollowupAgent(client).answer(
+        question="推荐一些菜品",
+        summary="现有菜品经营诊断",
+        metrics={
+            "menu": {
+                "items": [
+                    {
+                        "item_name": "招牌拌面",
+                        "quantity": 12,
+                        "gross_profit": 216,
+                        "gross_margin": 0.64,
+                        "quadrant": "star",
+                    },
+                    {
+                        "item_name": "酸辣粉",
+                        "quantity": 4,
+                        "gross_profit": 72,
+                        "gross_margin": 0.68,
+                        "quadrant": "profit",
+                    },
+                    {
+                        "item_name": "小酥肉",
+                        "quantity": 1,
+                        "gross_profit": 8,
+                        "gross_margin": 0.2,
+                        "quadrant": "problem",
+                    },
+                ]
+            }
+        },
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+
+    assert result["mode"] == "deterministic"
+    assert result["evidence_refs"] == ["metrics.menu.items"]
+    assert "招牌拌面" in result["answer"]
+    assert "酸辣粉" in result["answer"]
+    assert "现有菜品" in result["answer"]
+    assert "新菜" in result["answer"]
+    assert "existing menu items" in client.system_prompts[0]
 
 
 def test_followup_allows_model_to_correct_an_invalid_answer_reference():

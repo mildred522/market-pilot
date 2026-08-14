@@ -165,6 +165,18 @@ class ReportFollowupAgent:
                 llm_calls.append(generation.metadata)
                 step = generation.output
                 if step.action == "insufficient_data":
+                    grounded = self._grounded_fallback(
+                        question=question,
+                        metrics=metrics,
+                        observations=observations,
+                        tool_calls=tool_calls,
+                        steps=step_number,
+                        reason="model declared data insufficient despite available report evidence",
+                        failure_stage="data_availability",
+                        candidate=step.answer,
+                    )
+                    if grounded:
+                        return finish(grounded)
                     return finish(self._insufficient_data(
                         metrics=metrics,
                         tool_calls=tool_calls,
@@ -717,6 +729,49 @@ def _tool_call_key(tool_name: str | None, arguments: dict[str, Any]) -> str:
 def _deterministic_metric_answer(
     question: str, metrics: dict[str, Any]
 ) -> tuple[str, list[str]] | None:
+    if any(keyword in question for keyword in ("菜品", "菜单", "主推", "推荐")):
+        menu = metrics.get("menu")
+        items = menu.get("items") if isinstance(menu, dict) else None
+        if isinstance(items, list) and items:
+            candidates = [
+                item
+                for item in items
+                if isinstance(item, dict)
+                and item.get("item_name")
+                and item.get("quadrant") in {"star", "profit", "traffic"}
+            ]
+            role_priority = {"star": 0, "profit": 1, "traffic": 2}
+            candidates.sort(
+                key=lambda item: (
+                    role_priority.get(str(item.get("quadrant")), 9),
+                    -(_number(item.get("gross_profit")) or 0.0),
+                )
+            )
+            recommendations = []
+            role_labels = {
+                "star": "明星菜品，建议优先主推",
+                "profit": "利润菜品，适合做利润款或加购",
+                "traffic": "引流菜品，适合获客但应控制优惠",
+            }
+            for item in candidates[:4]:
+                quantity = _number(item.get("quantity"))
+                gross_profit = _number(item.get("gross_profit"))
+                details = []
+                if quantity is not None:
+                    details.append(f"样本销量{quantity:g}")
+                if gross_profit is not None:
+                    details.append(f"毛利{gross_profit:.2f}元")
+                detail_text = f"（{'，'.join(details)}）" if details else ""
+                recommendations.append(
+                    f"{item['item_name']}：{role_labels[str(item['quadrant'])]}{detail_text}"
+                )
+            if recommendations:
+                return (
+                    "基于当前报告中的现有菜品表现，" + "；".join(recommendations) + "。"
+                    "这只是现有菜品范围内的经营推荐；报告没有新品需求、竞品菜单或试销数据，"
+                    "因此不能据此推荐尚未经营的新菜。",
+                    ["metrics.menu.items"],
+                )
     if not any(keyword in question for keyword in ("外卖", "配送", "美团", "饿了么")):
         return None
     channels = metrics.get("channels")

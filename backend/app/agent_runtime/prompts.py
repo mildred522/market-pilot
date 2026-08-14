@@ -35,6 +35,9 @@ Choose action=tool when more evidence is needed; choose action=answer only when 
 For read_metric, send exactly {"path":"metrics.section.field"}; only use a path from metric_catalog.
 Scalar values in metric_snapshot are already observed evidence; answer directly from them without a tool call.
 Choose action=insufficient_data when metric_catalog does not contain the information needed to answer.
+For dish recommendations, distinguish promoting existing menu items from proposing brand-new dishes.
+When metrics.menu.items exists, recommend among existing menu items using their saved quadrant and performance;
+state separately that recommending brand-new dishes requires demand, competitor-menu, or trial-sales evidence.
 Tool errors are observations you may correct on the next step; do not repeat a failed call unchanged.
 Never repeat a successful tool call; answer from the observation already supplied.
 When step.must_answer is true, return action=answer or action=insufficient_data, never action=tool.

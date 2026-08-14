@@ -100,7 +100,7 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
           {result.mode === "insufficient_data" ? (
             <div className="followup-insufficient-note">
               <strong>当前报告缺少所需指标</strong>
-              <span>系统没有用其他指标猜测答案。重新生成经营报告后，将自动纳入可用的渠道分析。</span>
+              <span>系统没有用其他指标猜测答案。请根据诊断补充缺失数据，再重新生成经营报告。</span>
               {result.available_sections?.length ? (
                 <small>当前已有：{result.available_sections.join("、")}</small>
               ) : null}
@@ -148,6 +148,7 @@ function friendlyFallbackReason(reason?: string): string {
   if (!reason) return "模型未生成可验证回答，已返回保存的报告结论。";
   if (reason.includes("not configured")) return "模型尚未配置，已返回保存的报告结论。";
   if (reason.includes("timed out") || reason.includes("network")) return "模型响应超时，已返回保存的报告结论。";
+  if (reason.includes("declared data insufficient")) return "模型误判为数据不足，系统已使用报告中的现有指标回答。";
   if (reason.includes("reference") || reason.includes("evidence")) return "模型返回的证据引用未通过校验，已返回保存的报告结论。";
   if (reason.includes("maximum")) return "四轮只读分析后仍未形成答案，已返回保存的报告结论。";
   return "模型回答未通过安全校验，已返回保存的报告结论。";
