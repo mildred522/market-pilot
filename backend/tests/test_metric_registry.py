@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from app.agent_runtime.tools import (
     OPERATING_TOOLS,
     OperatingToolContext,
     execute_operating_tools,
+    validate_operating_tool_registry,
 )
 
 
@@ -38,7 +40,7 @@ def _all_metrics() -> dict[str, Any]:
             "delivery_packaging_per_order": 1.5,
         },
     )
-    return execute_operating_tools(list(OPERATING_TOOLS), context)
+    return execute_operating_tools(list(OPERATING_TOOLS), context).successful_data
 
 
 def _public_paths(value: Any, path: str = "metrics") -> list[str]:
@@ -162,6 +164,35 @@ def test_every_operating_tool_has_a_complete_contract():
         assert tool.output_section
         assert tool.use_when
         assert tool.limitations
+
+
+def test_tool_registry_rejects_duplicate_output_sections():
+    duplicate = replace(
+        OPERATING_TOOLS["analyze_review_topics"], output_section="revenue"
+    )
+
+    try:
+        validate_operating_tool_registry(
+            {
+                "analyze_revenue": OPERATING_TOOLS["analyze_revenue"],
+                "analyze_review_topics": duplicate,
+            }
+        )
+    except ValueError as error:
+        assert "duplicate output section" in str(error)
+    else:
+        raise AssertionError("duplicate output sections must be rejected")
+
+
+def test_tool_registry_rejects_key_name_mismatch():
+    try:
+        validate_operating_tool_registry(
+            {"wrong_registry_key": OPERATING_TOOLS["analyze_revenue"]}
+        )
+    except ValueError as error:
+        assert "registry key" in str(error)
+    else:
+        raise AssertionError("registry keys must match ToolSpec names")
 
 
 def test_negative_review_question_is_not_mistaken_for_normative_comparison():

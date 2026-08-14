@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any
 
 import pandas as pd
@@ -13,6 +14,12 @@ from app.tools.revenue_tool import analyze_revenue
 from app.tools.review_tool import analyze_review_topics
 from app.tools.survival_tool import analyze_survival_line
 from app.tools.time_pattern_tool import analyze_time_patterns
+from app.agent_runtime.tool_contracts import (
+    ToolExecutionBatch,
+    ToolExecutionResult,
+    evidence_references,
+    validate_tool_output,
+)
 
 
 @dataclass(frozen=True)
@@ -111,6 +118,27 @@ OPERATING_TOOLS: dict[str, ToolSpec] = {
     ),
 }
 
+
+def validate_operating_tool_registry(
+    registry: Mapping[str, ToolSpec],
+) -> None:
+    names: set[str] = set()
+    output_sections: set[str] = set()
+    for key, spec in registry.items():
+        if spec.name in names:
+            raise ValueError(f"duplicate tool name: {spec.name}")
+        if spec.output_section in output_sections:
+            raise ValueError(f"duplicate output section: {spec.output_section}")
+        if key != spec.name:
+            raise ValueError(
+                f"registry key {key!r} does not match tool name {spec.name!r}"
+            )
+        names.add(spec.name)
+        output_sections.add(spec.output_section)
+
+
+validate_operating_tool_registry(OPERATING_TOOLS)
+
 CORE_OPERATING_TOOLS = (
     "analyze_revenue",
     "analyze_menu_matrix",
@@ -132,24 +160,69 @@ def available_tool_specs(context: OperatingToolContext) -> list[ToolSpec]:
 
 def execute_operating_tools(
     tool_names: list[str], context: OperatingToolContext
-) -> dict[str, Any]:
-    results: dict[str, Any] = {}
+) -> ToolExecutionBatch:
+    executions: list[ToolExecutionResult] = []
     for name in tool_names:
         spec = OPERATING_TOOLS[name]
+        started = perf_counter()
         missing = set(spec.required_inputs) - context.available_inputs
         if missing:
-            raise ValueError(f"tool {name} is missing inputs: {', '.join(sorted(missing))}")
-        results[_result_key(name)] = spec.runner(context)
-    return results
+            executions.append(
+                _failed_result(
+                    spec,
+                    started=started,
+                    error_code="tool_input_missing",
+                )
+            )
+            continue
+        try:
+            data = validate_tool_output(
+                tool_name=name,
+                output_section=spec.output_section,
+                data=spec.runner(context),
+            )
+        except ValueError:
+            executions.append(
+                _failed_result(
+                    spec,
+                    started=started,
+                    error_code="tool_output_invalid",
+                )
+            )
+        except Exception:
+            executions.append(
+                _failed_result(
+                    spec,
+                    started=started,
+                    error_code="tool_execution_failed",
+                )
+            )
+        else:
+            executions.append(
+                ToolExecutionResult(
+                    tool_name=name,
+                    output_section=spec.output_section,
+                    status="completed",
+                    data=data,
+                    evidence=evidence_references(spec.output_section, data),
+                    duration_ms=_duration_ms(started),
+                )
+            )
+    return ToolExecutionBatch(executions=executions)
 
 
-def _result_key(tool_name: str) -> str:
-    return {
-        "analyze_revenue": "revenue",
-        "analyze_menu_matrix": "menu",
-        "analyze_review_topics": "reviews",
-        "analyze_time_patterns": "time_patterns",
-        "analyze_discount_profitability": "discounts",
-        "analyze_survival_line": "survival",
-        "analyze_channel_profitability": "channels",
-    }[tool_name]
+def _failed_result(
+    spec: ToolSpec, *, started: float, error_code: str
+) -> ToolExecutionResult:
+    return ToolExecutionResult(
+        tool_name=spec.name,
+        output_section=spec.output_section,
+        status="failed",
+        warnings=[f"{spec.output_section} analysis could not be completed"],
+        error_code=error_code,
+        duration_ms=_duration_ms(started),
+    )
+
+
+def _duration_ms(started: float) -> int:
+    return max(0, round((perf_counter() - started) * 1000))

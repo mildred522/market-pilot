@@ -49,13 +49,14 @@ class OperatingAgentOrchestrator:
             context=context,
         )
         selected_tools = [tool.name for tool in plan.tools]
+        tool_batch = execute_operating_tools(selected_tools, context)
         state = AgentState(
             project_id=project_id,
             question=question,
             stage="operating",
             intent=plan.intent,
             plan=[*selected_tools, "generate_recommendations"],
-            tool_results=execute_operating_tools(selected_tools, context),
+            tool_results=tool_batch.successful_data,
         )
         state, synthesis_used_llm, synthesis_fallbacks = synthesize_operating_report(
             client=self._client,
