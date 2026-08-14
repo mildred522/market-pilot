@@ -82,3 +82,74 @@ def test_execution_failure_uses_safe_error_code_without_raw_exception(monkeypatc
     assert secret not in result.model_dump_json()
     assert batch.successful_data == {}
     assert batch.status == "degraded"
+
+
+def test_required_tool_failure_stops_later_execution(monkeypatch):
+    calls: list[str] = []
+
+    def fail(_context):
+        calls.append("revenue")
+        raise RuntimeError("private storage details")
+
+    def should_not_run(_context):
+        calls.append("reviews")
+        return {"review_count": 0, "negative_review_count": 0, "topics": {}}
+
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_revenue",
+        replace(OPERATING_TOOLS["analyze_revenue"], runner=fail),
+    )
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_review_topics",
+        replace(OPERATING_TOOLS["analyze_review_topics"], runner=should_not_run),
+    )
+
+    batch = execute_operating_tools(
+        ["analyze_revenue", "analyze_review_topics"], _context()
+    )
+
+    assert calls == ["revenue"]
+    assert batch.stopped_early is True
+    assert batch.status == "failed"
+    assert [item.tool_name for item in batch.executions] == ["analyze_revenue"]
+
+
+def test_optional_tool_failure_continues_with_later_tools(monkeypatch):
+    def fail(_context):
+        raise RuntimeError("provider payload")
+
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_time_patterns",
+        replace(OPERATING_TOOLS["analyze_time_patterns"], runner=fail),
+    )
+
+    batch = execute_operating_tools(
+        ["analyze_time_patterns", "analyze_review_topics"], _context()
+    )
+
+    assert batch.status == "degraded"
+    assert [item.status for item in batch.executions] == ["failed", "completed"]
+    assert set(batch.successful_data) == {"reviews"}
+
+
+def test_explicit_empty_required_set_overrides_full_report_defaults(monkeypatch):
+    def fail(_context):
+        raise RuntimeError("revenue unavailable")
+
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_revenue",
+        replace(OPERATING_TOOLS["analyze_revenue"], runner=fail),
+    )
+
+    batch = execute_operating_tools(
+        ["analyze_revenue", "analyze_review_topics"],
+        _context(),
+        required_tools=set(),
+    )
+
+    assert batch.stopped_early is False
+    assert [item.status for item in batch.executions] == ["failed", "completed"]

@@ -89,16 +89,19 @@ def analyze_operating_sample(
 
 
 def _persist_report(db: Session, report: dict[str, object]) -> dict[str, object]:
+    agent_trace = dict(report.get("agent_trace", {}))  # type: ignore[arg-type]
+    run_status = str(agent_trace.get("status", "completed"))
+    if run_status not in {"completed", "degraded", "failed"}:
+        run_status = "failed"
     run = AnalysisRun(
         project_id=int(report["project_id"]),
         stage="operating",
         intent=str(report["intent"]),
-        status="completed",
+        status=run_status,
     )
     db.add(run)
     db.flush()
     metrics = dict(report["metrics"])  # type: ignore[arg-type]
-    agent_trace = dict(report.get("agent_trace", {}))  # type: ignore[arg-type]
     agent_trace["run_id"] = run.id
     metrics["_agent"] = agent_trace
     result = AnalysisResult(

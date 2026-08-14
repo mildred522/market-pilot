@@ -6,6 +6,11 @@ const MODE_LABELS = {
   deterministic: "确定性分析"
 };
 
+const STATUS_LABELS = {
+  degraded: "部分分析未完成",
+  failed: "分析未完成"
+};
+
 export function AgentRunStatus({ trace }: { trace: AgentTrace }) {
   return (
     <div className={`agent-run-status agent-run-${trace.mode}`}>
@@ -13,6 +18,9 @@ export function AgentRunStatus({ trace }: { trace: AgentTrace }) {
         <strong>{MODE_LABELS[trace.mode]}</strong>
         <span>{trace.model ?? trace.provider}</span>
         <span>{trace.selected_tools.length} 个分析工具</span>
+        {trace.status && trace.status !== "completed" ? (
+          <span>{STATUS_LABELS[trace.status]}</span>
+        ) : null}
         {trace.run_id ? <span>运行 #{trace.run_id}</span> : null}
         <span>{trace.duration_ms} ms</span>
       </div>

@@ -11,7 +11,7 @@
 
 - `backend/`：FastAPI 后端，包含 `/health` 健康检查。
 - `backend/app/tools/`：保本线、营收、菜品矩阵和评论主题等确定性分析工具。
-- `backend/app/agent_runtime/`：结构化 Plan-and-Execute 运行时，包含模型客户端、工具白名单、动态规划、证据引用校验和确定性降级。
+- `backend/app/agent_runtime/`：结构化 Plan-and-Execute 运行时，包含模型客户端、工具白名单、动态规划、统一工具执行契约、证据引用校验和确定性降级。
 - `backend/app/location/`：百度 POI 候选生成、圈层采集、机会评分、可信度评估、快照复用和降级处理。
 - `backend/app/agents/`：确定性报告与兼容降级逻辑。
 - `frontend/`：Next.js + React + TypeScript 前端，包含业务入口、开店前问卷、开店后 CSV 上传、自动字段映射和诊断报告页。
@@ -126,6 +126,7 @@ http://localhost:3000/demo
 - 两个业务模块清晰分流：开店前看潜力和风险，开店后看经营问题和整改。
 - 数值指标由 pandas/SQL 工具计算，不让 LLM 猜营业额、毛利、客单价。
 - 轻量 Plan-and-Execute Agent：路由、规划、工具执行、总结、证据校验。
+- 工具统一返回状态、证据、耗时和安全错误码；可选工具失败时允许带警告的局部结果，必需工具失败时停止综合。
 - 百度 POI 支持自动推荐候选商圈和手动铺位分析，并明确区分机会评分与数据可信度。
 - 报告页明确区分结论、指标、证据、风险和行动清单。
 - 使用 TypeScript 约束前端表单、API 响应、图表数据和报告结构。

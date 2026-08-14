@@ -10,6 +10,19 @@ from app.agent_runtime.metric_registry import definition_for
 ToolExecutionStatus = Literal["completed", "degraded", "failed"]
 
 
+class ToolExecutionTrace(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tool_name: str
+    output_section: str
+    status: ToolExecutionStatus
+    evidence_count: int = Field(ge=0)
+    warnings: list[str] = Field(default_factory=list, max_length=8)
+    error_code: str | None = None
+    duration_ms: int = Field(ge=0)
+    from_cache: bool = False
+
+
 class ToolExecutionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -31,6 +44,18 @@ class ToolExecutionResult(BaseModel):
         elif self.data is None:
             raise ValueError("completed or degraded tool results require data")
         return self
+
+    def to_trace(self) -> ToolExecutionTrace:
+        return ToolExecutionTrace(
+            tool_name=self.tool_name,
+            output_section=self.output_section,
+            status=self.status,
+            evidence_count=len(self.evidence),
+            warnings=self.warnings,
+            error_code=self.error_code,
+            duration_ms=self.duration_ms,
+            from_cache=self.from_cache,
+        )
 
 
 class ToolExecutionBatch(BaseModel):

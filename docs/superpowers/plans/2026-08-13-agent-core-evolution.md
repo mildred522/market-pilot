@@ -182,6 +182,8 @@ The envelope must contain:
 
 Do not include raw exceptions, credentials, arbitrary provider payloads, or chain-of-thought.
 
+- [x] Implement and validate the typed execution envelope for every operating tool.
+
 ### Task 2.2: Move registry mappings into one source of truth
 
 **Files:**
@@ -190,9 +192,9 @@ Do not include raw exceptions, credentials, arbitrary provider payloads, or chai
 - Delete after migration: `_result_key` in `backend/app/agent_runtime/tools.py`
 - Test: `backend/tests/test_metric_registry.py`
 
-- [ ] Make each `ToolSpec` own its output section and output contract.
-- [ ] Validate at startup or in tests that every public output path has a metric definition.
-- [ ] Reject duplicate tool names and output sections.
+- [x] Make each `ToolSpec` own its output section and output contract.
+- [x] Validate at startup or in tests that every public output path has a metric definition.
+- [x] Reject duplicate tool names and output sections.
 
 ### Task 2.3: Support bounded partial failure
 
@@ -202,10 +204,10 @@ Do not include raw exceptions, credentials, arbitrary provider payloads, or chai
 - Modify: `backend/app/agent_runtime/contracts.py`
 - Test: `backend/tests/test_agent_orchestrator.py`
 
-- [ ] Continue when an optional tool fails and return a degraded report with explicit missing sections.
-- [ ] Stop when a required tool for the requested question fails.
-- [ ] Ensure the synthesizer receives only completed or degraded validated data.
-- [ ] Add failed-tool details to the trace without exposing sensitive content.
+- [x] Continue when an optional tool fails and return a degraded report with explicit missing sections.
+- [x] Stop when a required tool for the requested question fails.
+- [x] Ensure the synthesizer receives only completed or degraded validated data.
+- [x] Add failed-tool details to the trace without exposing sensitive content.
 
 **Exit gate:** Every Agent-visible operating tool returns the same envelope, partial failures are deterministic, and all prior report fields remain backward compatible.
 

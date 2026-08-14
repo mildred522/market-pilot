@@ -4,6 +4,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agent_runtime.tool_contracts import (
+    ToolExecutionStatus,
+    ToolExecutionTrace,
+)
+
 
 class PlannedTool(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -51,6 +56,8 @@ class AgentTrace(BaseModel):
     synthesis_used_llm: bool
     fallback_reasons: list[str] = Field(default_factory=list)
     duration_ms: int = Field(ge=0)
+    status: ToolExecutionStatus = "completed"
+    tool_executions: list[ToolExecutionTrace] = Field(default_factory=list)
 
 
 class FollowupToolArguments(BaseModel):

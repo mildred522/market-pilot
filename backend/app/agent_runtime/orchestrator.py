@@ -58,11 +58,26 @@ class OperatingAgentOrchestrator:
             plan=[*selected_tools, "generate_recommendations"],
             tool_results=tool_batch.successful_data,
         )
-        state, synthesis_used_llm, synthesis_fallbacks = synthesize_operating_report(
-            client=self._client,
-            state=state,
-            plan=plan,
-        )
+        tool_warnings = [
+            warning
+            for execution in tool_batch.executions
+            for warning in execution.warnings
+        ]
+        if tool_batch.status == "failed":
+            state.summary = "关键分析工具未能完成，当前数据不足以生成可靠经营诊断。"
+            state.actions = ["检查上传数据的必填字段和格式后重新运行分析"]
+            state.warnings = tool_warnings
+            synthesis_used_llm = False
+            synthesis_fallbacks = [
+                "synthesizer: skipped after required tool failure"
+            ]
+        else:
+            state, synthesis_used_llm, synthesis_fallbacks = synthesize_operating_report(
+                client=self._client,
+                state=state,
+                plan=plan,
+            )
+            state.warnings.extend(tool_warnings)
         if planning_used_llm and synthesis_used_llm:
             mode = "llm"
         elif planning_used_llm or synthesis_used_llm:
@@ -79,5 +94,7 @@ class OperatingAgentOrchestrator:
             synthesis_used_llm=synthesis_used_llm,
             fallback_reasons=[*planning_fallbacks, *synthesis_fallbacks],
             duration_ms=max(0, round((perf_counter() - started) * 1000)),
+            status=tool_batch.status,
+            tool_executions=[item.to_trace() for item in tool_batch.executions],
         )
         return OperatingAgentRun(state=state, plan=plan, trace=trace)

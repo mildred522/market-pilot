@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -9,6 +10,7 @@ from app.agent_runtime.contracts import (
     SynthesisFinding,
 )
 from app.agent_runtime.orchestrator import OperatingAgentOrchestrator
+from app.agent_runtime.tools import OPERATING_TOOLS
 from app.services.agent_service import AgentService
 
 
@@ -125,3 +127,51 @@ def test_orchestrator_always_adds_channel_analysis_when_inputs_are_available():
 
     assert "analyze_channel_profitability" in report["agent_trace"]["selected_tools"]
     assert report["metrics"]["channels"]["delivery_revenue_share"] == 0.3333
+
+
+def test_orchestrator_continues_when_optional_tool_fails(monkeypatch):
+    def fail(_context):
+        raise RuntimeError("sensitive provider response")
+
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_time_patterns",
+        replace(OPERATING_TOOLS["analyze_time_patterns"], runner=fail),
+    )
+
+    report = _analyze(_service(FakeLlmClient()))
+
+    assert report["agent_trace"]["status"] == "degraded"
+    assert "time_patterns" not in report["metrics"]
+    failed = next(
+        item
+        for item in report["agent_trace"]["tool_executions"]
+        if item["tool_name"] == "analyze_time_patterns"
+    )
+    assert failed["status"] == "failed"
+    assert failed["error_code"] == "tool_execution_failed"
+    assert "sensitive provider response" not in str(report["agent_trace"])
+    assert any("time_patterns" in warning for warning in report["warnings"])
+    assert report["summary"].startswith("AI 诊断")
+
+
+def test_orchestrator_stops_before_synthesis_when_required_tool_fails(monkeypatch):
+    def fail(_context):
+        raise RuntimeError("secret database exception")
+
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_revenue",
+        replace(OPERATING_TOOLS["analyze_revenue"], runner=fail),
+    )
+    client = FakeLlmClient()
+
+    report = _analyze(_service(client))
+
+    assert client.calls == ["AgentPlan"]
+    assert report["agent_trace"]["status"] == "failed"
+    assert len(report["agent_trace"]["tool_executions"]) == 1
+    assert report["agent_trace"]["tool_executions"][0]["error_code"] == "tool_execution_failed"
+    assert "数据不足" in report["summary"]
+    assert "revenue" not in report["metrics"]
+    assert "secret database exception" not in str(report)

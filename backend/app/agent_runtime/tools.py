@@ -44,6 +44,7 @@ class ToolSpec:
     required_inputs: tuple[str, ...]
     runner: Callable[[OperatingToolContext], dict[str, Any]]
     output_section: str
+    required_for_report: bool = False
     use_when: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
 
@@ -55,6 +56,7 @@ OPERATING_TOOLS: dict[str, ToolSpec] = {
         required_inputs=("orders",),
         runner=lambda context: analyze_revenue(context.orders),
         output_section="revenue",
+        required_for_report=True,
         use_when=("营收规模", "订单量", "客单价", "每日变化"),
         limitations=("只统计上传订单记录", "缺失日期不会自动补零"),
     ),
@@ -64,6 +66,7 @@ OPERATING_TOOLS: dict[str, ToolSpec] = {
         required_inputs=("orders", "menu"),
         runner=lambda context: analyze_menu_matrix(context.orders, context.menu),
         output_section="menu",
+        required_for_report=True,
         use_when=("菜品表现", "菜单优化", "销量与毛利"),
         limitations=("象限是店内样本相对分类，不是行业标准",),
     ),
@@ -73,6 +76,7 @@ OPERATING_TOOLS: dict[str, ToolSpec] = {
         required_inputs=("reviews",),
         runner=lambda context: analyze_review_topics(context.reviews),
         output_section="reviews",
+        required_for_report=True,
         use_when=("差评", "顾客反馈", "体验问题"),
         limitations=("基于关键词匹配，不等同于完整情感分析",),
     ),
@@ -159,55 +163,65 @@ def available_tool_specs(context: OperatingToolContext) -> list[ToolSpec]:
 
 
 def execute_operating_tools(
-    tool_names: list[str], context: OperatingToolContext
+    tool_names: list[str],
+    context: OperatingToolContext,
+    *,
+    required_tools: set[str] | None = None,
 ) -> ToolExecutionBatch:
     executions: list[ToolExecutionResult] = []
+    required = (
+        {
+            name
+            for name in tool_names
+            if OPERATING_TOOLS[name].required_for_report
+        }
+        if required_tools is None
+        else required_tools
+    )
     for name in tool_names:
         spec = OPERATING_TOOLS[name]
         started = perf_counter()
         missing = set(spec.required_inputs) - context.available_inputs
         if missing:
-            executions.append(
-                _failed_result(
-                    spec,
-                    started=started,
-                    error_code="tool_input_missing",
-                )
+            result = _failed_result(
+                spec,
+                started=started,
+                error_code="tool_input_missing",
             )
-            continue
-        try:
-            data = validate_tool_output(
-                tool_name=name,
-                output_section=spec.output_section,
-                data=spec.runner(context),
-            )
-        except ValueError:
-            executions.append(
-                _failed_result(
-                    spec,
-                    started=started,
-                    error_code="tool_output_invalid",
-                )
-            )
-        except Exception:
-            executions.append(
-                _failed_result(
+        else:
+            try:
+                raw_data = spec.runner(context)
+            except Exception:
+                result = _failed_result(
                     spec,
                     started=started,
                     error_code="tool_execution_failed",
                 )
-            )
-        else:
-            executions.append(
-                ToolExecutionResult(
-                    tool_name=name,
-                    output_section=spec.output_section,
-                    status="completed",
-                    data=data,
-                    evidence=evidence_references(spec.output_section, data),
-                    duration_ms=_duration_ms(started),
-                )
-            )
+            else:
+                try:
+                    data = validate_tool_output(
+                        tool_name=name,
+                        output_section=spec.output_section,
+                        data=raw_data,
+                    )
+                except ValueError:
+                    result = _failed_result(
+                        spec,
+                        started=started,
+                        error_code="tool_output_invalid",
+                    )
+                else:
+                    result = ToolExecutionResult(
+                        tool_name=name,
+                        output_section=spec.output_section,
+                        status="completed",
+                        data=data,
+                        evidence=evidence_references(spec.output_section, data),
+                        duration_ms=_duration_ms(started),
+                    )
+        executions.append(result)
+        if result.status == "failed" and name in required:
+            return ToolExecutionBatch(executions=executions, stopped_early=True)
     return ToolExecutionBatch(executions=executions)
 
 

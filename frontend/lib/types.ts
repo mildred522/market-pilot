@@ -123,6 +123,7 @@ export type OperatingMetrics = {
 
 export type AgentTrace = {
   mode: "llm" | "hybrid" | "deterministic";
+  status?: "completed" | "degraded" | "failed";
   provider: string;
   model: string | null;
   prompt_version: string;
@@ -130,6 +131,16 @@ export type AgentTrace = {
   planning_used_llm: boolean;
   synthesis_used_llm: boolean;
   fallback_reasons: string[];
+  tool_executions?: Array<{
+    tool_name: string;
+    output_section: string;
+    status: "completed" | "degraded" | "failed";
+    evidence_count: number;
+    warnings: string[];
+    error_code: string | null;
+    duration_ms: number;
+    from_cache: boolean;
+  }>;
   duration_ms: number;
   run_id?: number;
 };
