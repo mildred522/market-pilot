@@ -532,12 +532,12 @@ The demo must show:
 
 ### Task 7.4: Final verification
 
-- [ ] Run the complete backend suite.
-- [ ] Run the offline Agent evaluation suite and compare it with the Phase 1 baseline.
-- [ ] Run the frontend production build.
-- [ ] Run one browser end-to-end smoke flow on a fresh database.
-- [ ] Build and check the Windows launcher.
-- [ ] Verify the repository contains no API keys, local databases, uploads, provider payloads, or generated build directories.
+- [x] Run the complete backend suite.
+- [x] Run the offline Agent evaluation suite and compare it with the Phase 1 baseline.
+- [x] Run the frontend production build.
+- [x] Run one browser end-to-end smoke flow on a fresh database.
+- [x] Build and check the Windows launcher.
+- [x] Verify the repository contains no API keys, local databases, uploads, provider payloads, or generated build directories.
 
 **Exit gate:** The project can be started from documented prerequisites, demonstrated in five minutes, and defended with measured Agent quality rather than feature claims alone.
 

@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -19,9 +20,23 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Restaurant Agent API", lifespan=lifespan)
 
+
+def cors_origins() -> list[str]:
+    defaults = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    configured = os.getenv("CORS_ORIGINS", "").strip()
+    if not configured:
+        return defaults
+    origins = [
+        value.strip().rstrip("/")
+        for value in configured.split(",")
+        if value.strip().startswith(("http://", "https://"))
+    ]
+    return list(dict.fromkeys(origins)) or defaults
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

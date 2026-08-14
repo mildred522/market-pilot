@@ -7,11 +7,13 @@
 
 ## 当前进度
 
-固定 7 轮 MVP 方案已推进到 Round 7：
+固定轮次 MVP 与 Agent 核心演进计划已经完成：
 
 - `backend/`：FastAPI 后端，包含 `/health` 健康检查。
 - `backend/app/tools/`：保本线、营收、菜品矩阵和评论主题等确定性分析工具。
 - `backend/app/agent_runtime/`：结构化 Plan-and-Execute 运行时，包含模型客户端、工具白名单、动态规划、统一工具执行契约、证据引用校验和确定性降级。
+- `backend/app/observability/`：安全运行追踪，关联 request/run/analysis ID，记录计划、工具、模型统计、记忆 ID 和降级原因。
+- `backend/app/pre_open/`：开店可行性领域规则与类型化结果。
 - `backend/app/memory/`：基于 SQLite/SQLAlchemy 的结构化会话、项目档案、受限上下文和历史指标比较，不依赖向量数据库。
 - `backend/app/location/`：百度 POI 候选生成、圈层采集、机会评分、可信度评估、快照复用和降级处理。
 - `backend/app/agents/`：确定性报告与兼容降级逻辑。
@@ -64,10 +66,15 @@ AGENT_LLM_PROVIDER=openai-compatible
 AGENT_LLM_BASE_URL=https://api.openai.com/v1
 AGENT_LLM_API_KEY=your-server-side-key
 AGENT_LLM_MODEL=your-model-name
+AGENT_LLM_PLANNER_MODEL=optional-planner-model
+AGENT_LLM_SYNTHESIZER_MODEL=optional-synthesizer-model
+AGENT_LLM_FOLLOWUP_MODEL=optional-followup-model
 AGENT_LLM_TIMEOUT_SECONDS=75
 ```
 
-`AGENT_LLM_API_KEY` 和 `AGENT_LLM_MODEL` 均存在时，经营诊断使用结构化 AI Planner 和 Synthesizer；缺少配置、请求失败、输出不符合 Schema 或引用不存在的指标时，自动退回确定性分析。也可以在本地工作台配置模型和百度地图密钥；密钥由后端使用，并通过 Windows DPAPI 加密保存，不写入前端持久化存储。
+`AGENT_LLM_API_KEY` 和基础模型均存在时启用模型路径；三个角色模型是可选覆盖值，留空时使用基础模型。缺少配置、请求失败、输出不符合 Schema 或引用不存在的指标时，自动退回确定性分析。也可以在本地工作台配置模型和百度地图密钥；密钥由后端使用，并通过 Windows DPAPI 加密保存，不写入前端持久化存储。
+
+前端不在默认 3000 端口运行时，通过逗号分隔的 `CORS_ORIGINS` 显式加入实际浏览器来源；不要使用通配符来源。
 
 经营报告支持有限 ReAct 追问：模型最多进行 4 轮，只能调用读取指标、列出指标分区、列出指标路径和读取报告摘要等只读工具；不能修改数据、读取任意文件或重新调用百度 API。
 
@@ -96,6 +103,8 @@ python -m scripts.run_agent_evals
 
 命令会运行 30 条经营规划与报告追问用例，在 `outputs/evals/` 生成 JSON 和 Markdown 报告。当前 CI 安全门禁检查证据引用、虚构数值、无依据的比较性结论和必要的数据不足声明，并对聚焦模式的工具精确率、召回率和严格匹配率执行回归阈值。
 
+已验证的关键指标与 Phase 1 对比见 [Agent 面试评估证据](docs/interview-evidence.md)。实时模型评估默认关闭；显式开启方式和成本单价配置见 [Agent 评测基线](docs/agent-evaluation.md#opt-in-live-evaluation)。
+
 ### 演示路径
 
 推荐入口：
@@ -103,6 +112,8 @@ python -m scripts.run_agent_evals
 ```text
 http://localhost:3000/demo
 ```
+
+完整五分钟讲解顺序见 [Demo 脚本](docs/demo-script.md)，覆盖 full/focused 规划、证据追问、结构化记忆、缺基准拒答、安全降级和统一能力入口。
 
 也可以直接访问：
 
@@ -152,4 +163,8 @@ http://localhost:3000/demo
 - [API 契约](docs/api-contract.md)
 - [Agent 评测基线](docs/agent-evaluation.md)
 - [Agent Memory](docs/agent-memory.md)
+- [Agent 核心设计](docs/agent-core-design.md)
+- [Agent 面试评估证据](docs/interview-evidence.md)
+- [ADR：结构化记忆不用 RAG](docs/decisions/structured-memory-without-rag.md)
+- [ADR：受策略约束的规划](docs/decisions/policy-constrained-planning.md)
 - [Demo 脚本](docs/demo-script.md)

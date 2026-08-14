@@ -2,9 +2,9 @@
 
 ## Baseline
 
-- Recorded at: 2026-08-13 20:28 +08:00
-- Branch: `feature/location-analysis`
-- Consolidation base: `2e9f0b4`
+- Recorded at: 2026-08-14 +08:00
+- Branch: `codex/agent-evals`
+- Consolidation base: `8a0fbd1` plus the Phase 7 interview-release candidate
 - Platform: Windows x64
 
 ## Toolchain
@@ -25,11 +25,23 @@ cd backend
 python -m pytest -q
 ```
 
-Result: `310 passed, 1 skipped`.
+Result: `396 passed, 2 skipped`.
 
-The skipped case is the opt-in real Baidu smoke test. It requires
-`RUN_BAIDU_SMOKE=1`, a valid `BAIDU_MAP_AK`, and a matching provider IP
-allowlist. It is intentionally excluded from the default regression suite.
+The skipped cases are the opt-in real Baidu smoke test and the opt-in live
+Agent evaluation. They require explicit run flags and provider credentials;
+both are intentionally excluded from the default regression suite to avoid
+external instability and accidental model cost.
+
+### Offline Agent evaluation
+
+```powershell
+cd backend
+python -m scripts.run_agent_evals
+```
+
+Result: the safety gate passed all 30 cases. Current planning precision,
+recall, exact-set accuracy, evidence validity, and safety pass rate are all
+`1.0000`; unsupported numeric and normative claims are zero.
 
 ### Frontend
 
@@ -51,6 +63,13 @@ dotnet build launcher/MarketPilot.Launcher/MarketPilot.Launcher.csproj `
 
 Result: build succeeded with zero warnings and zero errors.
 
+### Browser smoke
+
+Result: a fresh SQLite database completed the demo-to-operating-report flow on
+isolated ports. The report rendered revenue, break-even, channel, menu, review,
+risk, evidence, and action sections; the browser console reported zero errors
+and zero warnings.
+
 ## Release Gate
 
 Before merging a release candidate, rerun all three checks above and verify:
@@ -58,4 +77,4 @@ Before merging a release candidate, rerun all three checks above and verify:
 - `git diff --check` returns no errors.
 - No API key, local database, upload, provider payload, or generated build
   directory is tracked.
-- The feature worktree is clean.
+- The release branch worktree is clean.

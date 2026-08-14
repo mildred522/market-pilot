@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, cors_origins
 
 
 def test_cors_allows_frontend_preflight_request():
@@ -15,3 +15,15 @@ def test_cors_allows_frontend_preflight_request():
 
         assert response.status_code == 200
         assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+
+def test_cors_origins_accepts_explicit_local_test_origin(monkeypatch):
+    monkeypatch.setenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3027",
+    )
+
+    assert cors_origins() == [
+        "http://localhost:3000",
+        "http://127.0.0.1:3027",
+    ]
