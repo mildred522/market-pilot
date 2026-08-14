@@ -232,6 +232,8 @@ Add two modes:
 
 Default uploaded-data analysis to `full` so existing behavior remains stable. Use `focused` for targeted follow-up-like diagnosis.
 
+- [x] Propagate explicit `full` and `focused` modes through API, service, runtime, trace, evaluation, and UI.
+
 ### Task 3.2: Replace the all-tools policy
 
 **Files:**
@@ -249,6 +251,9 @@ Policy rules:
 - Missing required inputs produce a structured clarification or insufficient-data result, not silent tool substitution.
 - The policy determines safety and completeness; the LLM determines intent and proposes the candidate plan.
 
+- [x] Enforce full coverage in `full` mode and one-to-four policy-validated tools in `focused` mode.
+- [x] Provide deterministic focused routing and partial-result synthesis when no LLM is configured.
+
 ### Task 3.3: Add one bounded replan opportunity
 
 **Files:**
@@ -264,6 +269,8 @@ Replan only when:
 
 Limit replanning to one attempt. Record the initial plan, trigger, revised plan, and final outcome in the trace.
 
+- [x] Replan at most once after a recoverable required-tool failure and preserve a structured audit trace.
+
 ### Task 3.4: Enforce evaluation thresholds
 
 **Files:**
@@ -277,6 +284,8 @@ Required focused-mode thresholds:
 - Exact-set accuracy at least 0.80.
 - Evidence validity 1.00.
 - Unsupported numeric and normative claims both zero.
+
+- [x] Enforce the focused-mode thresholds in the offline golden evaluation test.
 
 **Exit gate:** A focused question no longer runs all tools, while full reports preserve complete coverage and deterministic fallback behavior.
 

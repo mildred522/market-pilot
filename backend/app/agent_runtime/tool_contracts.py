@@ -19,6 +19,7 @@ class ToolExecutionTrace(BaseModel):
     evidence_count: int = Field(ge=0)
     warnings: list[str] = Field(default_factory=list, max_length=8)
     error_code: str | None = None
+    recoverable: bool = False
     duration_ms: int = Field(ge=0)
     from_cache: bool = False
 
@@ -33,6 +34,7 @@ class ToolExecutionResult(BaseModel):
     evidence: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list, max_length=8)
     error_code: str | None = Field(default=None, max_length=80)
+    recoverable: bool = False
     duration_ms: int = Field(ge=0)
     from_cache: bool = False
 
@@ -53,6 +55,7 @@ class ToolExecutionResult(BaseModel):
             evidence_count=len(self.evidence),
             warnings=self.warnings,
             error_code=self.error_code,
+            recoverable=self.recoverable,
             duration_ms=self.duration_ms,
             from_cache=self.from_cache,
         )

@@ -79,9 +79,28 @@ def test_execution_failure_uses_safe_error_code_without_raw_exception(monkeypatc
     assert result.status == "failed"
     assert result.data is None
     assert result.error_code == "tool_execution_failed"
+    assert result.recoverable is True
     assert secret not in result.model_dump_json()
     assert batch.successful_data == {}
     assert batch.status == "degraded"
+
+
+def test_value_error_from_tool_is_not_recoverable(monkeypatch):
+    def fail(_context):
+        raise ValueError("business input cannot support this calculation")
+
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_time_patterns",
+        replace(OPERATING_TOOLS["analyze_time_patterns"], runner=fail),
+    )
+
+    result = execute_operating_tools(
+        ["analyze_time_patterns"], _context()
+    ).executions[0]
+
+    assert result.error_code == "tool_input_invalid"
+    assert result.recoverable is False
 
 
 def test_required_tool_failure_stops_later_execution(monkeypatch):

@@ -4,8 +4,7 @@ import { ChangeEvent, useState } from "react";
 import Link from "next/link";
 import { ColumnMapper } from "@/components/ColumnMapper";
 import { analyzeOperatingSample, analyzeOperatingUploads, createProject, uploadCsv } from "@/lib/api";
-import type { UploadedFileResult } from "@/lib/types";
-import type { OperatingCostAssumptions } from "@/lib/types";
+import type { OperatingAnalysisMode, OperatingCostAssumptions, UploadedFileResult } from "@/lib/types";
 
 const fileTypes = [
   { id: "orders", label: "订单 CSV" },
@@ -19,6 +18,7 @@ export function CsvUploader() {
   const [uploads, setUploads] = useState<UploadedFileResult[]>([]);
   const [mappings, setMappings] = useState<Record<string, Record<string, string>>>({});
   const [question, setQuestion] = useState("分析订单、菜品和差评，找出当前经营问题和整改重点");
+  const [analysisMode, setAnalysisMode] = useState<OperatingAnalysisMode>("full");
   const [costs, setCosts] = useState({
     monthly_rent: 18000,
     monthly_labor: 24000,
@@ -96,7 +96,13 @@ export function CsvUploader() {
           .map(([key, value]) => [key, Number(value)])
       );
       const assumptions: OperatingCostAssumptions = { ...costs, ...configuredTargets };
-      const report = await analyzeOperatingUploads(projectId, question, selections, assumptions);
+      const report = await analyzeOperatingUploads(
+        projectId,
+        question,
+        selections,
+        assumptions,
+        analysisMode
+      );
       setAnalysisId(report.analysis_id);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "分析失败");
@@ -110,7 +116,7 @@ export function CsvUploader() {
     setLoadingType("analysis");
     try {
       const id = await ensureProject();
-      const report = await analyzeOperatingSample(id);
+      const report = await analyzeOperatingSample(id, question, analysisMode);
       setAnalysisId(report.analysis_id);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "分析失败");
@@ -143,6 +149,22 @@ export function CsvUploader() {
           诊断问题
           <input value={question} onChange={(event) => setQuestion(event.target.value)} />
         </label>
+        <div className="mode-switch" role="tablist" aria-label="经营分析模式">
+          <button
+            className={analysisMode === "full" ? "active" : ""}
+            onClick={() => setAnalysisMode("full")}
+            type="button"
+          >
+            完整体检
+          </button>
+          <button
+            className={analysisMode === "focused" ? "active" : ""}
+            onClick={() => setAnalysisMode("focused")}
+            type="button"
+          >
+            聚焦问题
+          </button>
+        </div>
         <details>
           <summary>成本与现金假设</summary>
           <p className="form-help">用于计算保本线和现金压力，不会被当作真实财务流水。</p>

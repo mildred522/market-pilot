@@ -6,6 +6,7 @@ from app.agent_runtime.contracts import AgentPlan, CompactAgentSynthesis
 from app.agent_runtime.llm_client import LlmClient, LlmError
 from app.agent_runtime.metric_registry import (
     data_resource_context,
+    format_value,
     metric_evidence,
 )
 from app.agent_runtime.prompts import SYNTHESIZER_SYSTEM_PROMPT
@@ -64,7 +65,42 @@ def synthesize_operating_report(
 
 
 def _deterministic(state: AgentState) -> AgentState:
+    if not {"revenue", "menu", "reviews"} <= set(state.tool_results):
+        return verify_evidence(_synthesize_partial(state))
     return verify_evidence(synthesize(state))
+
+
+def _synthesize_partial(state: AgentState) -> AgentState:
+    evidence = metric_evidence(
+        state.tool_results,
+        sections=set(state.tool_results),
+        limit=6,
+    )
+    section_labels = {
+        "revenue": "营收",
+        "menu": "菜品",
+        "reviews": "评论",
+        "time_patterns": "时段",
+        "discounts": "折扣",
+        "survival": "保本与现金",
+        "channels": "渠道",
+    }
+    labels = [
+        section_labels.get(section, section)
+        for section in state.tool_results
+    ]
+    state.summary = (
+        f"已完成{'、'.join(labels)}聚焦分析；结论仅覆盖所选工具和当前上传样本。"
+    )
+    state.evidence = [
+        (
+            f"{item['label']}：{format_value(item['ref'], item['value'])}"
+            f"（依据：{item['ref']}）"
+        )
+        for item in evidence
+    ]
+    state.actions = ["继续按相同口径记录相关指标，并结合门店目标进行复盘"]
+    return state
 
 
 def _verify_finding_references(

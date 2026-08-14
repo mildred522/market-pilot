@@ -1,5 +1,6 @@
 import pandas as pd
 
+from app.agent_runtime.contracts import AnalysisMode
 from app.agent_runtime.orchestrator import OperatingAgentOrchestrator
 from app.agent_runtime.metric_registry import data_resource_context
 
@@ -13,6 +14,7 @@ class AgentService:
         *,
         project_id: int,
         question: str,
+        analysis_mode: AnalysisMode = "full",
         orders: pd.DataFrame,
         menu: pd.DataFrame,
         reviews: pd.DataFrame,
@@ -21,6 +23,7 @@ class AgentService:
         run = self._orchestrator.run(
             project_id=project_id,
             question=question,
+            analysis_mode=analysis_mode,
             orders=orders,
             menu=menu,
             reviews=reviews,

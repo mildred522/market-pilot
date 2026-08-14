@@ -9,6 +9,7 @@ from app.agent_runtime.contracts import (
     PlannedTool,
     SynthesisFinding,
 )
+from app.agent_runtime.llm_client import DisabledLlmClient
 from app.agent_runtime.orchestrator import OperatingAgentOrchestrator
 from app.agent_runtime.tools import OPERATING_TOOLS
 from app.services.agent_service import AgentService
@@ -61,10 +62,16 @@ def _service(client: FakeLlmClient) -> AgentService:
     return AgentService(OperatingAgentOrchestrator(client))
 
 
-def _analyze(service: AgentService):
+def _analyze(
+    service: AgentService,
+    *,
+    question: str = "分析营收趋势",
+    analysis_mode: str = "full",
+):
     return service.analyze_operating(
         project_id=1,
-        question="分析营收趋势",
+        question=question,
+        analysis_mode=analysis_mode,
         orders=pd.read_csv(SAMPLE_DIR / "orders.csv"),
         menu=pd.read_csv(SAMPLE_DIR / "menu_items.csv"),
         reviews=pd.read_csv(SAMPLE_DIR / "reviews.csv"),
@@ -157,7 +164,7 @@ def test_orchestrator_continues_when_optional_tool_fails(monkeypatch):
 
 def test_orchestrator_stops_before_synthesis_when_required_tool_fails(monkeypatch):
     def fail(_context):
-        raise RuntimeError("secret database exception")
+        raise ValueError("secret database exception")
 
     monkeypatch.setitem(
         OPERATING_TOOLS,
@@ -171,7 +178,130 @@ def test_orchestrator_stops_before_synthesis_when_required_tool_fails(monkeypatc
     assert client.calls == ["AgentPlan"]
     assert report["agent_trace"]["status"] == "failed"
     assert len(report["agent_trace"]["tool_executions"]) == 1
-    assert report["agent_trace"]["tool_executions"][0]["error_code"] == "tool_execution_failed"
+    assert report["agent_trace"]["tool_executions"][0]["error_code"] == "tool_input_invalid"
     assert "数据不足" in report["summary"]
     assert "revenue" not in report["metrics"]
     assert "secret database exception" not in str(report)
+
+
+def test_orchestrator_focused_mode_executes_only_the_planned_tool():
+    report = _analyze(
+        _service(FakeLlmClient("metrics.time_patterns.peak_daypart")),
+        question="营收最高的时段是什么",
+        analysis_mode="focused",
+    )
+
+    assert report["agent_trace"]["analysis_mode"] == "focused"
+    assert report["agent_trace"]["selected_tools"] == ["analyze_time_patterns"]
+    assert "time_patterns" in report["metrics"]
+    assert "revenue" not in report["metrics"]
+
+
+def test_orchestrator_focused_deterministic_mode_synthesizes_partial_results():
+    report = _analyze(
+        AgentService(OperatingAgentOrchestrator(DisabledLlmClient())),
+        question="只看中差评情况",
+        analysis_mode="focused",
+    )
+
+    assert report["agent_trace"]["selected_tools"] == ["analyze_review_topics"]
+    assert report["agent_trace"]["status"] == "completed"
+    assert set(report["metrics"]) >= {
+        "reviews",
+        "_agent",
+        "_agent_plan",
+        "_data_resources",
+    }
+    assert "revenue" not in report["metrics"]
+    assert report["summary"]
+
+
+def test_orchestrator_focused_tool_failure_is_required(monkeypatch):
+    def fail(_context):
+        raise ValueError("invalid business input")
+
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_time_patterns",
+        replace(OPERATING_TOOLS["analyze_time_patterns"], runner=fail),
+    )
+    client = FakeLlmClient("metrics.time_patterns.peak_daypart")
+
+    report = _analyze(
+        _service(client),
+        question="营收最高的时段是什么",
+        analysis_mode="focused",
+    )
+
+    assert client.calls == ["AgentPlan"]
+    assert report["agent_trace"]["status"] == "failed"
+    assert report["agent_trace"]["selected_tools"] == ["analyze_time_patterns"]
+
+
+def test_orchestrator_replans_once_after_recoverable_required_failure(monkeypatch):
+    attempts = 0
+    original = OPERATING_TOOLS["analyze_time_patterns"].runner
+
+    def fail_once(context):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("temporary worker failure")
+        return original(context)
+
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_time_patterns",
+        replace(OPERATING_TOOLS["analyze_time_patterns"], runner=fail_once),
+    )
+    client = FakeLlmClient("metrics.time_patterns.peak_daypart")
+
+    report = _analyze(
+        _service(client),
+        question="营收最高的时段是什么",
+        analysis_mode="focused",
+    )
+
+    assert client.calls == ["AgentPlan", "AgentPlan", "CompactAgentSynthesis"]
+    assert attempts == 2
+    assert report["agent_trace"]["replan_count"] == 1
+    assert report["agent_trace"]["replan"] == {
+        "trigger": "recoverable_tool_failure",
+        "initial_tools": ["analyze_time_patterns"],
+        "failed_tools": ["analyze_time_patterns"],
+        "revised_tools": ["analyze_time_patterns"],
+        "outcome": "recovered",
+    }
+    assert [item["status"] for item in report["agent_trace"]["tool_executions"]] == [
+        "failed",
+        "completed",
+    ]
+    assert report["agent_trace"]["status"] == "degraded"
+
+
+def test_orchestrator_never_replans_more_than_once(monkeypatch):
+    attempts = 0
+
+    def always_fail(_context):
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("temporary worker failure")
+
+    monkeypatch.setitem(
+        OPERATING_TOOLS,
+        "analyze_time_patterns",
+        replace(OPERATING_TOOLS["analyze_time_patterns"], runner=always_fail),
+    )
+    client = FakeLlmClient("metrics.time_patterns.peak_daypart")
+
+    report = _analyze(
+        _service(client),
+        question="营收最高的时段是什么",
+        analysis_mode="focused",
+    )
+
+    assert client.calls == ["AgentPlan", "AgentPlan"]
+    assert attempts == 2
+    assert report["agent_trace"]["replan_count"] == 1
+    assert report["agent_trace"]["status"] == "failed"
+    assert report["agent_trace"]["replan"]["outcome"] == "failed"

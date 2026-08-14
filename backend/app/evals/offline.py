@@ -115,6 +115,7 @@ class OfflineAgentAdapter:
         report = AgentService(OperatingAgentOrchestrator(client)).analyze_operating(
             project_id=1,
             question=case.question,
+            analysis_mode=case.analysis_mode,
             orders=pd.read_csv(self._root / "sample_data" / "orders.csv"),
             menu=pd.read_csv(self._root / "sample_data" / "menu_items.csv"),
             reviews=pd.read_csv(review_path),

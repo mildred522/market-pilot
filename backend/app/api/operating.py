@@ -53,6 +53,7 @@ def analyze_operating(
     report = AgentService().analyze_operating(
         project_id=payload.project_id,
         question=payload.question,
+        analysis_mode=payload.analysis_mode,
         orders=orders,
         menu=menu,
         reviews=reviews,
@@ -70,6 +71,7 @@ def analyze_operating_sample(
     report = service.analyze_operating(
         project_id=payload.project_id,
         question=payload.question,
+        analysis_mode=payload.analysis_mode,
         orders=pd.read_csv(SAMPLE_DIR / "orders.csv"),
         menu=pd.read_csv(SAMPLE_DIR / "menu_items.csv"),
         reviews=pd.read_csv(SAMPLE_DIR / "reviews.csv"),

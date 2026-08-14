@@ -6,11 +6,17 @@ from typing import Any
 
 import pandas as pd
 
-from app.agent_runtime.contracts import AgentPlan, AgentTrace
+from app.agent_runtime.contracts import (
+    AnalysisMode,
+    AgentPlan,
+    AgentTrace,
+    ReplanTrace,
+)
 from app.agent_runtime.llm_client import LlmClient, llm_client_from_environment
-from app.agent_runtime.planning import create_operating_plan
+from app.agent_runtime.planning import create_operating_plan, create_operating_replan
 from app.agent_runtime.prompts import PROMPT_VERSION
 from app.agent_runtime.synthesis import synthesize_operating_report
+from app.agent_runtime.tool_contracts import ToolExecutionBatch
 from app.agent_runtime.tools import OperatingToolContext, execute_operating_tools
 from app.agents.state import AgentState
 
@@ -31,6 +37,7 @@ class OperatingAgentOrchestrator:
         *,
         project_id: int,
         question: str,
+        analysis_mode: AnalysisMode = "full",
         orders: pd.DataFrame,
         menu: pd.DataFrame,
         reviews: pd.DataFrame,
@@ -47,9 +54,84 @@ class OperatingAgentOrchestrator:
             client=self._client,
             question=question,
             context=context,
+            analysis_mode=analysis_mode,
         )
         selected_tools = [tool.name for tool in plan.tools]
-        tool_batch = execute_operating_tools(selected_tools, context)
+        initial_tools = list(selected_tools)
+        tool_batch = execute_operating_tools(
+            selected_tools,
+            context,
+            required_tools=(set(selected_tools) if analysis_mode == "focused" else None),
+        )
+        replan_count = 0
+        replan_trace: ReplanTrace | None = None
+        recoverable_failures = [
+            item
+            for item in tool_batch.executions
+            if item.status == "failed" and item.recoverable
+        ]
+        if tool_batch.status == "failed" and recoverable_failures:
+            replanned, replan_used_llm, replan_fallbacks = create_operating_replan(
+                client=self._client,
+                question=question,
+                context=context,
+                analysis_mode=analysis_mode,
+                previous_plan=plan,
+                failed_tools=[
+                    {
+                        "tool_name": item.tool_name,
+                        "error_code": item.error_code,
+                        "recoverable": item.recoverable,
+                    }
+                    for item in recoverable_failures
+                ],
+            )
+            planning_used_llm = planning_used_llm or replan_used_llm
+            planning_fallbacks.extend(replan_fallbacks)
+            if replanned is not None:
+                replan_count = 1
+                completed = {
+                    item.tool_name
+                    for item in tool_batch.executions
+                    if item.status in {"completed", "degraded"}
+                }
+                retry_tools = [
+                    item.name for item in replanned.tools if item.name not in completed
+                ]
+                recovery_batch = execute_operating_tools(
+                    retry_tools,
+                    context,
+                    required_tools=(
+                        set(retry_tools) if analysis_mode == "focused" else None
+                    ),
+                )
+                tool_batch = ToolExecutionBatch(
+                    executions=[
+                        *tool_batch.executions,
+                        *recovery_batch.executions,
+                    ],
+                    stopped_early=recovery_batch.stopped_early,
+                )
+                plan = replanned
+                replan_trace = ReplanTrace(
+                    trigger="recoverable_tool_failure",
+                    initial_tools=initial_tools,
+                    failed_tools=[item.tool_name for item in recoverable_failures],
+                    revised_tools=[tool.name for tool in replanned.tools],
+                    outcome=(
+                        "recovered"
+                        if recovery_batch.status == "completed"
+                        else "failed"
+                    ),
+                )
+                selected_tools = list(
+                    dict.fromkeys(
+                        [
+                            *selected_tools,
+                            *(tool.name for tool in replanned.tools),
+                        ]
+                    )
+                )
         state = AgentState(
             project_id=project_id,
             question=question,
@@ -86,6 +168,7 @@ class OperatingAgentOrchestrator:
             mode = "deterministic"
         trace = AgentTrace(
             mode=mode,
+            analysis_mode=analysis_mode,
             provider=self._client.provider,
             model=self._client.model,
             prompt_version=PROMPT_VERSION,
@@ -96,5 +179,7 @@ class OperatingAgentOrchestrator:
             duration_ms=max(0, round((perf_counter() - started) * 1000)),
             status=tool_batch.status,
             tool_executions=[item.to_trace() for item in tool_batch.executions],
+            replan_count=replan_count,
+            replan=replan_trace,
         )
         return OperatingAgentRun(state=state, plan=plan, trace=trace)

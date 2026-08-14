@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, field_validator
 
+from app.agent_runtime.contracts import AnalysisMode
+
 
 class UploadResponse(BaseModel):
     file_id: int
@@ -55,6 +57,7 @@ class OperatingAnalyzeRequest(BaseModel):
 
     project_id: StrictInt = Field(gt=0)
     question: str = Field(min_length=1, max_length=500)
+    analysis_mode: AnalysisMode = "full"
     orders: OperatingFileSelection
     menu_items: OperatingFileSelection
     reviews: OperatingFileSelection
@@ -62,5 +65,8 @@ class OperatingAnalyzeRequest(BaseModel):
 
 
 class OperatingAnalyzeSampleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     project_id: int
     question: str
+    analysis_mode: AnalysisMode = "full"

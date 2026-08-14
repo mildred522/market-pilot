@@ -191,11 +191,18 @@ def execute_operating_tools(
         else:
             try:
                 raw_data = spec.runner(context)
+            except ValueError:
+                result = _failed_result(
+                    spec,
+                    started=started,
+                    error_code="tool_input_invalid",
+                )
             except Exception:
                 result = _failed_result(
                     spec,
                     started=started,
                     error_code="tool_execution_failed",
+                    recoverable=True,
                 )
             else:
                 try:
@@ -226,7 +233,11 @@ def execute_operating_tools(
 
 
 def _failed_result(
-    spec: ToolSpec, *, started: float, error_code: str
+    spec: ToolSpec,
+    *,
+    started: float,
+    error_code: str,
+    recoverable: bool = False,
 ) -> ToolExecutionResult:
     return ToolExecutionResult(
         tool_name=spec.name,
@@ -234,6 +245,7 @@ def _failed_result(
         status="failed",
         warnings=[f"{spec.output_section} analysis could not be completed"],
         error_code=error_code,
+        recoverable=recoverable,
         duration_ms=_duration_ms(started),
     )
 

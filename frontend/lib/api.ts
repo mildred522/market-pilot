@@ -1,4 +1,4 @@
-import type { AnalysisFollowupResponse, AnalysisReport, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AnalysisFollowupResponse, AnalysisReport, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -138,12 +138,17 @@ export async function getLocationSuggestions(
   return response.options;
 }
 
-export async function analyzeOperatingSample(projectId: number): Promise<AnalysisReport> {
+export async function analyzeOperatingSample(
+  projectId: number,
+  question: string,
+  analysisMode: OperatingAnalysisMode = "full"
+): Promise<AnalysisReport> {
   return request<AnalysisReport>("/operating/analyze-sample", {
     method: "POST",
     body: JSON.stringify({
       project_id: projectId,
-      question: "最近营业额下降，问题出在哪里？"
+      question,
+      analysis_mode: analysisMode
     })
   });
 }
@@ -152,13 +157,15 @@ export async function analyzeOperatingUploads(
   projectId: number,
   question: string,
   files: Record<"orders" | "menu_items" | "reviews", OperatingFileSelection>,
-  costAssumptions: OperatingCostAssumptions
+  costAssumptions: OperatingCostAssumptions,
+  analysisMode: OperatingAnalysisMode = "full"
 ): Promise<AnalysisReport> {
   return request<AnalysisReport>("/operating/analyze", {
     method: "POST",
     body: JSON.stringify({
       project_id: projectId,
       question,
+      analysis_mode: analysisMode,
       ...files,
       cost_assumptions: costAssumptions
     })

@@ -9,6 +9,8 @@ from app.agent_runtime.tool_contracts import (
     ToolExecutionTrace,
 )
 
+AnalysisMode = Literal["full", "focused"]
+
 
 class PlannedTool(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -44,10 +46,21 @@ class CompactAgentSynthesis(BaseModel):
     limitations: list[str] = Field(default_factory=list, max_length=4)
 
 
+class ReplanTrace(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trigger: Literal["recoverable_tool_failure"]
+    initial_tools: list[str]
+    failed_tools: list[str]
+    revised_tools: list[str]
+    outcome: Literal["recovered", "failed"]
+
+
 class AgentTrace(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: Literal["llm", "hybrid", "deterministic"]
+    analysis_mode: AnalysisMode = "full"
     provider: str
     model: str | None = None
     prompt_version: str
@@ -58,6 +71,8 @@ class AgentTrace(BaseModel):
     duration_ms: int = Field(ge=0)
     status: ToolExecutionStatus = "completed"
     tool_executions: list[ToolExecutionTrace] = Field(default_factory=list)
+    replan_count: int = Field(default=0, ge=0, le=1)
+    replan: ReplanTrace | None = None
 
 
 class FollowupToolArguments(BaseModel):

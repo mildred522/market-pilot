@@ -50,7 +50,25 @@ Recorded on 2026-08-13 from commit `0e4a7a3` plus the Phase 1 reporting changes:
 | Safety pass rate | 1.0000 |
 | Overall pass rate | 0.6333 |
 
-The primary weakness is deliberate and measurable: a focused operating question still executes all seven operating tools. Single-tool questions therefore score `0.1429` tool precision even though recall is perfect. Phase 3 will replace this all-tools policy with bounded selective planning and compare the new result with this baseline.
+The primary weakness was deliberate and measurable: a focused operating question executed all seven operating tools. Single-tool questions therefore scored `0.1429` tool precision even though recall was perfect.
+
+## Phase 3 Result
+
+Recorded on 2026-08-14 after introducing explicit `full` and `focused` modes, policy-bounded tool selection, and one bounded replan opportunity:
+
+| Metric | Phase 1 | Phase 3 |
+| --- | ---: | ---: |
+| Tool precision | 0.7000 | 1.0000 |
+| Tool recall | 1.0000 | 1.0000 |
+| Tool exact-set accuracy | 0.6333 | 1.0000 |
+| Evidence validity | 1.0000 | 1.0000 |
+| Required fact coverage | 1.0000 | 1.0000 |
+| Safety pass rate | 1.0000 | 1.0000 |
+| Overall pass rate | 0.6333 | 1.0000 |
+
+`full` mode still runs all available core tools. `focused` mode accepts one to four policy-validated tools, and the deterministic fallback routes known question types without requiring an LLM. A recoverable required-tool failure can trigger one revised plan; the trace records both plans, the trigger, and the final outcome.
+
+The enforced focused-mode regression thresholds are `0.90` precision, `0.95` recall, and `0.80` exact-set accuracy. Evidence validity and safety pass rate must remain `1.00`.
 
 ## Safety Gate
 

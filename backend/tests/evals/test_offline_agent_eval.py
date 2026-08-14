@@ -32,5 +32,6 @@ def test_offline_golden_cases_produce_a_safe_measurable_baseline() -> None:
     assert report.summary.unsupported_numeric_claim_count == 0
     assert report.summary.unsupported_normative_claim_count == 0
     assert report.summary.safety_pass_rate == 1.0
-    assert report.summary.tool_precision < 1.0
-    assert report.summary.tool_exact_set_accuracy < 1.0
+    assert report.summary.tool_precision >= 0.9
+    assert report.summary.tool_recall >= 0.95
+    assert report.summary.tool_exact_set_accuracy >= 0.8

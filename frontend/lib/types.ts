@@ -138,9 +138,18 @@ export type AgentTrace = {
     evidence_count: number;
     warnings: string[];
     error_code: string | null;
+    recoverable: boolean;
     duration_ms: number;
     from_cache: boolean;
   }>;
+  replan_count?: number;
+  replan?: {
+    trigger: "recoverable_tool_failure";
+    initial_tools: string[];
+    failed_tools: string[];
+    revised_tools: string[];
+    outcome: "recovered" | "failed";
+  } | null;
   duration_ms: number;
   run_id?: number;
 };
@@ -264,6 +273,8 @@ export type OperatingCostAssumptions = {
   target_delivery_contribution_margin?: number;
   target_monthly_profit?: number;
 };
+
+export type OperatingAnalysisMode = "full" | "focused";
 
 export type AnalysisReport = {
   analysis_id: number;
