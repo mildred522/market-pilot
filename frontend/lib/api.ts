@@ -2,6 +2,42 @@ import type { AnalysisFollowupResponse, AnalysisReport, DashboardOverview, Integ
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+export type AgentIntent =
+  | "assess_feasibility"
+  | "analyze_location"
+  | "recommend_locations"
+  | "diagnose_operations";
+
+export type AgentCapability =
+  | "pre_open_feasibility"
+  | "location_analysis"
+  | "operating_diagnosis";
+
+export interface AgentAnalyzeRequest {
+  project_id?: number;
+  intent: AgentIntent;
+  inputs: Record<string, unknown>;
+}
+
+export interface AgentAnalyzeResponse<T = unknown> {
+  status:
+    | "completed"
+    | "clarification"
+    | "insufficient_data"
+    | "provider_failure"
+    | "tool_failure";
+  capability: AgentCapability;
+  intent: AgentIntent;
+  missing_fields: string[];
+  result: T | null;
+  failure: {
+    category: "input" | "provider" | "tool";
+    code: string;
+    message: string;
+    retryable: boolean;
+  } | null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -92,6 +128,15 @@ export function testIntegration(integration: "baidu" | "agent"): Promise<Integra
 
 export function analyzePreOpen(payload: PreOpenInput): Promise<PreOpenReport> {
   return request<PreOpenReport>("/pre-open/analyze", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function analyzeWithAgent<T = unknown>(
+  payload: AgentAnalyzeRequest
+): Promise<AgentAnalyzeResponse<T>> {
+  return request<AgentAnalyzeResponse<T>>("/agent/analyze", {
     method: "POST",
     body: JSON.stringify(payload)
   });

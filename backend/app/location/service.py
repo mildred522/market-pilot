@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from sqlalchemy.orm import Session
 
+from app.agent_runtime.contracts import CapabilityIntent
 from app.db.models import LocationAnalysis
 from app.tools.break_even_tool import calculate_break_even
 from app.external_context.baidu_client import BaiduMapResponseError
@@ -37,6 +38,27 @@ SNAPSHOT_RADIUS_METERS = max(RING_RADII)
 
 
 class LocationAnalysisService:
+    @staticmethod
+    def select_capability_mode(
+        *,
+        intent: CapabilityIntent,
+        has_address: bool,
+        has_coordinates: bool,
+    ) -> Literal["manual", "recommendations"]:
+        if intent == CapabilityIntent.ANALYZE_LOCATION:
+            if has_address == has_coordinates:
+                raise ValueError(
+                    "manual location analysis requires one specific address or coordinates"
+                )
+            return "manual"
+        if intent == CapabilityIntent.RECOMMEND_LOCATIONS:
+            if has_address or has_coordinates:
+                raise ValueError(
+                    "location recommendation intent does not accept a specific location"
+                )
+            return "recommendations"
+        raise ValueError("a validated location intent is required")
+
     def __init__(
         self,
         *,

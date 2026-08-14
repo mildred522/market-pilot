@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -10,6 +11,27 @@ from app.agent_runtime.tool_contracts import (
 )
 
 AnalysisMode = Literal["full", "focused"]
+
+
+class CapabilityName(StrEnum):
+    PRE_OPEN_FEASIBILITY = "pre_open_feasibility"
+    LOCATION_ANALYSIS = "location_analysis"
+    OPERATING_DIAGNOSIS = "operating_diagnosis"
+
+
+class CapabilityIntent(StrEnum):
+    ASSESS_FEASIBILITY = "assess_feasibility"
+    ANALYZE_LOCATION = "analyze_location"
+    RECOMMEND_LOCATIONS = "recommend_locations"
+    DIAGNOSE_OPERATIONS = "diagnose_operations"
+
+
+class CapabilityRoutingDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability: CapabilityName
+    intent: CapabilityIntent
+    project_stage: Literal["pre_open", "operating"]
 
 
 class PlannedTool(BaseModel):

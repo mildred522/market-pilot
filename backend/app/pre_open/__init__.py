@@ -1,0 +1,1 @@
+"""Pre-open feasibility domain."""

@@ -29,3 +29,4 @@ class PreOpenAnalyzeResponse(BaseModel):
     metrics: dict[str, float]
     risks: list[str]
     actions: list[str]
+    limitations: list[str] = Field(default_factory=list)

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-from app.api import analysis, dashboard, files, location, operating, pre_open, projects
+from app.api import agent, analysis, dashboard, files, location, operating, pre_open, projects
 from app.db.session import init_db
 
 
@@ -35,6 +35,7 @@ app.include_router(files.router)
 app.include_router(operating.router)
 app.include_router(analysis.router)
 app.include_router(location.router)
+app.include_router(agent.router)
 
 
 @app.get("/health")
