@@ -1,4 +1,4 @@
-import type { AnalysisFollowupResponse, AnalysisReport, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AnalysisFollowupResponse, AnalysisReport, AnswerVersion, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -154,11 +154,24 @@ export function getAnalysis(analysisId: number): Promise<AnalysisReport> {
 
 export function askAnalysis(
   analysisId: number,
-  question: string
+  questionOrRevision: string | { parentVersionId: number; feedback: string }
 ): Promise<AnalysisFollowupResponse> {
   return request<AnalysisFollowupResponse>(`/analysis/${analysisId}/chat`, {
     method: "POST",
-    body: JSON.stringify({ question })
+    body: JSON.stringify(
+      typeof questionOrRevision === "string"
+        ? { question: questionOrRevision }
+        : {
+            parent_version_id: questionOrRevision.parentVersionId,
+            feedback: questionOrRevision.feedback
+          }
+    )
+  });
+}
+
+export function getAnswerVersions(analysisId: number): Promise<AnswerVersion[]> {
+  return request<AnswerVersion[]>(`/analysis/${analysisId}/answer-versions`, {
+    cache: "no-store"
   });
 }
 

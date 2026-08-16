@@ -12,14 +12,28 @@ from app.agent_runtime.tool_contracts import (
 )
 
 AnalysisMode = Literal["full", "focused"]
+FollowupEvidenceCapability = Literal[
+    "metric_history",
+    "external_industry_context",
+    "location_competitors",
+]
 LlmRole = Literal[
     "planner",
     "replanner",
     "synthesizer",
     "followup",
+    "revision_planner",
     "probe",
     "live_eval",
     "unspecified",
+]
+
+RevisionType = Literal[
+    "initial",
+    "rewrite_only",
+    "recompose_with_existing_evidence",
+    "retrieve_more_evidence",
+    "recompute_metrics",
 ]
 
 
@@ -147,10 +161,57 @@ class FollowupToolArguments(BaseModel):
     )
 
 
+class FollowupDataClaim(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=600)
+    evidence_ids: list[str] = Field(min_length=1, max_length=8)
+
+
+class FollowupAnswerSections(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    data_findings: list[FollowupDataClaim] = Field(default_factory=list, max_length=8)
+    general_advice: list[str] = Field(default_factory=list, max_length=8)
+    missing_information: list[str] = Field(default_factory=list, max_length=8)
+
+
+class FollowupEvidenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capability: FollowupEvidenceCapability
+    purpose: str = Field(min_length=1, max_length=300)
+    requirement: Literal["required", "optional"]
+    success_condition: str = Field(min_length=1, max_length=300)
+
+
+class RevisionLessonCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope: Literal["project"] = "project"
+    type: Literal[
+        "presentation_preference",
+        "decision_constraint",
+        "analysis_preference",
+        "rejected_strategy",
+    ]
+    rule: dict[str, str | bool | int | float] = Field(min_length=1, max_length=8)
+
+
+class RevisionPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision_type: RevisionType
+    objective: str = Field(min_length=1, max_length=400)
+    preserve_existing_evidence: bool = True
+    requires_confirmation: bool = False
+    lessons: list[RevisionLessonCandidate] = Field(default_factory=list, max_length=4)
+
+
 class FollowupStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    action: Literal["tool", "answer", "insufficient_data"]
+    action: Literal["tool", "retrieve", "answer", "insufficient_data"]
     tool_name: str | None = Field(default=None, max_length=80)
     arguments: FollowupToolArguments = Field(
         default_factory=FollowupToolArguments,
@@ -161,4 +222,8 @@ class FollowupStep(BaseModel):
     )
     answer: str | None = Field(default=None, max_length=1600)
     evidence_refs: list[str] = Field(default_factory=list, max_length=8)
+    evidence_requests: list[FollowupEvidenceRequest] = Field(
+        default_factory=list, max_length=2
+    )
+    sections: FollowupAnswerSections | None = None
     confidence: float = Field(default=0, ge=0, le=1)

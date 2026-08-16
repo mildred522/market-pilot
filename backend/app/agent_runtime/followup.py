@@ -5,6 +5,15 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from app.agent_runtime.contracts import FollowupStep, LlmCallMetadata
+from app.agent_runtime.claim_validation import ValidatedClaim, validate_answer_sections
+from app.agent_runtime.evidence_contracts import EvidencePack
+from app.agent_runtime.evidence_pack import build_evidence_pack, extend_evidence_pack
+from app.agent_runtime.followup_evidence import (
+    FollowupEvidenceProvider,
+    apply_followup_evidence_policy,
+    execute_followup_evidence_request,
+    has_replan_alternative,
+)
 from app.agent_runtime.llm_client import (
     LlmClient,
     LlmError,
@@ -53,6 +62,12 @@ READ_ONLY_TOOLS = {
     },
 }
 
+EVIDENCE_CAPABILITY_DESCRIPTIONS = {
+    "metric_history": "Compare a named current metric with the prior report of the same project.",
+    "external_industry_context": "Read sourced city or category reference datasets.",
+    "location_competitors": "Read the project's latest persisted local competitor snapshot.",
+}
+
 
 class RecoverableToolError(ValueError):
     def __init__(self, message: str, *, code: str, reference: str | None = None) -> None:
@@ -86,10 +101,14 @@ class ReportFollowupAgent:
         risks: list[str],
         conversation_context: dict[str, object] | None = None,
         history_service: MetricHistoryService | None = None,
+        evidence_provider: FollowupEvidenceProvider | None = None,
         selected_memory_ids: list[int] | None = None,
+        revision_context: dict[str, Any] | None = None,
+        initial_llm_calls: list[LlmCallMetadata] | None = None,
     ) -> dict[str, Any]:
-        llm_calls: list[LlmCallMetadata] = []
+        llm_calls: list[LlmCallMetadata] = list(initial_llm_calls or [])
         request_id = str(uuid4())
+        evidence_replan_count = 0
 
         def finish(result: dict[str, Any]) -> dict[str, Any]:
             failure_detail = result.get("failure_detail")
@@ -107,6 +126,7 @@ class ReportFollowupAgent:
                     ],
                     "selected_memory_ids": list(selected_memory_ids or []),
                     "verification_failures": verification_failures,
+                    "replan_count": evidence_replan_count,
                     "fallback_reasons": [str(fallback_reason)[:500]]
                     if fallback_reason
                     else [],
@@ -121,22 +141,59 @@ class ReportFollowupAgent:
         tool_calls: list[dict[str, Any]] = []
         successful_tool_results: dict[str, Any] = {}
         metric_catalog = registry_metric_catalog(metrics, question=question)
+        evidence_pack = build_evidence_pack(
+            metrics=metrics,
+            summary=summary,
+            evidence=evidence,
+            actions=actions,
+            risks=risks,
+        )
         last_recoverable_error: RecoverableToolError | None = None
         last_answer_error: str | None = None
         last_candidate: str | None = None
+        accepted_claims: list[ValidatedClaim] = []
+        accepted_general_advice: list[str] = []
+        accepted_missing_information: list[str] = []
+        repair_attempted = False
+        insufficient_retry_attempted = False
+        attempted_evidence_capabilities: set[str] = set()
+        retrieve_attempts = 0
+        replan_pending = False
+        project_profile = metrics.get("_project_profile", {})
+        if not isinstance(project_profile, dict):
+            project_profile = {}
+        try:
+            provider_capabilities = (
+                evidence_provider.available_capabilities(project_profile)
+                if evidence_provider is not None
+                else set()
+            )
+        except Exception:
+            provider_capabilities = set()
         base_context = {
             "question": question,
+            "evidence_pack": evidence_pack.model_dump(mode="json"),
             "metric_sections": [key for key in metrics if not key.startswith("_")],
             "metric_catalog": metric_catalog,
             "metric_snapshot": _metric_snapshot(metrics, question=question),
             "data_resources": data_resource_context(metrics, question=question),
-            "project_profile": metrics.get("_project_profile", {}),
+            "project_profile": project_profile,
             "report": _report_context(summary, evidence, actions, risks),
             "conversation_history": conversation_context
             or {
                 "trust": "untrusted_historical_context",
                 "messages": [],
             },
+            "revision_context": revision_context or {},
+            "evidence_capabilities": [
+                {
+                    "capability": capability,
+                    "description": EVIDENCE_CAPABILITY_DESCRIPTIONS[capability],
+                }
+                for capability in EVIDENCE_CAPABILITY_DESCRIPTIONS
+                if capability in provider_capabilities
+                or (capability == "metric_history" and history_service is not None)
+            ],
             "read_only_tools": READ_ONLY_TOOLS,
         }
         for step_number in range(1, self._max_steps + 1):
@@ -144,7 +201,7 @@ class ReportFollowupAgent:
             try:
                 generation = generate_json_with_metadata(
                     client=self._client,
-                    role="followup",
+                    role="replanner" if replan_pending else "followup",
                     system_prompt=FOLLOWUP_SYSTEM_PROMPT,
                     user_prompt=json.dumps(
                         {
@@ -164,7 +221,152 @@ class ReportFollowupAgent:
                 )
                 llm_calls.append(generation.metadata)
                 step = generation.output
+                if step.action == "retrieve":
+                    is_replan = retrieve_attempts > 0
+                    if is_replan and (
+                        not replan_pending or evidence_replan_count >= 1
+                    ):
+                        observations.append(
+                            {
+                                "action": "retrieve_rejected",
+                                "error": {
+                                    "code": "retrieval_budget_exhausted",
+                                    "instruction": (
+                                        "Answer now from available evidence and disclose "
+                                        "remaining missing information."
+                                    ),
+                                },
+                            }
+                        )
+                        replan_pending = False
+                        continue
+                    decision = apply_followup_evidence_policy(
+                        step.evidence_requests,
+                        question=question,
+                        history_available=history_service is not None,
+                        provider_capabilities=provider_capabilities,
+                        attempted_capabilities=attempted_evidence_capabilities,
+                    )
+                    if is_replan:
+                        evidence_replan_count += 1
+                    retrieve_attempts += 1
+                    if decision.rejected:
+                        observations.append(
+                            {
+                                "action": "evidence_plan_policy",
+                                "rejected": list(decision.rejected),
+                            }
+                        )
+                    if not decision.approved:
+                        replan_pending = False
+                        observations.append(
+                            {
+                                "action": "evidence_plan_empty",
+                                "instruction": (
+                                    "No evidence request was approved. Answer the supported "
+                                    "part and disclose missing information."
+                                ),
+                            }
+                        )
+                        continue
+
+                    new_materials = []
+                    required_failure = False
+                    requirements = {
+                        request.capability: request.requirement
+                        for request in decision.approved
+                    }
+                    for request in decision.approved:
+                        attempted_evidence_capabilities.add(request.capability)
+                        tool_calls.append(
+                            {
+                                "tool": request.capability,
+                                "arguments": {"purpose": request.purpose},
+                            }
+                        )
+                        result = execute_followup_evidence_request(
+                            request,
+                            question=question,
+                            metrics=metrics,
+                            history_service=history_service,
+                            provider=evidence_provider,
+                            project_profile=project_profile,
+                        )
+                        if result.status == "completed":
+                            new_materials.extend(result.facts)
+                        elif requirements[result.capability] == "required":
+                            required_failure = True
+                        observations.append(
+                            {
+                                "action": "retrieve_evidence",
+                                "capability": result.capability,
+                                "requirement": requirements[result.capability],
+                                "status": result.status,
+                                "evidence_refs": [
+                                    fact.canonical_ref for fact in result.facts
+                                ],
+                                "error": (
+                                    {
+                                        "code": result.error_code,
+                                        "message": result.message,
+                                    }
+                                    if result.status != "completed"
+                                    else None
+                                ),
+                            }
+                        )
+                    if new_materials:
+                        evidence_pack = extend_evidence_pack(
+                            evidence_pack, new_materials
+                        )
+                        base_context["evidence_pack"] = evidence_pack.model_dump(
+                            mode="json"
+                        )
+                    replan_pending = required_failure and has_replan_alternative(
+                        attempted_capabilities=attempted_evidence_capabilities,
+                        history_available=history_service is not None,
+                        provider_capabilities=provider_capabilities,
+                    )
+                    if required_failure and not replan_pending:
+                        observations.append(
+                            {
+                                "action": "required_evidence_unavailable",
+                                "instruction": (
+                                    "No untried alternative capability remains. Answer any "
+                                    "supported part and disclose the unavailable fact."
+                                ),
+                            }
+                        )
+                    continue
                 if step.action == "insufficient_data":
+                    relevant_facts = _relevant_evidence_facts(question, evidence_pack)
+                    if (
+                        relevant_facts
+                        and not _missing_metric_references(observations)
+                        and not insufficient_retry_attempted
+                        and step_number < self._max_steps
+                    ):
+                        insufficient_retry_attempted = True
+                        observations.append(
+                            {
+                                "action": "reconsider_insufficient_data",
+                                "available_evidence": [
+                                    {
+                                        "id": fact.id,
+                                        "canonical_ref": fact.canonical_ref,
+                                        "label": fact.label,
+                                    }
+                                    for fact in relevant_facts
+                                ],
+                                "instruction": (
+                                    "Relevant current-report evidence is available. Answer the "
+                                    "supported part with sections.data_findings, put practical "
+                                    "suggestions in sections.general_advice, and disclose only "
+                                    "the genuinely unavailable part in sections.missing_information."
+                                ),
+                            }
+                        )
+                        continue
                     grounded = self._grounded_fallback(
                         question=question,
                         metrics=metrics,
@@ -185,6 +387,93 @@ class ReportFollowupAgent:
                         candidate=step.answer,
                     ))
                 if step.action == "answer":
+                    if step.sections is not None:
+                        validation = validate_answer_sections(
+                            step.sections, evidence_pack
+                        )
+                        _merge_validated_claims(
+                            accepted_claims, validation.valid_claims
+                        )
+                        _merge_unique_strings(
+                            accepted_general_advice, validation.general_advice
+                        )
+                        _merge_unique_strings(
+                            accepted_missing_information,
+                            validation.missing_information,
+                        )
+                        if validation.invalid_claims:
+                            last_answer_error = "; ".join(
+                                claim.reason for claim in validation.invalid_claims
+                            )
+                            last_candidate = _step_candidate(step)
+                            if not repair_attempted and step_number < self._max_steps:
+                                repair_attempted = True
+                                observations.append(
+                                    {
+                                        "action": "repair_answer_claims",
+                                        "accepted_answer": {
+                                            "valid_claims": [
+                                                {
+                                                    "text": claim.text,
+                                                    "evidence_refs": list(
+                                                        claim.evidence_refs
+                                                    ),
+                                                }
+                                                for claim in accepted_claims
+                                            ],
+                                            "general_advice": list(
+                                                accepted_general_advice
+                                            ),
+                                            "missing_information": list(
+                                                accepted_missing_information
+                                            ),
+                                        },
+                                        "invalid_claims": [
+                                            {
+                                                "text": claim.text,
+                                                "evidence_ids": list(
+                                                    claim.evidence_ids
+                                                ),
+                                                "reason": claim.reason,
+                                            }
+                                            for claim in validation.invalid_claims
+                                        ],
+                                        "instruction": (
+                                            "Repair only invalid claims using evidence IDs from "
+                                            "evidence_pack. Do not repeat accepted content."
+                                        ),
+                                    }
+                                )
+                                continue
+                            if _has_structured_content(
+                                accepted_claims,
+                                accepted_general_advice,
+                                accepted_missing_information,
+                            ):
+                                return finish(_structured_answer_payload(
+                                    valid_claims=accepted_claims,
+                                    general_advice=accepted_general_advice,
+                                    missing_information=accepted_missing_information,
+                                    confidence=step.confidence,
+                                    steps=step_number,
+                                    tool_calls=tool_calls,
+                                    quality="partial",
+                                    repair_attempted=repair_attempted,
+                                    invalid_claim_count=len(
+                                        validation.invalid_claims
+                                    ),
+                                ))
+                            continue
+                        return finish(_structured_answer_payload(
+                            valid_claims=accepted_claims,
+                            general_advice=accepted_general_advice,
+                            missing_information=accepted_missing_information,
+                            confidence=step.confidence,
+                            steps=step_number,
+                            tool_calls=tool_calls,
+                            quality="repaired" if repair_attempted else "complete",
+                            repair_attempted=repair_attempted,
+                        ))
                     references = [
                         _canonical_reference(reference)
                         for reference in step.evidence_refs
@@ -577,6 +866,102 @@ class ReportFollowupAgent:
         }
 
 
+def _structured_answer_payload(
+    *,
+    valid_claims: list[ValidatedClaim],
+    general_advice: list[str],
+    missing_information: list[str],
+    confidence: float,
+    steps: int,
+    tool_calls: list[dict[str, Any]],
+    quality: str,
+    repair_attempted: bool,
+    invalid_claim_count: int = 0,
+) -> dict[str, Any]:
+    data_findings = [
+        {"text": claim.text, "evidence_refs": list(claim.evidence_refs)}
+        for claim in valid_claims
+    ]
+    sections = {
+        "data_findings": data_findings,
+        "general_advice": list(general_advice),
+        "missing_information": list(missing_information),
+    }
+    rendered: list[str] = []
+    for title, values in (
+        ("基于门店数据", [item["text"] for item in data_findings]),
+        ("通用经营建议", sections["general_advice"]),
+        ("当前缺少的信息", sections["missing_information"]),
+    ):
+        if values:
+            rendered.append(f"{title}：" + "；".join(values))
+    return {
+        "answer": "\n\n".join(rendered),
+        "sections": sections,
+        "evidence_refs": _claim_evidence_refs(valid_claims),
+        "confidence": confidence,
+        "quality": quality,
+        "mode": "llm",
+        "steps": steps,
+        "tool_calls": tool_calls,
+        "claim_validation": {
+            "valid_claim_count": len(valid_claims),
+            "invalid_claim_count": invalid_claim_count,
+            "repair_attempted": repair_attempted,
+        },
+        "prompt_version": PROMPT_VERSION,
+    }
+
+
+def _merge_validated_claims(
+    target: list[ValidatedClaim], additions: tuple[ValidatedClaim, ...]
+) -> None:
+    seen = {(claim.text, claim.evidence_refs) for claim in target}
+    for claim in additions:
+        key = (claim.text, claim.evidence_refs)
+        if key not in seen:
+            target.append(claim)
+            seen.add(key)
+
+
+def _merge_unique_strings(target: list[str], additions: tuple[str, ...]) -> None:
+    seen = set(target)
+    for value in additions:
+        if value not in seen:
+            target.append(value)
+            seen.add(value)
+
+
+def _has_structured_content(
+    valid_claims: list[ValidatedClaim],
+    general_advice: list[str],
+    missing_information: list[str],
+) -> bool:
+    return bool(valid_claims or general_advice or missing_information)
+
+
+def _claim_evidence_refs(valid_claims: list[ValidatedClaim]) -> list[str]:
+    references: dict[str, None] = {}
+    for claim in valid_claims:
+        for reference in claim.evidence_refs:
+            references.setdefault(reference, None)
+    return list(references)
+
+
+def _relevant_evidence_facts(
+    question: str, evidence_pack: EvidencePack, limit: int = 20
+) -> list[Any]:
+    sections = registry_relevant_sections(question)
+    if not sections:
+        return []
+    prefixes = tuple(f"metrics.{section}." for section in sections)
+    return [
+        fact
+        for fact in evidence_pack.facts
+        if fact.canonical_ref.startswith(prefixes)
+    ][:limit]
+
+
 def _resolve_metric(metrics: dict[str, Any], reference: str) -> Any:
     if not reference.startswith("metrics."):
         raise ValueError(f"invalid metric reference: {reference}")
@@ -729,49 +1114,6 @@ def _tool_call_key(tool_name: str | None, arguments: dict[str, Any]) -> str:
 def _deterministic_metric_answer(
     question: str, metrics: dict[str, Any]
 ) -> tuple[str, list[str]] | None:
-    if any(keyword in question for keyword in ("菜品", "菜单", "主推", "推荐")):
-        menu = metrics.get("menu")
-        items = menu.get("items") if isinstance(menu, dict) else None
-        if isinstance(items, list) and items:
-            candidates = [
-                item
-                for item in items
-                if isinstance(item, dict)
-                and item.get("item_name")
-                and item.get("quadrant") in {"star", "profit", "traffic"}
-            ]
-            role_priority = {"star": 0, "profit": 1, "traffic": 2}
-            candidates.sort(
-                key=lambda item: (
-                    role_priority.get(str(item.get("quadrant")), 9),
-                    -(_number(item.get("gross_profit")) or 0.0),
-                )
-            )
-            recommendations = []
-            role_labels = {
-                "star": "明星菜品，建议优先主推",
-                "profit": "利润菜品，适合做利润款或加购",
-                "traffic": "引流菜品，适合获客但应控制优惠",
-            }
-            for item in candidates[:4]:
-                quantity = _number(item.get("quantity"))
-                gross_profit = _number(item.get("gross_profit"))
-                details = []
-                if quantity is not None:
-                    details.append(f"样本销量{quantity:g}")
-                if gross_profit is not None:
-                    details.append(f"毛利{gross_profit:.2f}元")
-                detail_text = f"（{'，'.join(details)}）" if details else ""
-                recommendations.append(
-                    f"{item['item_name']}：{role_labels[str(item['quadrant'])]}{detail_text}"
-                )
-            if recommendations:
-                return (
-                    "基于当前报告中的现有菜品表现，" + "；".join(recommendations) + "。"
-                    "这只是现有菜品范围内的经营推荐；报告没有新品需求、竞品菜单或试销数据，"
-                    "因此不能据此推荐尚未经营的新菜。",
-                    ["metrics.menu.items"],
-                )
     if not any(keyword in question for keyword in ("外卖", "配送", "美团", "饿了么")):
         return None
     channels = metrics.get("channels")

@@ -303,7 +303,17 @@ export type AnalysisFollowupResponse = {
   answer: string;
   evidence_refs: string[];
   confidence: number;
-  mode: "llm" | "deterministic" | "insufficient_data";
+  mode: "llm" | "deterministic" | "insufficient_data" | "confirmation_required";
+  quality?: "complete" | "repaired" | "partial" | "insufficient" | "confirmation_required";
+  sections?: FollowupSections;
+  answer_version_id?: number;
+  parent_version_id?: number | null;
+  revision_plan?: {
+    revision_type: "initial" | "rewrite_only" | "recompose_with_existing_evidence" | "retrieve_more_evidence" | "recompute_metrics";
+    objective: string;
+    requires_confirmation: boolean;
+  };
+  memory_updates?: Array<{ id: number; type: string; status: string }>;
   steps: number;
   tool_calls: Array<{ tool: string; arguments: Record<string, unknown> }>;
   fallback_reason?: string;
@@ -316,6 +326,25 @@ export type AnalysisFollowupResponse = {
     candidate: string | null;
   };
   prompt_version: string;
+};
+
+export type FollowupSections = {
+  data_findings: Array<{ text: string; evidence_refs: string[] }>;
+  general_advice: string[];
+  missing_information: string[];
+};
+
+export type AnswerVersion = {
+  id: number;
+  parent_version_id: number | null;
+  original_question: string;
+  user_feedback: string | null;
+  revision_type: string;
+  answer: string;
+  sections: FollowupSections | Record<string, never>;
+  evidence_refs: string[];
+  quality: string;
+  created_at: string;
 };
 
 export type UploadedFileResult = {

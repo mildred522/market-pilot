@@ -177,6 +177,69 @@ class AnalysisMessage(Base):
     )
 
 
+class AnswerVersion(Base):
+    __tablename__ = "answer_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("analysis_results.id"), nullable=False, index=True
+    )
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("analysis_conversations.id"), nullable=False, index=True
+    )
+    parent_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("answer_versions.id"), nullable=True, index=True
+    )
+    original_question: Mapped[str] = mapped_column(Text, nullable=False)
+    user_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revision_type: Mapped[str] = mapped_column(String(48), nullable=False)
+    plan_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    execution_summary_json: Mapped[dict[str, Any]] = mapped_column(
+        "execution_summary", JSON, nullable=False, default=dict
+    )
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    sections_json: Mapped[dict[str, Any]] = mapped_column(
+        "sections", JSON, nullable=False, default=dict
+    )
+    evidence_refs_json: Mapped[list[str]] = mapped_column(
+        "evidence_refs", JSON, nullable=False, default=list
+    )
+    quality: Mapped[str] = mapped_column(String(32), nullable=False)
+    validation_json: Mapped[dict[str, Any]] = mapped_column(
+        "validation", JSON, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+
+class RevisionLesson(Base):
+    __tablename__ = "revision_lessons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    source_version_id: Mapped[int] = mapped_column(
+        ForeignKey("answer_versions.id"), nullable=False, index=True
+    )
+    scope: Mapped[str] = mapped_column(String(24), nullable=False)
+    lesson_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    rule_json: Mapped[dict[str, Any]] = mapped_column(
+        "rule", JSON, nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    supersedes_id: Mapped[int | None] = mapped_column(
+        ForeignKey("revision_lessons.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
 class ProjectProfile(Base):
     __tablename__ = "project_profiles"
 

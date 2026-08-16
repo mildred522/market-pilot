@@ -1,84 +1,148 @@
-# 餐饮门店分析 Agent
+<div align="center">
 
-一个面向餐饮小店的经营分析 Agent MVP，分为两个业务模块：
+# Market Pilot
 
-- 开店前潜力分析：根据投资预算、租金、商圈、品类和加盟信息判断项目能不能开。
-- 开店后经营诊断：根据订单、菜品成本和评论数据判断门店为什么不赚钱，以及下一步怎么改。
+**把餐饮经营问题，变成有数据、有证据、可追溯的决策。**
 
-## 当前进度
+面向单店餐饮的全生命周期决策 Agent：开店前评估项目与商圈，开店后诊断经营数据，<br>
+再通过受约束的 Plan-and-Execute、确定性工具和声明级校验生成可执行建议。
 
-固定轮次 MVP 与 Agent 核心演进计划已经完成：
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-420%20passed-22C55E)
+![Agent Eval](https://img.shields.io/badge/agent%20eval-30%2F30%20passed-7C3AED)
 
-- `backend/`：FastAPI 后端，包含 `/health` 健康检查。
-- `backend/app/tools/`：保本线、营收、菜品矩阵和评论主题等确定性分析工具。
-- `backend/app/agent_runtime/`：结构化 Plan-and-Execute 运行时，包含模型客户端、工具白名单、动态规划、统一工具执行契约、证据引用校验和确定性降级。
-- `backend/app/observability/`：安全运行追踪，关联 request/run/analysis ID，记录计划、工具、模型统计、记忆 ID 和降级原因。
-- `backend/app/pre_open/`：开店可行性领域规则与类型化结果。
-- `backend/app/memory/`：基于 SQLite/SQLAlchemy 的结构化会话、项目档案、受限上下文和历史指标比较，不依赖向量数据库。
-- `backend/app/location/`：百度 POI 候选生成、圈层采集、机会评分、可信度评估、快照复用和降级处理。
-- `backend/app/agents/`：确定性报告与兼容降级逻辑。
-- `frontend/`：Next.js + React + TypeScript 前端，包含业务入口、开店前问卷、开店后 CSV 上传、自动字段映射和诊断报告页。
-- `frontend/components/`：指标卡、营收图、菜品矩阵、评论主题、风险、证据和行动清单组件。
-- `frontend/app/demo/`：面试演示入口。
-- `docs/`：业务指标体系、系统架构、MVP 架构方案和固定轮次实施计划。
+[5 分钟演示](#5-分钟演示) · [Agent 架构](#agent-架构) · [本地运行](#本地运行) · [评测证据](#评测与质量门)
+
+</div>
+
+## 为什么做这个项目
+
+餐饮分析不能只靠模型“聊经验”：营业额、毛利、保本线必须算得准，建议还要说明依据。Market Pilot 将两类工作分开：
+
+- **程序负责事实**：pandas 与领域规则计算指标，所有数据结论回指结构化证据。
+- **模型负责决策**：识别意图、选择受限能力、综合结论，并在证据不足时明确边界。
+- **系统负责可信**：策略门、类型化工具结果、局部修复、降级、版本链和运行追踪共同约束 Agent。
+
+它不是套在 CSV 外面的聊天框，而是一条可以测试、审计和复现的餐饮决策流水线。
+
+## 两个业务模块
+
+| 阶段 | 用户问题 | 已实现能力 | 结果 |
+| --- | --- | --- | --- |
+| **开店前** | 这个项目能不能开？铺位是否合适？ | 投资/负债/租金压力、预估收入、加盟风险、百度地图 POI、候选商圈评分、数据可信度与快照复用 | 可行性结论、风险清单、核验动作、铺位/区域推荐 |
+| **开店后** | 为什么不赚钱？下一步先改什么？ | CSV 自动映射与清洗、营收趋势、菜品矩阵、评论主题、保本生存线、渠道贡献、时段结构、折扣利润 | 指标看板、证据化诊断、优先级行动清单、报告追问 |
+
+经营数据支持 UTF-8、UTF-8 BOM 和 GB18030 编码；可上传订单、菜品成本、评论三类 CSV，单文件上限 5 MB。
+
+## Agent 架构
+
+```mermaid
+flowchart LR
+    U["用户问题 / 修改意见"] --> R["生命周期能力路由"]
+    R --> PRE["开店前可行性"]
+    R --> LOC["选址与商圈分析"]
+    R --> OP["经营诊断 Planner"]
+
+    PRE --> DS["确定性领域服务"]
+    LOC --> BD["百度 POI + 本地快照"]
+    OP --> PG["策略门与工具白名单"]
+    PG --> EX["pandas / 规则工具执行器"]
+    EX --> CG["完整性检查"]
+    CG -->|"可恢复的必要失败"| RP["最多一次 Replan"]
+    RP --> PG
+
+    DS --> EP["Evidence Pack"]
+    BD --> EP
+    CG --> EP
+    EP --> LLM["Grounded Composer"]
+    LLM --> CV["声明级引用与数字校验"]
+    CV -->|"局部失败"| FIX["最多一次 Claim Repair"]
+    FIX --> CV
+    CV --> AV["Answer Version"]
+    AV --> UI["Next.js 决策工作台"]
+    AV --> MEM["SQLite 结构化 Memory"]
+    AV --> TRACE["安全执行 Trace"]
+```
+
+### LLM、Tool、Memory、Plan 的边界
+
+| 模块 | 做什么 | 不做什么 |
+| --- | --- | --- |
+| **LLM** | 意图理解、受限规划、证据综合、通用经营建议 | 猜营业额、执行 SQL、读取任意文件、控制地图底层参数 |
+| **Tool** | 计算营业额、毛利、保本线、渠道贡献等可复现指标 | 隐藏失败、输出无来源数值、越过声明输入 |
+| **Memory** | 保存公开问答、确认后的项目档案、同口径历史指标、结构化修改偏好 | 保存思维链、把旧对话当事实、用向量相似度替代精确指标查询 |
+| **Plan** | 在 full / focused 模式选择白名单工具，必要时有界重规划 | 无限循环、任意代码执行、绕过输入与能力策略 |
+
+## 一次追问如何完成
+
+当前报告会先被编译成带短 ID 的压缩 `EvidencePack`。模型不需要猜 `metrics.menu.items` 一类内部路径：
+
+1. **快路径**：当前证据足够时，典型调用为 1 次 Composer、0 次外部工具。
+2. **按需检索**：需要历史、行业上下文或本地竞品时，Planner 只能申请抽象能力，程序负责转换为安全查询。
+3. **开放顾问模式**：回答固定区分“基于门店数据”“通用经营建议”“当前缺少的信息”。
+4. **声明级校验**：逐条检查引用、数字、排名和比较依据；失败只修复或移除对应结论，不再整份丢弃。
+5. **用户强制修订**：每次修改生成新的父子版本，表达偏好和经营约束进入有状态、可撤销的结构化记忆。
+
+## 经营分析工具
+
+| 工具 | 核心指标 |
+| --- | --- |
+| `revenue` | 总营收、订单量、客单价、日趋势、异常日期 |
+| `menu` | 销量、销售额、单位毛利、毛利率、菜品四象限 |
+| `reviews` | 评分分布、中差评数量、服务/口味/速度等主题 |
+| `survival` | 实际毛利率、固定成本、保本营收、保本订单、月利润投影、现金支撑期 |
+| `channels` | 堂食/外卖营收、佣金、包材、贡献利润与贡献率 |
+| `time_patterns` | 早餐/午市/晚市等时段贡献、前后半段趋势、异常营业日 |
+| `discounts` | 标价金额、实际让利、让利率、折扣前后贡献利润 |
+
+所有工具返回统一的 `status / evidence / duration / error_code` 契约。可选工具失败时保留局部结果；必要工具失败时停止不可靠综合，并给出可操作的修复提示。
+
+## 5 分钟演示
+
+启动项目后访问：
+
+```text
+http://localhost:3000/demo
+```
+
+推荐演示顺序：
+
+1. 从统一入口选择“准备开店”或“正在经营”。
+2. 运行开店前问卷，查看投资压力、加盟风险和选址核验动作。
+3. 生成样例经营报告，展示保本线、渠道利润、菜品矩阵和证据面板。
+4. 追问“根据现有表现推荐一些菜品”，观察数据结论、通用建议和信息缺口分区。
+5. 要求“再结合成都趋势”或“回答简短一点”，展示按需检索、强制修订和版本时间线。
+
+完整讲解词见 [Demo 脚本](docs/demo-script.md)，可上传样本位于 `outputs/operating-demo/`。
 
 ## 本地运行
 
-### Windows 一键启动器
+### 方式一：Windows 启动器
 
-双击 `dist/MarketPilotLauncher.exe`，然后点击“启动并打开”。启动器会检查运行环境、启动前后端、等待服务就绪并打开浏览器。关闭启动器时可选择是否同时停止服务。
+已有本地发行包时，双击 `dist/MarketPilotLauncher.exe`，点击“启动并打开”。启动器会检查环境、拉起前后端、等待健康检查通过并打开浏览器。
 
-首次使用仍需安装 Python、Node.js 及项目依赖。需要重新生成启动器时，在项目根目录运行：
+首次生成启动器：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\launcher\build-launcher.ps1
 ```
 
-启动器需要 Windows x64 和 .NET 8 Desktop Runtime，但不会内置 Python、Node.js、依赖、数据库或 API 密钥。应将其保留在当前项目的 `dist` 目录中；如需放到其他位置，可通过 `MARKET_PILOT_ROOT` 环境变量指定项目根目录。
+> 启动器面向 Windows x64，需要 .NET 8 Desktop Runtime；Python、Node.js 和项目依赖仍需本机安装。
 
-### 后端
+### 方式二：开发模式
+
+后端：
 
 ```powershell
 cd backend
 python -m pip install -r requirements.txt
-python -m pytest
 python -m uvicorn app.main:app --reload
 ```
 
-健康检查：
-
-```text
-GET http://127.0.0.1:8000/health
-```
-
-预期响应：
-
-```json
-{ "status": "ok" }
-```
-
-### 配置 Agent 模型
-
-后端支持 OpenAI-compatible Chat Completions 接口。复制 `.env.example` 中的配置到本地 `.env` 或进程环境变量：
-
-```text
-AGENT_LLM_PROVIDER=openai-compatible
-AGENT_LLM_BASE_URL=https://api.openai.com/v1
-AGENT_LLM_API_KEY=your-server-side-key
-AGENT_LLM_MODEL=your-model-name
-AGENT_LLM_PLANNER_MODEL=optional-planner-model
-AGENT_LLM_SYNTHESIZER_MODEL=optional-synthesizer-model
-AGENT_LLM_FOLLOWUP_MODEL=optional-followup-model
-AGENT_LLM_TIMEOUT_SECONDS=75
-```
-
-`AGENT_LLM_API_KEY` 和基础模型均存在时启用模型路径；三个角色模型是可选覆盖值，留空时使用基础模型。缺少配置、请求失败、输出不符合 Schema 或引用不存在的指标时，自动退回确定性分析。也可以在本地工作台配置模型和百度地图密钥；密钥由后端使用，并通过 Windows DPAPI 加密保存，不写入前端持久化存储。
-
-前端不在默认 3000 端口运行时，通过逗号分隔的 `CORS_ORIGINS` 显式加入实际浏览器来源；不要使用通配符来源。
-
-经营报告支持有限 ReAct 追问：模型最多进行 4 轮，只能调用读取指标、列出指标分区、列出指标路径和读取报告摘要等只读工具；不能修改数据、读取任意文件或重新调用百度 API。
-
-### 前端
+前端：
 
 ```powershell
 cd frontend
@@ -86,86 +150,93 @@ npm install
 npm run dev
 ```
 
-默认访问：
+访问 `http://localhost:3000`，后端健康检查为 `http://127.0.0.1:8000/health`。
 
-```text
-http://localhost:3000
+### 可选外部能力
+
+复制 `.env.example` 为 `.env`，按需填写：
+
+```dotenv
+BAIDU_MAP_AK=
+AGENT_LLM_PROVIDER=openai-compatible
+AGENT_LLM_BASE_URL=https://api.openai.com/v1
+AGENT_LLM_API_KEY=
+AGENT_LLM_MODEL=
+AGENT_LLM_PLANNER_MODEL=
+AGENT_LLM_SYNTHESIZER_MODEL=
+AGENT_LLM_FOLLOWUP_MODEL=
 ```
 
-### Agent 离线评测
+- LLM 使用 OpenAI-compatible Chat Completions 接口，Planner、Synthesizer、Follow-up 可分别选模型。
+- 未配置模型、响应不符合 Schema、引用无效或供应商失败时，系统自动回退到确定性路径。
+- 百度地图密钥只在后端使用；本地工作台保存的密钥通过 Windows DPAPI 加密，不进入前端持久化存储。
 
-评测集使用脚本化模型响应和合成业务数据，不需要配置外部模型或地图密钥：
+## 评测与质量门
 
 ```powershell
 cd backend
+python -m pytest -q
 python -m scripts.run_agent_evals
+
+cd ../frontend
+npm run build
 ```
 
-命令会运行 30 条经营规划与报告追问用例，在 `outputs/evals/` 生成 JSON 和 Markdown 报告。当前 CI 安全门禁检查证据引用、虚构数值、无依据的比较性结论和必要的数据不足声明，并对聚焦模式的工具精确率、召回率和严格匹配率执行回归阈值。
+离线评测使用脚本化模型和合成业务数据，不消耗外部模型额度：
 
-已验证的关键指标与 Phase 1 对比见 [Agent 面试评估证据](docs/interview-evidence.md)。实时模型评估默认关闭；显式开启方式和成本单价配置见 [Agent 评测基线](docs/agent-evaluation.md#opt-in-live-evaluation)。
+| 指标 | 当前结果 |
+| --- | ---: |
+| 回归测试 | 420 passed, 2 skipped |
+| Agent Golden Cases | 30 / 30 |
+| Focused Tool Precision / Recall / Exact-set | 1.000 / 1.000 / 1.000 |
+| Evidence Validity / Safety Pass Rate | 1.000 / 1.000 |
+| Unsupported Numeric Claims | 0 |
 
-### 演示路径
+两项默认跳过的测试分别依赖真实百度凭据和显式开启的实时模型评测。详细基线、评分器与成本统计方式见 [Agent 评测](docs/agent-evaluation.md) 和 [面试评估证据](docs/interview-evidence.md)。
 
-推荐入口：
+## 项目结构
 
 ```text
-http://localhost:3000/demo
+pagent/
+├── backend/
+│   ├── app/agent_runtime/   # 路由、规划、执行、证据包、校验、修订
+│   ├── app/tools/           # 7 组确定性经营分析工具
+│   ├── app/location/        # 双模式选址、评分、可信度与降级
+│   ├── app/memory/          # 项目档案、历史指标、回答版本与反馈记忆
+│   ├── app/observability/   # Agent 运行追踪
+│   └── app/api/             # FastAPI 接口
+├── frontend/                # Next.js 16 + React 19 + TypeScript 工作台
+├── launcher/                # Windows .NET 8 桌面启动器
+├── evals/                   # Agent golden cases
+├── outputs/operating-demo/  # 可直接上传的经营样本
+└── docs/                    # 架构、ADR、API、评测与演示文档
 ```
 
-完整五分钟讲解顺序见 [Demo 脚本](docs/demo-script.md)，覆盖 full/focused 规划、证据追问、结构化记忆、缺基准拒答、安全降级和统一能力入口。
+## 关键设计决策
 
-也可以直接访问：
+- **不用向量数据库保存经营指标**：当前记忆以精确数值、项目归属、时间和指标口径为主，SQLite/SQLAlchemy 更容易查询、校验和审计。
+- **不让模型直接调用地图 API**：模型选择“选址分析”能力，领域服务控制关键词、分页、评分权重、快照与事务边界。
+- **不做无限反思循环**：每次运行最多一次 Replan 和一次 Claim Repair，重复计划、无新证据或预算耗尽立即停止。
+- **不把通用知识伪装成数据结论**：经验性建议可以给，但必须与门店事实分区展示。
 
-1. `http://localhost:3000/pre-open`：提交默认问卷后点击“查看完整报告”。
-2. `http://localhost:3000/operating`：点击“生成样例经营诊断”后点击“查看完整报告”。
+## 当前边界
 
-经营诊断也支持上传真实 CSV：依次上传订单、菜品成本和评论文件，确认系统建议的字段映射，填写租金、人工、水电、营销、其他固定成本、可用现金、外卖佣金率和单均包材成本，再点击“分析已上传数据”。报告会计算实际毛利率、保本营业额、保本订单数、月利润投影和现金支撑期，并按堂食、外卖等渠道对比营收、客单价、渠道费用和贡献利润。CSV 支持 UTF-8、UTF-8 BOM 和 GB18030 编码，单文件最大 5 MB。
+- 外部追问读取已登记的行业参考数据和已持久化竞品快照，不在追问内实时抓取网页或地图。
+- 经营事实更正会创建 `confirmation_required` 版本；确认后的原始数据更新与受影响指标重算接口尚未完成。
+- 当前聚焦单店决策，不包含登录权限、多门店集团管理、外卖平台自动取数和合同法律审查。
 
-### 完整经营样本
+## 延伸阅读
 
-`outputs/operating-demo/` 提供一组可直接上传的中文表头样本：
-
-1. `orders_demo.csv`：订单 CSV，包含 30 个营业日、堂食/美团/饿了么、午晚时段及折扣实收。
-2. `menu_items_demo.csv`：菜品成本 CSV，包含售价和单位成本。
-3. `reviews_demo.csv`：评论 CSV，包含评分和经营问题关键词。
-4. `market_pilot_operating_demo.xlsx`：上述数据的 Excel 查阅版，附上传说明和预期分析信号。
-
-建议沿用页面默认成本假设进行演示。该样本会呈现后半月营收下降、6 月 24 日异常低营收、午市峰值、外卖渠道贡献、折扣利润压力及中差评主题。
-
-## 项目亮点
-
-- 两个业务模块清晰分流：开店前看潜力和风险，开店后看经营问题和整改。
-- 数值指标由 pandas/SQL 工具计算，不让 LLM 猜营业额、毛利、客单价。
-- 轻量 Plan-and-Execute Agent：路由、规划、工具执行、总结、证据校验。
-- 经营分析支持完整体检和聚焦问题两种模式；聚焦模式只调用一至四个必要工具，并允许一次受限重规划。
-- 工具统一返回状态、证据、耗时和安全错误码；可选工具失败时允许带警告的局部结果，必需工具失败时停止综合。
-- 报告追问保存公开问答，最多读取最近 6 条消息，并可通过只读工具比较同一项目的历史指标。
-- 百度 POI 支持自动推荐候选商圈和手动铺位分析，并明确区分机会评分与数据可信度。
-- 报告页明确区分结论、指标、证据、风险和行动清单。
-- 使用 TypeScript 约束前端表单、API 响应、图表数据和报告结构。
-
-## MVP 暂不实现
-
-- 登录注册和复杂权限。
-- 真实外卖平台 API。
-- 真实客流、营业额和外卖平台数据自动采集。
-- 合同全文法律审查。
-- 多门店集团管理。
-- 自动 PDF 导出。
-
-## 架构文档
-
-- [指标体系](docs/restaurant-agent-analysis-indicators.md)
-- [系统架构](docs/restaurant-agent-architecture.md)
-- [MVP 架构方案](docs/restaurant-agent-mvp-architecture-plan.md)
-- [设计文档索引](docs/design/README.md)
-- [项目交付历史](docs/design/delivery-history.md)
-- [API 契约](docs/api-contract.md)
-- [Agent 评测基线](docs/agent-evaluation.md)
-- [Agent Memory](docs/agent-memory.md)
 - [Agent 核心设计](docs/agent-core-design.md)
-- [Agent 面试评估证据](docs/interview-evidence.md)
+- [自适应证据追问与用户反馈重规划](docs/design/adaptive-evidence-followups.md)
+- [系统架构](docs/restaurant-agent-architecture.md)
+- [指标体系](docs/restaurant-agent-analysis-indicators.md)
+- [API 契约](docs/api-contract.md)
 - [ADR：结构化记忆不用 RAG](docs/decisions/structured-memory-without-rag.md)
 - [ADR：受策略约束的规划](docs/decisions/policy-constrained-planning.md)
-- [Demo 脚本](docs/demo-script.md)
+
+---
+
+<div align="center">
+<sub>Market Pilot 是求职展示型 MVP。所有经营结论均受输入数据、样本周期和声明假设限制，不构成投资承诺。</sub>
+</div>

@@ -1,4 +1,13 @@
-from app.agent_runtime.contracts import FollowupStep
+import json
+
+import pytest
+
+from app.agent_runtime.contracts import (
+    FollowupAnswerSections,
+    FollowupDataClaim,
+    FollowupStep,
+)
+from app.agent_runtime.evidence_pack import build_evidence_pack
 from app.agent_runtime.followup import ReportFollowupAgent
 from app.agent_runtime.llm_client import LlmError, LlmOutputError
 
@@ -114,6 +123,348 @@ def test_followup_agent_can_answer_from_persisted_report_in_first_step():
     assert result["steps"] == 1
     assert result["evidence_refs"] == ["report.risks.0", "report.actions.0"]
     assert '"ref": "report.risks.0"' in client.prompts[0]
+
+
+def test_followup_first_step_receives_a_cross_section_evidence_pack():
+    client = FollowupFakeClient(
+        [
+            FollowupStep(
+                action="answer",
+                answer="样本总营收为 336 元，招牌拌面是明星菜品。",
+                evidence_refs=[
+                    "metrics.revenue.total_revenue",
+                    "metrics.menu.items",
+                ],
+                confidence=0.94,
+            )
+        ]
+    )
+
+    ReportFollowupAgent(client).answer(
+        question="结合营收推荐菜品",
+        summary="样本经营诊断",
+        metrics={
+            "revenue": {"total_revenue": 336},
+            "menu": {
+                "items": [
+                    {
+                        "item_name": "招牌拌面",
+                        "quantity": 6,
+                        "gross_profit": 108,
+                        "quadrant": "star",
+                    }
+                ]
+            },
+            "_agent": {"prompt": "must-not-leak"},
+        },
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+
+    prompt = json.loads(client.prompts[0])
+    facts = prompt["evidence_pack"]["facts"]
+    by_ref = {fact["canonical_ref"]: fact for fact in facts}
+
+    assert by_ref["metrics.revenue.total_revenue"]["id"].startswith("E")
+    assert by_ref["metrics.menu.items"]["value"][0]["item_name"] == "招牌拌面"
+    assert "must-not-leak" not in client.prompts[0]
+
+
+def test_followup_returns_structured_sections_in_one_call_without_tools():
+    metrics = {
+        "revenue": {"total_revenue": 336},
+        "menu": {
+            "items": [
+                {
+                    "item_name": "招牌拌面",
+                    "quantity": 6,
+                    "gross_profit": 108,
+                    "quadrant": "star",
+                }
+            ]
+        },
+    }
+    pack = build_evidence_pack(
+        metrics=metrics,
+        summary="样本经营诊断",
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+    client = FollowupFakeClient(
+        [
+            FollowupStep(
+                action="answer",
+                sections=FollowupAnswerSections(
+                    data_findings=[
+                        FollowupDataClaim(
+                            text="样本总营收为 336 元。",
+                            evidence_ids=[
+                                pack.fact_for_ref(
+                                    "metrics.revenue.total_revenue"
+                                ).id
+                            ],
+                        ),
+                        FollowupDataClaim(
+                            text="招牌拌面属于当前样本的明星菜品。",
+                            evidence_ids=[pack.fact_for_ref("metrics.menu.items").id],
+                        ),
+                    ],
+                    general_advice=["可以围绕招牌菜设计小规模套餐试验。"],
+                    missing_information=["当前没有新品需求数据。"],
+                ),
+                confidence=0.94,
+            )
+        ]
+    )
+
+    result = ReportFollowupAgent(client).answer(
+        question="结合营收推荐菜品",
+        summary="样本经营诊断",
+        metrics=metrics,
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+
+    assert result["mode"] == "llm"
+    assert result["quality"] == "complete"
+    assert result["steps"] == 1
+    assert result["tool_calls"] == []
+    assert result["evidence_refs"] == [
+        "metrics.revenue.total_revenue",
+        "metrics.menu.items",
+    ]
+    assert result["sections"]["general_advice"] == [
+        "可以围绕招牌菜设计小规模套餐试验。"
+    ]
+    assert "基于门店数据" in result["answer"]
+    assert "通用经营建议" in result["answer"]
+    assert "evidence IDs" in client.system_prompts[0]
+
+
+@pytest.mark.parametrize(
+    ("question", "metrics", "reference", "claim_text"),
+    [
+        (
+            "外卖渠道表现怎么样？",
+            {"channels": {"delivery_revenue_share": 0.3333}},
+            "metrics.channels.delivery_revenue_share",
+            "样本外卖营收占比为 33.33%。",
+        ),
+        (
+            "评价里有什么问题？",
+            {"reviews": {"negative_review_count": 3}},
+            "metrics.reviews.negative_review_count",
+            "样本中差评数为 3 条。",
+        ),
+    ],
+)
+def test_followup_uses_same_structured_fast_path_across_metric_domains(
+    question, metrics, reference, claim_text
+):
+    pack = build_evidence_pack(
+        metrics=metrics,
+        summary="经营诊断",
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+    client = FollowupFakeClient(
+        [
+            FollowupStep(
+                action="answer",
+                sections=FollowupAnswerSections(
+                    data_findings=[
+                        FollowupDataClaim(
+                            text=claim_text,
+                            evidence_ids=[pack.fact_for_ref(reference).id],
+                        )
+                    ],
+                    general_advice=["先针对已观察到的问题做小范围经营试验。"],
+                    missing_information=["当前报告没有同行基准。"],
+                ),
+                confidence=0.9,
+            )
+        ]
+    )
+
+    result = ReportFollowupAgent(client).answer(
+        question=question,
+        summary="经营诊断",
+        metrics=metrics,
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+
+    assert result["quality"] == "complete"
+    assert result["steps"] == 1
+    assert result["tool_calls"] == []
+    assert result["evidence_refs"] == [reference]
+    assert result["sections"]["general_advice"]
+    assert result["sections"]["missing_information"] == [
+        "当前报告没有同行基准。"
+    ]
+
+
+def test_followup_repairs_only_invalid_claims_and_preserves_valid_claims():
+    metrics = {
+        "revenue": {"total_revenue": 336},
+        "menu": {
+            "items": [
+                {
+                    "item_name": "招牌拌面",
+                    "quantity": 6,
+                    "gross_profit": 108,
+                    "quadrant": "star",
+                }
+            ]
+        },
+    }
+    pack = build_evidence_pack(
+        metrics=metrics,
+        summary="样本经营诊断",
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+    revenue_id = pack.fact_for_ref("metrics.revenue.total_revenue").id
+    menu_id = pack.fact_for_ref("metrics.menu.items").id
+    client = FollowupFakeClient(
+        [
+            FollowupStep(
+                action="answer",
+                sections=FollowupAnswerSections(
+                    data_findings=[
+                        FollowupDataClaim(
+                            text="样本总营收为 336 元。",
+                            evidence_ids=[revenue_id],
+                        ),
+                        FollowupDataClaim(
+                            text="附近竞品有 20 家。",
+                            evidence_ids=["E99"],
+                        ),
+                    ],
+                    general_advice=["先用现有数据做小规模验证。"],
+                ),
+                confidence=0.8,
+            ),
+            FollowupStep(
+                action="answer",
+                sections=FollowupAnswerSections(
+                    data_findings=[
+                        FollowupDataClaim(
+                            text="招牌拌面属于当前样本的明星菜品。",
+                            evidence_ids=[menu_id],
+                        )
+                    ]
+                ),
+                confidence=0.92,
+            ),
+        ]
+    )
+
+    result = ReportFollowupAgent(client).answer(
+        question="结合营收推荐菜品",
+        summary="样本经营诊断",
+        metrics=metrics,
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+
+    assert result["quality"] == "repaired"
+    assert result["steps"] == 2
+    assert [item["text"] for item in result["sections"]["data_findings"]] == [
+        "样本总营收为 336 元。",
+        "招牌拌面属于当前样本的明星菜品。",
+    ]
+    assert result["sections"]["general_advice"] == [
+        "先用现有数据做小规模验证。"
+    ]
+    assert result["claim_validation"] == {
+        "valid_claim_count": 2,
+        "invalid_claim_count": 0,
+        "repair_attempted": True,
+    }
+    assert "附近竞品有 20 家" not in result["answer"]
+    assert "repair_answer_claims" in client.prompts[1]
+
+
+def test_followup_returns_valid_partial_answer_when_claim_repair_fails():
+    metrics = {"revenue": {"total_revenue": 336}}
+    pack = build_evidence_pack(
+        metrics=metrics,
+        summary="样本经营诊断",
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+    revenue_id = pack.fact_for_ref("metrics.revenue.total_revenue").id
+    client = FollowupFakeClient(
+        [
+            FollowupStep(
+                action="answer",
+                sections=FollowupAnswerSections(
+                    data_findings=[
+                        FollowupDataClaim(
+                            text="样本总营收为 336 元。",
+                            evidence_ids=[revenue_id],
+                        ),
+                        FollowupDataClaim(
+                            text="附近竞品有 20 家。",
+                            evidence_ids=["E99"],
+                        ),
+                    ],
+                    general_advice=["先验证一个成本可控的经营动作。"],
+                ),
+                confidence=0.8,
+            ),
+            FollowupStep(
+                action="answer",
+                sections=FollowupAnswerSections(
+                    data_findings=[
+                        FollowupDataClaim(
+                            text="商圈客流每天有 5000 人。",
+                            evidence_ids=["E98"],
+                        )
+                    ]
+                ),
+                confidence=0.6,
+            ),
+        ]
+    )
+
+    result = ReportFollowupAgent(client).answer(
+        question="下一步该怎么经营？",
+        summary="样本经营诊断",
+        metrics=metrics,
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+
+    assert result["quality"] == "partial"
+    assert result["steps"] == 2
+    assert result["sections"]["data_findings"] == [
+        {
+            "text": "样本总营收为 336 元。",
+            "evidence_refs": ["metrics.revenue.total_revenue"],
+        }
+    ]
+    assert result["sections"]["general_advice"] == [
+        "先验证一个成本可控的经营动作。"
+    ]
+    assert result["claim_validation"] == {
+        "valid_claim_count": 1,
+        "invalid_claim_count": 1,
+        "repair_attempted": True,
+    }
+    assert "20 家" not in result["answer"]
+    assert "5000 人" not in result["answer"]
+    assert len(client.prompts) == 2
 
 
 def test_followup_agent_normalizes_legacy_summary_tool_reference():
@@ -270,58 +621,66 @@ def test_followup_returns_data_insufficient_for_metric_missing_from_old_report()
     assert "channels" not in result["available_sections"]
 
 
-def test_followup_recommends_existing_menu_items_when_model_claims_data_is_insufficient():
+def test_followup_retries_generic_insufficient_data_when_relevant_evidence_exists():
+    metrics = {
+        "menu": {
+            "items": [
+                {
+                    "item_name": "招牌拌面",
+                    "quantity": 12,
+                    "gross_profit": 216,
+                    "quadrant": "star",
+                }
+            ]
+        }
+    }
+    pack = build_evidence_pack(
+        metrics=metrics,
+        summary="现有菜品经营诊断",
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+    menu_id = pack.fact_for_ref("metrics.menu.items").id
     client = FollowupFakeClient(
         [
             FollowupStep(
                 action="insufficient_data",
                 answer="当前报告没有潜在新菜品或市场偏好信息。",
-            )
+            ),
+            FollowupStep(
+                action="answer",
+                sections=FollowupAnswerSections(
+                    data_findings=[
+                        FollowupDataClaim(
+                            text="招牌拌面是当前样本的明星菜品。",
+                            evidence_ids=[menu_id],
+                        )
+                    ],
+                    general_advice=["可以先围绕现有明星菜做小规模主推试验。"],
+                    missing_information=["推荐全新菜品仍缺少市场需求和试销数据。"],
+                ),
+                confidence=0.9,
+            ),
         ]
     )
 
     result = ReportFollowupAgent(client).answer(
         question="推荐一些菜品",
         summary="现有菜品经营诊断",
-        metrics={
-            "menu": {
-                "items": [
-                    {
-                        "item_name": "招牌拌面",
-                        "quantity": 12,
-                        "gross_profit": 216,
-                        "gross_margin": 0.64,
-                        "quadrant": "star",
-                    },
-                    {
-                        "item_name": "酸辣粉",
-                        "quantity": 4,
-                        "gross_profit": 72,
-                        "gross_margin": 0.68,
-                        "quadrant": "profit",
-                    },
-                    {
-                        "item_name": "小酥肉",
-                        "quantity": 1,
-                        "gross_profit": 8,
-                        "gross_margin": 0.2,
-                        "quadrant": "problem",
-                    },
-                ]
-            }
-        },
+        metrics=metrics,
         evidence=[],
         actions=[],
         risks=[],
     )
 
-    assert result["mode"] == "deterministic"
+    assert result["mode"] == "llm"
+    assert result["quality"] == "complete"
+    assert result["steps"] == 2
     assert result["evidence_refs"] == ["metrics.menu.items"]
     assert "招牌拌面" in result["answer"]
-    assert "酸辣粉" in result["answer"]
-    assert "现有菜品" in result["answer"]
-    assert "新菜" in result["answer"]
-    assert "existing menu items" in client.system_prompts[0]
+    assert "全新菜品" in result["answer"]
+    assert "reconsider_insufficient_data" in client.prompts[1]
 
 
 def test_followup_allows_model_to_correct_an_invalid_answer_reference():
