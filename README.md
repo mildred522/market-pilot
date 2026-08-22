@@ -14,7 +14,7 @@
 [![Agent Eval](https://img.shields.io/badge/Agent%20Eval-53%2F53-7C3AED?style=flat-square)](docs/agent-evaluation.md)
 [![Last Commit](https://img.shields.io/github/last-commit/mildred522/market-pilot?style=flat-square&color=17695B)](https://github.com/mildred522/market-pilot/commits/main)
 
-[快速启动](#快速启动) · [业务能力](#业务能力) · [Agent 工作流](#agent-工作流) · [质量证据](#质量证据) · [Roadmap](#roadmap)
+[快速启动](#快速启动) · [业务能力](#业务能力) · [Agent 工作流](#agent-工作流) · [地图 MCP](#地图-mcp-与外部数据) · [质量证据](#质量证据) · [Roadmap](#roadmap)
 
 <br>
 
@@ -26,6 +26,9 @@ Market Pilot 是面向单店餐饮的全生命周期决策 Agent。开店前，�
 
 > [!NOTE]
 > 这不是“上传 CSV 后让模型自由发挥”的聊天壳。营业额、毛利率、保本线与渠道贡献由程序计算，模型只负责受限规划和证据综合；当前 484 项回归测试与 53 条 Agent Cases 均通过，其中包含 23 条对抗案例。
+
+> [!TIP]
+> 当前版本新增百度地图 MCP Provider：选址业务统一依赖 `LocationProvider`，可在 WebAPI、官方 MCP Server 和受控 fallback 三种模式间切换。MCP 原始响应必须先归一化为项目 POI 契约，LLM 和评分层不会直接消费外部工具返回。
 
 ## 快速启动
 
@@ -167,6 +170,32 @@ flowchart LR
 
 数值由 pandas 或纯函数计算，最终以 `metrics.section.field` 形式进入证据系统。关闭模型或供应商不可用时，基础经营报告仍然可以生成。
 
+## 地图 MCP 与外部数据
+
+本轮把百度地图从单一 HTTP Client 升级为可替换的 Provider 层。业务 API、`PoiCollector` 和候选点分析只依赖统一能力接口，不感知 WebAPI 参数或 MCP 工具名。
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#eaf3f0', 'primaryBorderColor': '#17695b', 'primaryTextColor': '#17211e', 'lineColor': '#17695b', 'secondaryColor': '#f7f3ea', 'tertiaryColor': '#eef1f0'}}}%%
+flowchart LR
+    A["选址 API / PoiCollector"] --> F["Provider Factory"]
+    F --> W["Baidu WebAPI"]
+    F --> M["Baidu MCP Server"]
+    F --> H["WebAPI + MCP Fallback"]
+    H -->|"主链路"| W
+    H -->|"仅 retryable 错误"| M
+    W --> N["统一 POI / Route Contract"]
+    M --> N
+    N --> S["候选点评分 / Snapshot / Evidence"]
+```
+
+| 模式 | 定位 | 行为边界 |
+| --- | --- | --- |
+| `webapi` | 默认稳定采集链路 | 支持现有关键词、半径和分页采集 |
+| `mcp` | 官方 MCP Streamable HTTP | 提供地理编码、地点搜索、地点详情和路线矩阵；搜索结果显式标记不支持 WebAPI 分页 |
+| `webapi_with_mcp_fallback` | 可恢复故障下的组合模式 | WebAPI 优先，仅网络或服务端等可重试错误切换 MCP |
+
+鉴权失败、额度耗尽、权限不足和参数错误不会触发 fallback，避免把配置问题伪装成完整分析。每个检索结果都会携带 `provider`、`pagination_supported` 和 `provider_warning`，来源与能力差异可继续进入快照和 Evidence。真实 AK 联调由独立探针执行，默认测试与 CI 使用脚本化响应，不消耗地图额度。
+
 ## 证据优先的报告追问
 
 当前报告先被编译为带短 ID 的不可变 `EvidencePack`，模型无需猜测内部指标路径：
@@ -196,6 +225,7 @@ python -m scripts.run_agent_evals
 | Unsupported Numeric / Normative Claims | **0 / 0** |
 | Attack Successes / Budget Violations | **0 / 0** |
 | Workflow Representability / Catalog Reduction | **100% / 94.9%** |
+| 地图 Provider 专项测试 | **14 / 14** |
 | Next.js Production Build | **Passed** |
 
 离线评测使用脚本化模型和合成业务数据，不消耗外部模型额度。GitHub Actions 将后端回归、Agent 安全门禁、前端生产构建和 Windows 启动器构建拆成四个独立 Job，并上传逐案例评测报告。两项默认跳过的测试分别依赖真实百度地图凭据和显式开启的实时模型评测。
@@ -236,6 +266,9 @@ python -m scripts.run_agent_evals
 
 ```dotenv
 BAIDU_MAP_AK=
+BAIDU_MAP_PROVIDER=webapi
+BAIDU_MAP_MCP_URL=https://mcp.map.baidu.com/mcp
+BAIDU_MAP_MCP_TIMEOUT_SECONDS=15
 AGENT_LLM_BASE_URL=https://api.openai.com/v1
 AGENT_LLM_API_KEY=
 AGENT_LLM_MODEL=
@@ -245,6 +278,7 @@ CORS_ORIGINS=http://localhost:3000
 - 支持 OpenAI-compatible Chat Completions 接口。
 - Planner、Synthesizer、Follow-up 可以分别配置模型。
 - 模型未配置、调用失败、Schema 错误或引用无效时自动降级。
+- `BAIDU_MAP_PROVIDER` 可设为 `webapi`、`mcp` 或 `webapi_with_mcp_fallback`。
 - 百度地图密钥仅由后端使用；工作台本地保存时采用 Windows DPAPI 加密。
 
 </details>
@@ -257,6 +291,7 @@ pagent/
 ├── backend/app/agent_runtime/   # Router、Planner、Evidence、Validator、Revision
 ├── backend/app/tools/           # 7 组确定性经营工具
 ├── backend/app/location/        # POI 采集、评分、可信度与降级
+├── backend/app/external_context/ # WebAPI/MCP Provider、协议归一化与外部证据
 ├── backend/app/knowledge/       # 来源版本、解析切分、Qdrant 索引与导入事务
 ├── backend/app/memory/          # 项目档案、历史指标、版本与反馈记忆
 ├── frontend/                    # Next.js + React + TypeScript 工作台
@@ -288,6 +323,7 @@ pagent/
 - [Agent 评测](docs/agent-evaluation.md)
 - [文档知识 RAG 落地方案](docs/design/rag-implementation-plan.md)
 - [文档知识导入手册](docs/knowledge-ingestion-operations.md)
+- [百度地图 MCP Provider](docs/design/baidu-mcp-provider.md)
 - [ADR：结构化记忆不用 RAG](docs/decisions/structured-memory-without-rag.md)
 - [ADR：受策略约束的规划](docs/decisions/policy-constrained-planning.md)
 
