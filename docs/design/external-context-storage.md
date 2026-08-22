@@ -1,5 +1,10 @@
 # External Context Storage Design
 
+> Baseline status: this document describes the delivered structured external-context
+> MVP. The proposed document-knowledge extension is defined separately in
+> [Document Knowledge RAG Implementation Plan](rag-implementation-plan.md). It does
+> not replace the storage and provider boundaries below.
+
 ## 1. Decision
 
 The MVP will use:
@@ -115,6 +120,12 @@ If the API is unavailable, the analysis continues with reference data and emits 
 Exact SQL, metadata filters, API calls, and JSON lookup are the retrieval layer for this MVP. Vector search is unnecessary because city, category, year, radius, and project are explicit keys.
 
 Document RAG becomes eligible only when the project has at least 20 maintained reports and users need open-ended retrieval across report prose. The first upgrade is SQLite FTS5 with metadata filtering. PostgreSQL plus pgvector is considered only if lexical retrieval is insufficient and the report corpus justifies another service.
+
+As of 2026-08-18, open-ended retrieval across maintained external reports is an
+explicit next-phase requirement. The proposed extension uses a separate Qdrant
+document index while preserving SQLite for exact memory, facts, snapshots, and source
+metadata. See the linked implementation plan and the
+[Document Knowledge RAG ADR](../decisions/document-knowledge-rag.md).
 
 ## 10. Testing
 

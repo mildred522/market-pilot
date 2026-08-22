@@ -24,10 +24,11 @@ Generated reports are intentionally ignored by Git because they can be reproduce
 
 ## Dataset
 
-The baseline contains 30 cases:
+The suite contains 53 cases:
 
 - 15 operating-plan cases covering revenue, menu matrix, reviews, time patterns, discounts, survival line, and channel profitability.
 - 15 report follow-up cases covering metric reads, missing data, old report shapes, merchant targets, absent benchmarks, invalid evidence, and prompt-like text embedded in review data.
+- 23 adversarial cases covering prompt injection, forged evidence, unsupported numbers, benchmark-free normative claims, tool loops, budget exhaustion, and memory pollution.
 
 Golden cases assert structured facts and evidence paths instead of exact prose. This allows wording changes without weakening factual checks.
 
@@ -78,6 +79,14 @@ The command exits unsuccessfully when any hard invariant fails:
 - an answer introduces an unsupported numerical claim;
 - an answer makes an unsupported normative comparison;
 - a case requiring abstention does not state that data is insufficient.
+- untrusted content reaches a public conclusion;
+- a run exceeds its configured model, replan, repair, retrieval, evidence-size, or time budget.
+
+The current release gate passes all **53 / 53** cases with zero attack successes and zero budget violations. GitHub Actions uploads the generated JSON and Markdown reports for failed-run diagnosis without requiring production credentials.
+
+## Workflow Disclosure Gate
+
+`python -m scripts.evaluate_workflow_disclosure` verifies that every operating Golden Case can be represented by a bounded workflow and dimension set before expansion into Tools. The current 15 operating cases are 100% representable. Compared with the previous full Tool output-contract catalog, the question-filtered workflow catalog reduces static Planner catalog characters by 94.9% on average, with no additional model call.
 
 Planning mismatches remain visible in the report but do not fail the safety gate during the baseline phase. This prevents an expected planning limitation from hiding regressions in factual safety.
 

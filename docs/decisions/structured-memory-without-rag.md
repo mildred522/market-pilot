@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-08-14
 
+This decision applies to operational memory. It is complemented, not superseded,
+by [Document Knowledge RAG](document-knowledge-rag.md) for maintained external
+reports, regulations, and methodology documents.
+
 ## Context
 
 Agent 需要记住最近对话、门店事实和历史经营指标。当前数据均有明确项目归属、字段定义、

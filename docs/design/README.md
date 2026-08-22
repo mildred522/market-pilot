@@ -17,6 +17,11 @@
 - [外部上下文存储](external-context-storage.md)：参考数据、快照、供应商边界和 RAG 决策。
 - [双模式选址与商圈推荐](location-recommendation.md)：手动点位分析和行政区候选推荐。
 - [自适应证据追问](adaptive-evidence-followups.md)：Evidence-first、Plan-and-Execute、回答版本和反馈记忆。
+- [模型路由基准](model-routing-benchmark.md)：Flash/Pro 的真实延迟、tokens、质量对比与默认角色决策。
+- [文档知识 RAG 落地方案](rag-implementation-plan.md)：来源版本、结构切分、中文混合检索、Agent 接入与分轮交付。
+- [P0 Agent 面试强化计划](p0-agent-interview-strengthening.md)：Run 可观测性、执行预算、对抗评测与 CI 门禁。
+- [领域工作流渐进式披露](progressive-workflow-disclosure.md)：用业务工作流卡片替代 Planner 全量 Tool 契约，并由策略层按需展开工具。
+- [文档知识导入手册](../knowledge-ingestion-operations.md)：审核清单、安全导入、Qdrant 启动和失败恢复。
 
 ## 产品定义与交付
 

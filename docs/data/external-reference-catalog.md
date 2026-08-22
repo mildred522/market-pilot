@@ -46,7 +46,7 @@ File: `backend/data/reference/cities/chengdu/2025.json`
 Primary source: Chengdu Municipal Bureau of Statistics and NBS Chengdu Survey
 Office, *2024 Chengdu Statistical Bulletin*, published 2025-03-28:
 
-https://www.cdrb.com.cn/epaper/cdrbpc/202503/28/fa12d091-7d6d-4a6f-b325-46dcd25f4609.pdf
+https://cdstats.chengdu.gov.cn/cdstjj/c154795/2026-04/14/58dc076a80974f999828b691bfca027f/files/0cac2cb9ed15430dac5a694530fdd8a4.pdf
 
 The baseline covers resident population, urbanization, GDP, service-sector
 share, retail sales, food-service revenue, online food-service growth for
@@ -63,10 +63,10 @@ Sources:
 
 - CCFA and Meituan, *2023 New Tea Beverage Research Report*:
   https://www.meituan.com/news/NN230921068001140
-- CCFA release for the 2025 made-to-order tea nutrition white paper:
-  https://www.ccfa.org.cn/portal/cn/xiangxi.jsp?id=446560&type=2
+- SAMR consumer guidance for made-to-order drinks:
+  https://www.samr.gov.cn/spcjs/yjjl/art/2023/art_da5490e8dcdc446e85313878b3ba8f69.html
 - HKEX, Mixue Group prospectus industry overview:
-  https://www.hkexnews.hk/listedco/listconews/sehk/2025/0221/11543479/2025022100064_c.pdf
+  https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0221/11543479/2025022100055_c.pdf
 
 ### Definition Warning
 

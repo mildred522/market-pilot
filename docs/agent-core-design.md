@@ -30,7 +30,8 @@ Market Pilot 面向单店餐饮经营决策，覆盖开店可行性、商圈选�
 
 ```mermaid
 flowchart LR
-    R["Validated request"] --> P["Policy-bounded planner"]
+    R["Validated request"] --> W["Progressive workflow cards"]
+    W --> P["Policy-bounded planner"]
     P --> E["Deterministic tool executor"]
     E --> V["Evidence and status verification"]
     V --> S["Grounded synthesis"]
@@ -42,7 +43,8 @@ flowchart LR
 ```
 
 - `full` 执行当前输入支持的完整核心工具集。
-- `focused` 只允许一至四个满足策略的必要工具。
+- `focused` 先选择领域工作流和分析维度，再由策略层展开一至四个必要工具。
+- Planner 只读取按问题筛选的工作流卡片，不读取全部 Tool 输出契约；详细指标口径只随实际执行结果进入 EvidencePack。
 - 必需工具发生可恢复失败时最多重规划一次；可选工具失败可以输出带警告的局部结果。
 - 数值结论必须解析到 `metrics.section.field` 证据路径。
 - 没有商家目标或参考基准时，Agent 必须声明无法判断“高/低”或“好/差”。
@@ -74,12 +76,18 @@ planner、synthesizer 和 follow-up 可配置不同模型，共享显式配置�
 
 ## 8. 质量门
 
-离线评估使用 30 个脚本化案例，覆盖经营规划和报告追问。硬门禁包括证据有效性、
+离线评估使用 53 个脚本化案例，覆盖经营规划、报告追问和 23 条对抗场景。硬门禁包括证据有效性、
 无虚构数值、无无依据比较、必要时拒答；focused 规划还约束 precision、recall 和 exact-set。
 实时模型评估必须显式开启，十个问题各运行三次，统计 schema、证据、稳定性、延迟、token
 和按外部配置价格估算的成本。当前证据见 [面试评估证据](interview-evidence.md)。
 
-## 9. 明确延期
+## 9. 文档知识 RAG
 
-当前不加入向量 RAG、第二地图供应商、自动网页抓取、任意代码/SQL 工具、无限反思循环、
+政策、行业报告和方法论文档使用独立的 Qdrant 混合检索路径；结构化经营指标和记忆继续使用
+SQL 精确查询。RAG 只有在追问 Planner 明确申请外部行业证据后才初始化，检索片段仍需进入
+EvidencePack 和声明校验，不能直接成为系统指令。
+
+## 10. 明确延期
+
+当前不加入第二地图供应商、自动网页抓取、任意代码/SQL 工具、无限反思循环、
 多 Agent 协调和多租户权限。这些功能扩大攻击面与维护面，却不提升当前求职演示的核心证据。
