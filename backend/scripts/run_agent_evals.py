@@ -26,6 +26,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     cases = [
         *load_cases(case_dir / "operating.json"),
         *load_cases(case_dir / "followup.json"),
+        *load_cases(case_dir / "adversarial.json"),
     ]
     report = run_cases(cases, OfflineAgentAdapter(BACKEND_ROOT))
     json_path, markdown_path = write_report(report, arguments.output_dir)

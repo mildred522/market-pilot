@@ -1,0 +1,17 @@
+[Unit]
+Description=Market Pilot local Qdrant
+After=network.target
+
+[Service]
+Type=simple
+Environment=QDRANT__SERVICE__HOST=127.0.0.1
+Environment=QDRANT__SERVICE__HTTP_PORT=6333
+Environment=QDRANT__SERVICE__GRPC_PORT=6334
+Environment=QDRANT__STORAGE__STORAGE_PATH=%h/.local/share/market-pilot/qdrant/storage
+WorkingDirectory=%h/.local/share/market-pilot/qdrant
+ExecStart=%h/.local/bin/qdrant
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

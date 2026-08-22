@@ -1,7 +1,16 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -325,4 +334,124 @@ class LocationAnalysis(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
+class KnowledgeSource(Base):
+    __tablename__ = "knowledge_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_key: Mapped[str] = mapped_column(
+        String(160), nullable=False, unique=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    publisher: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(48), nullable=False, index=True)
+    canonical_url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    reliability_tier: Mapped[int] = mapped_column(Integer, nullable=False)
+    default_city: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    default_category: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="active", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
+class KnowledgeDocumentVersion(Base):
+    __tablename__ = "knowledge_document_versions"
+    __table_args__ = (
+        UniqueConstraint("source_id", "version_number"),
+        UniqueConstraint("source_id", "content_hash"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_sources.id"), nullable=False, index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    data_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    data_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    effective_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    effective_to: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    fact_status: Mapped[str] = mapped_column(String(24), nullable=False)
+    raw_storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    media_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    chunker_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(160), nullable=False)
+    index_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="pending", index=True
+    )
+    indexed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+
+class KnowledgeFact(Base):
+    __tablename__ = "knowledge_facts"
+    __table_args__ = (UniqueConstraint("document_version_id", "fact_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_version_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_document_versions.id"), nullable=False, index=True
+    )
+    fact_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    label: Mapped[str] = mapped_column(String(240), nullable=False)
+    value_json: Mapped[Any] = mapped_column("value", JSON, nullable=False)
+    unit: Mapped[str] = mapped_column(String(80), nullable=False, default="none")
+    geography: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    observed_or_forecast: Mapped[str] = mapped_column(String(24), nullable=False)
+    source_chunk_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    valid_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    valid_to: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    review_status: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="pending", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+
+class KnowledgeIngestionJob(Base):
+    __tablename__ = "knowledge_ingestion_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_version_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_document_versions.id"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(48), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    chunks_parsed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    chunks_indexed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

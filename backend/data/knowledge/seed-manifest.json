@@ -1,0 +1,109 @@
+{
+  "manifest_version": 1,
+  "documents": [
+    {
+      "source": {
+        "source_key": "chengdu-statistical-bulletin-2025",
+        "title": "2025年成都市国民经济和社会发展统计公报",
+        "publisher": "成都市统计局",
+        "source_type": "government_statistics",
+        "canonical_url": "https://cdstats.chengdu.gov.cn/cdstjj/c154795/2026-04/14/58dc076a80974f999828b691bfca027f/files/0cac2cb9ed15430dac5a694530fdd8a4.pdf",
+        "reliability_tier": 1,
+        "default_city": "成都",
+        "default_category": "餐饮"
+      },
+      "acquisition": {
+        "url": "https://cdstats.chengdu.gov.cn/cdstjj/c154795/2026-04/14/58dc076a80974f999828b691bfca027f/files/0cac2cb9ed15430dac5a694530fdd8a4.pdf",
+        "allowed_media_types": ["application/pdf"]
+      },
+      "published_at": "2026-04-14T00:00:00+08:00",
+      "data_period_start": "2025-01-01T00:00:00+08:00",
+      "data_period_end": "2025-12-31T23:59:59+08:00",
+      "fact_status": "observed",
+      "cities": ["成都"],
+      "categories": ["餐饮"]
+    },
+    {
+      "source": {
+        "source_key": "ccfa-meituan-new-tea-report-2023",
+        "title": "2023新茶饮研究报告",
+        "publisher": "中国连锁经营协会新茶饮委员会、美团新餐饮研究院",
+        "source_type": "industry_association",
+        "canonical_url": "https://www.meituan.com/news/NN230921068001140",
+        "reliability_tier": 2,
+        "default_category": "新茶饮"
+      },
+      "acquisition": {
+        "url": "https://www.meituan.com/news/NN230921068001140",
+        "allowed_media_types": ["text/html"]
+      },
+      "published_at": "2023-09-21T00:00:00+08:00",
+      "data_period_start": "2023-01-01T00:00:00+08:00",
+      "data_period_end": "2025-12-31T23:59:59+08:00",
+      "fact_status": "mixed",
+      "cities": [],
+      "categories": ["新茶饮"]
+    },
+    {
+      "source": {
+        "source_key": "samr-made-to-order-drink-guidance-2023",
+        "title": "关于现制饮料的消费提示",
+        "publisher": "国家市场监督管理总局",
+        "source_type": "regulation",
+        "canonical_url": "https://www.samr.gov.cn/spcjs/yjjl/art/2023/art_da5490e8dcdc446e85313878b3ba8f69.html",
+        "reliability_tier": 1,
+        "default_category": "新茶饮"
+      },
+      "acquisition": {
+        "url": "https://www.samr.gov.cn/spcjs/yjjl/art/2023/art_da5490e8dcdc446e85313878b3ba8f69.html",
+        "allowed_media_types": ["text/html"]
+      },
+      "published_at": "2023-08-24T11:26:00+08:00",
+      "data_period_start": "2023-08-24T00:00:00+08:00",
+      "data_period_end": "2023-08-24T23:59:59+08:00",
+      "fact_status": "observed",
+      "cities": [],
+      "categories": ["新茶饮", "现制饮品"]
+    },
+    {
+      "source": {
+        "source_key": "mixue-prospectus-industry-overview-2025",
+        "title": "蜜雪集团招股章程：行业概览",
+        "publisher": "香港交易及结算所有限公司",
+        "source_type": "listed_company_filing",
+        "canonical_url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0221/11543479/2025022100055_c.pdf",
+        "reliability_tier": 2,
+        "default_category": "现制饮品"
+      },
+      "acquisition": {
+        "url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0221/11543479/2025022100055_c.pdf",
+        "allowed_media_types": ["application/pdf"]
+      },
+      "published_at": "2025-02-21T00:00:00+08:00",
+      "data_period_start": "2023-01-01T00:00:00+08:00",
+      "data_period_end": "2028-12-31T23:59:59+08:00",
+      "fact_status": "mixed",
+      "cities": [],
+      "categories": ["新茶饮", "现制饮品"]
+    },
+    {
+      "source": {
+        "source_key": "market-pilot-evidence-rules-v1",
+        "title": "Market Pilot 外部证据使用规则",
+        "publisher": "Market Pilot",
+        "source_type": "internal_methodology",
+        "canonical_url": "https://github.com/mildred522/market-pilot/blob/main/backend/data/knowledge/seed/market-pilot-evidence-rules.md",
+        "reliability_tier": 1
+      },
+      "acquisition": {
+        "local_path": "seed/market-pilot-evidence-rules.md",
+        "allowed_media_types": ["text/markdown"]
+      },
+      "published_at": "2026-08-20T00:00:00+08:00",
+      "effective_from": "2026-08-20T00:00:00+08:00",
+      "fact_status": "observed",
+      "cities": [],
+      "categories": ["餐饮分析方法"]
+    }
+  ]
+}

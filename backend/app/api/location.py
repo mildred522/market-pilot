@@ -10,10 +10,11 @@ from app.db.models import LocationAnalysis, Project
 from app.db.session import get_db
 from app.external_context.baidu_client import (
     BaiduGeocodeResult,
-    BaiduMapClient,
     BaiduMapConfigurationError,
     BaiduMapResponseError,
 )
+from app.external_context.factory import get_location_provider_factory
+from app.external_context.provider import LocationProvider
 from app.external_context.snapshot_service import ExternalContextSnapshotService
 from app.location.collector import PoiCollector
 from app.location.evidence import EvidenceVerificationError, LocationEvidenceVerifier
@@ -21,6 +22,7 @@ from app.location.feature_builder import LocationFeatureBuilder
 from app.location.contracts import LocationAnalysisResult
 from app.location.scorer import LocationScorer
 from app.location.service import LocationAnalysisService
+
 from app.schemas.location import (
     Coordinate,
     ConfidenceSummary,
@@ -36,12 +38,12 @@ from app.schemas.location import (
 router = APIRouter(prefix="/pre-open/location", tags=["location"])
 
 
-def get_baidu_client_factory() -> Callable[[], BaiduMapClient]:
-    return BaiduMapClient.from_env
+def get_baidu_client_factory() -> Callable[[], LocationProvider]:
+    return get_location_provider_factory()
 
 
-def get_location_service_factory() -> Callable[[Session, BaiduMapClient], LocationAnalysisService]:
-    def factory(db: Session, baidu_client: BaiduMapClient) -> LocationAnalysisService:
+def get_location_service_factory() -> Callable[[Session, LocationProvider], LocationAnalysisService]:
+    def factory(db: Session, baidu_client: LocationProvider) -> LocationAnalysisService:
         return LocationAnalysisService(
             session=db,
             baidu_client=baidu_client,
@@ -64,7 +66,7 @@ def location_suggestions(
     kind: Literal["city", "district"],
     query: str = Query(default="", max_length=80),
     city: str | None = Query(default=None, min_length=1, max_length=80),
-    client_factory: Callable[[], BaiduMapClient] = Depends(get_baidu_client_factory),
+    client_factory: Callable[[], LocationProvider] = Depends(get_baidu_client_factory),
 ) -> LocationSuggestionsResponse:
     normalized_query = query.strip()
     if kind == "city" and not normalized_query:
@@ -103,8 +105,8 @@ def location_suggestions(
 def manual_analysis(
     payload: ManualLocationAnalysisRequest,
     db: Session = Depends(get_db),
-    client_factory: Callable[[], BaiduMapClient] = Depends(get_baidu_client_factory),
-    service_factory: Callable[[Session, BaiduMapClient], LocationAnalysisService] = Depends(
+    client_factory: Callable[[], LocationProvider] = Depends(get_baidu_client_factory),
+    service_factory: Callable[[Session, LocationProvider], LocationAnalysisService] = Depends(
         get_location_service_factory
     ),
 ) -> LocationAnalysisResponse:
@@ -115,7 +117,11 @@ def manual_analysis(
         if payload.address is not None:
             geocoded = client.geocode(address=payload.address, city=payload.city)
             latitude, longitude = _coordinate_values(geocoded)
-            source = "baidu_geocoding"
+            source = (
+                getattr(geocoded, "source", None)
+                if not isinstance(geocoded, dict)
+                else geocoded.get("source")
+            ) or "baidu_geocoding"
         else:
             latitude, longitude = payload.latitude, payload.longitude
         analysis = service_factory(db, client).analyze_manual(
@@ -156,8 +162,8 @@ def manual_analysis(
 def recommendations(
     payload: LocationRecommendationsRequest,
     db: Session = Depends(get_db),
-    client_factory: Callable[[], BaiduMapClient] = Depends(get_baidu_client_factory),
-    service_factory: Callable[[Session, BaiduMapClient], LocationAnalysisService] = Depends(
+    client_factory: Callable[[], LocationProvider] = Depends(get_baidu_client_factory),
+    service_factory: Callable[[Session, LocationProvider], LocationAnalysisService] = Depends(
         get_location_service_factory
     ),
 ) -> LocationAnalysisResponse:

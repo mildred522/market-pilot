@@ -13,7 +13,6 @@ from app.agent_runtime.llm_client import (
     LlmError,
     generate_json_with_metadata,
 )
-from app.agent_runtime.metric_registry import definitions_for_sections
 from app.agent_runtime.plan_policy import (
     apply_operating_plan_policy,
     focused_fallback_tools,
@@ -23,6 +22,7 @@ from app.agent_runtime.tools import (
     OperatingToolContext,
     available_tool_specs,
 )
+from app.agent_runtime.workflow_registry import workflow_candidates
 
 
 def create_operating_plan(
@@ -37,14 +37,19 @@ def create_operating_plan(
     if not client.configured:
         return fallback, False, ["planner: LLM not configured"]
 
-    catalog = _tool_catalog(context)
+    catalog = _workflow_catalog(question, context)
     user_prompt = json.dumps(
         {
             "question": question,
             "stage": "operating",
             "analysis_mode": analysis_mode,
             "available_inputs": sorted(context.available_inputs),
-            "tool_catalog": catalog,
+            "workflow_catalog": catalog,
+            "selection_contract": {
+                "preferred": "set workflow and dimensions; leave tools empty",
+                "compatibility": "tools may be used only when no workflow applies",
+                "policy": "the server expands workflows into allowed tools",
+            },
         },
         ensure_ascii=False,
     )
@@ -90,7 +95,7 @@ def create_operating_replan(
             "previous_plan": previous_plan.model_dump(mode="json"),
             "failed_tools": failed_tools,
             "available_inputs": sorted(context.available_inputs),
-            "tool_catalog": _tool_catalog(context),
+            "workflow_catalog": _workflow_catalog(question, context),
         },
         ensure_ascii=False,
     )
@@ -119,7 +124,34 @@ def create_operating_replan(
         return None, False, [f"replanner: {error}"]
 
 
-def _tool_catalog(context: OperatingToolContext) -> list[dict[str, object]]:
+def _workflow_catalog(
+    question: str, context: OperatingToolContext
+) -> list[dict[str, object]]:
+    available = {spec.name for spec in available_tool_specs(context)}
+    return [
+        workflow.planner_card(available)
+        for workflow in workflow_candidates(question, context)
+    ]
+
+
+def planner_disclosure_stats(
+    question: str, context: OperatingToolContext
+) -> dict[str, int | float]:
+    compact = json.dumps(
+        _workflow_catalog(question, context), ensure_ascii=False
+    )
+    legacy = json.dumps(_legacy_tool_catalog(context), ensure_ascii=False)
+    return {
+        "candidate_workflow_count": len(_workflow_catalog(question, context)),
+        "catalog_characters": len(compact),
+        "legacy_catalog_characters": len(legacy),
+        "reduction_percent": round((1 - len(compact) / max(1, len(legacy))) * 100, 1),
+    }
+
+
+def _legacy_tool_catalog(context: OperatingToolContext) -> list[dict[str, object]]:
+    from app.agent_runtime.metric_registry import definitions_for_sections
+
     return [
         {
             "name": spec.name,

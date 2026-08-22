@@ -50,7 +50,9 @@ export function AgentReport({ report }: { report: AnalysisReport }) {
         <h1>{report.stage === "operating" ? "经营诊断报告" : "开店潜力报告"}</h1>
         <p>{report.summary}</p>
       </section>
-      {agentTrace ? <AgentRunStatus trace={agentTrace} /> : null}
+      {agentTrace ? (
+        <AgentRunStatus trace={agentTrace} analysisId={report.analysis_id} />
+      ) : null}
       <MetricCards metrics={metricCards} />
       {operatingMetrics ? (
         <>

@@ -1,4 +1,4 @@
-import type { AnalysisFollowupResponse, AnalysisReport, AnswerVersion, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AnswerVersion, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -150,6 +150,22 @@ export function analyzeWithAgent<T = unknown>(
 
 export function getAnalysis(analysisId: number): Promise<AnalysisReport> {
   return request<AnalysisReport>(`/analysis/${analysisId}`);
+}
+
+export function getAgentRuns(analysisId: number): Promise<AgentRunSummary[]> {
+  return request<AgentRunSummary[]>(`/analysis/${analysisId}/agent-runs`, {
+    cache: "no-store"
+  });
+}
+
+export function getAgentRun(
+  analysisId: number,
+  requestId: string
+): Promise<AgentRunDetail> {
+  return request<AgentRunDetail>(
+    `/analysis/${analysisId}/agent-runs/${encodeURIComponent(requestId)}`,
+    { cache: "no-store" }
+  );
 }
 
 export function askAnalysis(

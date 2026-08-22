@@ -16,8 +16,8 @@ from app.agent_runtime.llm_client import LlmError, llm_client_from_environment
 from app.external_context.baidu_client import (
     BaiduMapConfigurationError,
     BaiduMapResponseError,
-    BaiduMapClient,
 )
+from app.external_context.factory import get_location_provider_factory
 from app.schemas.dashboard import (
     AgentIntegrationUpdate,
     BaiduIntegrationUpdate,
@@ -129,7 +129,7 @@ def test_integration(integration: IntegrationName) -> dict[str, object]:
 
 
 def _probe_baidu() -> dict[str, object]:
-    result = BaiduMapClient.from_env().search_nearby_page(
+    result = get_location_provider_factory()().search_nearby_page(
         query="餐厅",
         latitude=24.8741,
         longitude=118.6757,
@@ -138,7 +138,8 @@ def _probe_baidu() -> dict[str, object]:
         scope=1,
         filter=None,
     )
-    return {"provider": "baidu-place", "sample_total": result.total}
+    provider = runtime_config.baidu_provider()
+    return {"provider": provider, "sample_total": result.total}
 
 
 def _probe_agent() -> dict[str, object]:

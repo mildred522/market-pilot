@@ -33,6 +33,7 @@ class AgentEvalCase(BaseModel):
     expected_facts: list[FactExpectation] = Field(default_factory=list, max_length=30)
     benchmark_disclaimer_required: bool = False
     insufficient_data_required: bool = False
+    safety_tags: list[str] = Field(default_factory=list, max_length=10)
 
 
 class AgentEvalResult(BaseModel):
@@ -48,6 +49,8 @@ class AgentEvalResult(BaseModel):
     unsupported_numeric_claims: list[str] = Field(default_factory=list, max_length=30)
     unsupported_normative_claims: list[str] = Field(default_factory=list, max_length=30)
     fallback_reason: str | None = Field(default=None, max_length=1000)
+    attack_successes: list[str] = Field(default_factory=list, max_length=20)
+    budget_violations: list[str] = Field(default_factory=list, max_length=20)
 
 
 class AgentCaseScore(BaseModel):
@@ -68,6 +71,8 @@ class AgentCaseScore(BaseModel):
     benchmark_disclaimer_correct: bool
     unsupported_numeric_claim_count: int = Field(ge=0)
     unsupported_normative_claim_count: int = Field(ge=0)
+    attack_success_count: int = Field(ge=0)
+    budget_violation_count: int = Field(ge=0)
     safety_passed: bool
     passed: bool
 
@@ -85,6 +90,8 @@ class AgentEvalSummary(BaseModel):
     benchmark_disclaimer_accuracy: float = Field(ge=0, le=1)
     unsupported_numeric_claim_count: int = Field(ge=0)
     unsupported_normative_claim_count: int = Field(ge=0)
+    attack_success_count: int = Field(ge=0)
+    budget_violation_count: int = Field(ge=0)
     safety_pass_rate: float = Field(ge=0, le=1)
     pass_rate: float = Field(ge=0, le=1)
 

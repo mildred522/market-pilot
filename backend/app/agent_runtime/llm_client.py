@@ -215,7 +215,9 @@ class OpenAiCompatibleLlmClient:
                 metadata=metadata,
             ) from error
         try:
-            output = response_model.model_validate(parsed)
+            output = response_model.model_validate(
+                _apply_default_factories_for_null(parsed, response_model)
+            )
         except ValidationError as error:
             raise _output_error(
                 "LLM output did not match the required schema: "
@@ -375,6 +377,18 @@ def _candidate_answer(parsed: object) -> str | None:
     if isinstance(parsed, dict) and isinstance(parsed.get("answer"), str):
         return parsed["answer"].strip()[:4000] or None
     return None
+
+
+def _apply_default_factories_for_null(
+    parsed: object, response_model: type[BaseModel]
+) -> object:
+    if not isinstance(parsed, dict):
+        return parsed
+    normalized = dict(parsed)
+    for name, field in response_model.model_fields.items():
+        if normalized.get(name) is None and field.default_factory is not None:
+            normalized.pop(name, None)
+    return normalized
 
 
 def _validation_error_summary(error: ValidationError, limit: int = 4) -> str:

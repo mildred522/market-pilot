@@ -1,4 +1,5 @@
 import type { AgentTrace } from "@/lib/types";
+import { AgentRunDetails } from "@/components/AgentRunDetails";
 
 const MODE_LABELS = {
   llm: "AI 规划与综合",
@@ -11,7 +12,13 @@ const STATUS_LABELS = {
   failed: "分析未完成"
 };
 
-export function AgentRunStatus({ trace }: { trace: AgentTrace }) {
+export function AgentRunStatus({
+  trace,
+  analysisId
+}: {
+  trace: AgentTrace;
+  analysisId: number;
+}) {
   return (
     <div className={`agent-run-status agent-run-${trace.mode}`}>
       <div>
@@ -32,6 +39,10 @@ export function AgentRunStatus({ trace }: { trace: AgentTrace }) {
           </ul>
         </details>
       ) : null}
+      <AgentRunDetails
+        analysisId={analysisId}
+        preferredRequestId={trace.request_id}
+      />
     </div>
   );
 }

@@ -6,6 +6,7 @@ from app.agent_runtime.tools import (
     OperatingToolContext,
     available_tool_specs,
 )
+from app.agent_runtime.workflow_registry import expand_workflow
 
 
 FOCUSED_TOOL_MARKERS: dict[str, tuple[str, ...]] = {
@@ -58,10 +59,20 @@ def apply_operating_plan_policy(
 ) -> AgentPlan:
     available = {spec.name for spec in available_tool_specs(context)}
     candidate_by_name: dict[str, PlannedTool] = {}
-    for tool in plan.tools:
-        if tool.name not in available:
-            raise ValueError(f"tool is not allowed: {tool.name}")
-        candidate_by_name.setdefault(tool.name, tool)
+    if plan.workflow is not None:
+        expanded = expand_workflow(plan.workflow, plan.dimensions, context)
+        candidate_by_name = {
+            name: PlannedTool(
+                name=name,
+                reason=f"required by {plan.workflow.value} workflow",
+            )
+            for name in expanded
+        }
+    else:
+        for tool in plan.tools:
+            if tool.name not in available:
+                raise ValueError(f"tool is not allowed: {tool.name}")
+            candidate_by_name.setdefault(tool.name, tool)
 
     if analysis_mode == "focused":
         selected = list(candidate_by_name.values())

@@ -67,16 +67,8 @@ def validate_answer_sections(
             )
             continue
 
-        allowed_values: list[float] = []
-        for fact in facts:
-            allowed_values.extend(_numeric_values(fact.value))
-        unsupported = next(
-            (
-                token
-                for token in _number_tokens(claim.text)
-                if not _matches_evidence(token, allowed_values)
-            ),
-            None,
+        unsupported = unsupported_number(
+            claim.text, [fact.value for fact in facts]
         )
         if unsupported:
             invalid.append(
@@ -100,6 +92,37 @@ def validate_answer_sections(
         general_advice=tuple(sections.general_advice),
         missing_information=tuple(sections.missing_information),
     )
+
+
+def unsupported_number(text: str, evidence_values: list[Any]) -> str | None:
+    """Return the first numeric token that is not grounded in cited evidence."""
+    allowed_values: list[float] = []
+    for value in evidence_values:
+        allowed_values.extend(_numeric_values(value))
+    allowed_values.extend(_derived_numeric_values(allowed_values))
+    return next(
+        (
+            token
+            for token in _number_tokens(text)
+            if not _matches_evidence(token, allowed_values)
+        ),
+        None,
+    )
+
+
+def _derived_numeric_values(values: list[float]) -> list[float]:
+    """Allow transparent two-value comparisons without accepting free arithmetic."""
+    if not 2 <= len(values) <= 12:
+        return []
+    derived: list[float] = []
+    for left in values:
+        for right in values:
+            if left == right:
+                continue
+            derived.extend((left + right, left - right, abs(left - right)))
+            if right:
+                derived.extend((left / right, (left - right) / abs(right)))
+    return derived
 
 
 def _number_tokens(text: str) -> list[str]:

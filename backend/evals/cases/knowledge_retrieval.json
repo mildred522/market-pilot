@@ -1,0 +1,62 @@
+[
+  {
+    "id": "kr-001",
+    "question": "结合成都最新趋势分析奶茶未来潜力",
+    "profile": {"city": "chengdu", "category": "milk-tea"},
+    "expected": {"city": "成都", "category": "新茶饮", "requires_current": true, "include_forecasts": true}
+  },
+  {
+    "id": "kr-002",
+    "question": "成都奶茶当前客观情况如何",
+    "profile": {"city": "成都市", "category": "奶茶"},
+    "expected": {"city": "成都", "category": "新茶饮", "requires_current": true, "include_forecasts": false}
+  },
+  {
+    "id": "kr-003",
+    "question": "全国现制茶饮未来市场规模预计如何",
+    "profile": {"category": "现制茶饮"},
+    "expected": {"city": null, "category": "新茶饮", "requires_current": false, "include_forecasts": true}
+  },
+  {
+    "id": "kr-004",
+    "question": "开奶茶店需要遵守哪些食品安全法规",
+    "profile": {"city": "成都", "category": "新茶饮"},
+    "expected": {"city": "成都", "category": "新茶饮", "requires_current": false, "include_forecasts": false, "source_types": ["regulation", "government_statistics"]}
+  },
+  {
+    "id": "kr-005",
+    "question": "2025年成都餐饮收入增速是多少",
+    "profile": {"city": "成都", "category": "餐饮"},
+    "expected": {"city": "成都", "category": "餐饮", "requires_current": false, "include_forecasts": false}
+  },
+  {
+    "id": "kr-006",
+    "question": "消费者是否更关注健康原料",
+    "profile": {"category": "milk_tea"},
+    "expected": {"city": null, "category": "新茶饮", "requires_current": false, "include_forecasts": false}
+  },
+  {
+    "id": "kr-007",
+    "question": "2023年新茶饮市场规模报告怎么说",
+    "profile": {"category": "新茶饮"},
+    "expected": {"city": null, "category": "新茶饮", "requires_current": false, "include_forecasts": false}
+  },
+  {
+    "id": "kr-008",
+    "question": "最近成都社会消费品零售表现如何",
+    "profile": {"city": "成都市", "category": "food-service"},
+    "expected": {"city": "成都", "category": "餐饮", "requires_current": true, "include_forecasts": false}
+  },
+  {
+    "id": "kr-009",
+    "question": "行业报告如何定义平价现制饮品",
+    "profile": {"category": "现制饮品"},
+    "expected": {"city": null, "category": "现制饮品", "requires_current": false, "include_forecasts": false}
+  },
+  {
+    "id": "kr-010",
+    "question": "有哪些可靠的餐饮行业客观数据",
+    "profile": {},
+    "expected": {"city": null, "category": null, "requires_current": false, "include_forecasts": false}
+  }
+]

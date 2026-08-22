@@ -67,8 +67,58 @@ internal static class StartupCheck
         var npm = CommandFinder.Find("npm.cmd");
         Console.WriteLine($"Python: {python ?? "未找到"}");
         Console.WriteLine($"Node/npm: {npm ?? "未找到"}");
-        return python is not null && npm is not null ? 0 : 1;
+        var ragEnabled = RagConfiguration.IsEnabled(projectRoot);
+        var wsl = ragEnabled ? CommandFinder.Find("wsl.exe") : null;
+        Console.WriteLine($"Knowledge RAG: {(ragEnabled ? "启用" : "关闭")}");
+        if (ragEnabled)
+        {
+            Console.WriteLine($"WSL: {wsl ?? "未找到"}");
+            Console.WriteLine($"WSL 发行版: {RagConfiguration.WslDistribution}");
+        }
+        return python is not null && npm is not null && (!ragEnabled || wsl is not null) ? 0 : 1;
     }
+}
+
+internal static class RagConfiguration
+{
+    public const string ServiceName = "market-pilot-qdrant.service";
+
+    public static string WslDistribution =>
+        Environment.GetEnvironmentVariable("MARKET_PILOT_WSL_DISTRO")?.Trim()
+        is { Length: > 0 } configured
+            ? configured
+            : "Ubuntu";
+
+    public static bool IsEnabled(string projectRoot)
+    {
+        var environmentValue = Environment.GetEnvironmentVariable("KNOWLEDGE_RAG_ENABLED");
+        if (!string.IsNullOrWhiteSpace(environmentValue))
+        {
+            return IsTrue(environmentValue);
+        }
+
+        var envPath = Path.Combine(projectRoot, "backend", ".env");
+        if (!File.Exists(envPath))
+        {
+            return false;
+        }
+
+        foreach (var rawLine in File.ReadLines(envPath))
+        {
+            var line = rawLine.Trim();
+            if (line.StartsWith("KNOWLEDGE_RAG_ENABLED=", StringComparison.OrdinalIgnoreCase))
+            {
+                return IsTrue(line[(line.IndexOf('=') + 1)..].Trim().Trim('"', '\''));
+            }
+        }
+        return false;
+    }
+
+    private static bool IsTrue(string value) =>
+        value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase)
+        || value.Trim().Equals("1", StringComparison.OrdinalIgnoreCase)
+        || value.Trim().Equals("yes", StringComparison.OrdinalIgnoreCase)
+        || value.Trim().Equals("on", StringComparison.OrdinalIgnoreCase);
 }
 
 internal static class CommandFinder
@@ -100,8 +150,10 @@ internal sealed class LauncherForm : Form
 {
     private const string FrontendUrl = "http://127.0.0.1:3000";
     private const string BackendHealthUrl = "http://127.0.0.1:8000/health";
+    private const string QdrantHealthUrl = "http://127.0.0.1:6333/healthz";
 
     private readonly string? _projectRoot;
+    private readonly bool _ragEnabled;
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(2) };
     private readonly Label _statusLabel = new();
     private readonly Label _detailLabel = new();
@@ -111,11 +163,14 @@ internal sealed class LauncherForm : Form
     private readonly TextBox _logBox = new();
     private Process? _backendProcess;
     private Process? _frontendProcess;
+    private Process? _qdrantKeepAliveProcess;
+    private bool _ownsQdrantService;
     private bool _isBusy;
 
     public LauncherForm(string? projectRoot)
     {
         _projectRoot = projectRoot;
+        _ragEnabled = projectRoot is not null && RagConfiguration.IsEnabled(projectRoot);
         ConfigureWindow();
         BuildLayout();
         Shown += async (_, _) => await RefreshStatusAsync();
@@ -254,6 +309,11 @@ internal sealed class LauncherForm : Form
                 throw new InvalidOperationException("前端依赖尚未安装。请先在 frontend 目录运行 npm install。");
             }
 
+            if (_ragEnabled)
+            {
+                await EnsureQdrantReadyAsync();
+            }
+
             if (!await IsBackendReadyAsync())
             {
                 EnsurePortAvailable(8000, "后端");
@@ -288,13 +348,19 @@ internal sealed class LauncherForm : Form
                 throw new TimeoutException("服务启动超时。请查看下方日志定位原因。");
             }
 
-            SetStatus("服务运行中", "前端与后端均已就绪，可以打开工作台。", Color.FromArgb(22, 112, 82));
+            SetStatus(
+                "服务运行中",
+                _ragEnabled
+                    ? "前端、后端与知识检索服务均已就绪。"
+                    : "前端与后端均已就绪，可以打开工作台。",
+                Color.FromArgb(22, 112, 82));
             UpdateControls(true, OwnsAnyProcess());
             OpenBrowser();
         }
         catch (Exception exception)
         {
             AppendLog($"启动失败: {exception.Message}");
+            StopOwnedProcesses();
             SetStatus("启动失败", exception.Message, Color.FromArgb(159, 52, 52));
             UpdateControls(false, OwnsAnyProcess());
         }
@@ -335,6 +401,69 @@ internal sealed class LauncherForm : Form
         return process;
     }
 
+    private async Task EnsureQdrantReadyAsync()
+    {
+        if (await IsQdrantReadyAsync())
+        {
+            AppendLog("Qdrant 已在运行，直接连接现有服务。");
+            return;
+        }
+
+        var wsl = CommandFinder.Find("wsl.exe")
+            ?? throw new InvalidOperationException("知识 RAG 已启用，但未找到 WSL。请安装 WSL2 或关闭 KNOWLEDGE_RAG_ENABLED。");
+        _qdrantKeepAliveProcess = StartQdrantKeepAlive(
+            wsl,
+            RagConfiguration.WslDistribution);
+        _ownsQdrantService = true;
+        if (!await WaitUntilUrlReadyAsync(QdrantHealthUrl, TimeSpan.FromSeconds(35)))
+        {
+            var exited = _qdrantKeepAliveProcess.HasExited;
+            throw new TimeoutException(
+                exited
+                    ? $"WSL/Qdrant 启动进程已退出（代码 {_qdrantKeepAliveProcess.ExitCode}），请检查发行版和 systemd 用户服务。"
+                    : "Qdrant 健康检查超时，请检查 WSL 中的 market-pilot-qdrant.service。");
+        }
+        AppendLog($"Qdrant 已就绪（WSL: {RagConfiguration.WslDistribution}）。");
+    }
+
+    private Process StartQdrantKeepAlive(string wsl, string distribution)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = wsl,
+            WorkingDirectory = _projectRoot!,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var argument in new[]
+        {
+            "-d",
+            distribution,
+            "--",
+            "bash",
+            "-lc",
+            $"systemctl --user start {RagConfiguration.ServiceName} && exec sleep infinity",
+        })
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        process.OutputDataReceived += (_, args) => AppendProcessLine("Qdrant/WSL", args.Data);
+        process.ErrorDataReceived += (_, args) => AppendProcessLine("Qdrant/WSL", args.Data);
+        process.Exited += (_, _) => AppendLog($"Qdrant/WSL 保持进程已退出（代码 {process.ExitCode}）。");
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("无法启动 WSL/Qdrant 保持进程。");
+        }
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        AppendLog($"Qdrant/WSL 保持进程已启动（PID {process.Id}）。");
+        return process;
+    }
+
     private async Task<bool> WaitUntilReadyAsync(TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -351,6 +480,20 @@ internal sealed class LauncherForm : Form
         return false;
     }
 
+    private async Task<bool> WaitUntilUrlReadyAsync(string url, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await IsUrlReadyAsync(url))
+            {
+                return true;
+            }
+            await Task.Delay(700);
+        }
+        return false;
+    }
+
     private async Task RefreshStatusAsync()
     {
         if (_projectRoot is null)
@@ -362,10 +505,21 @@ internal sealed class LauncherForm : Form
 
         var backendReady = await IsBackendReadyAsync();
         var frontendReady = await IsFrontendReadyAsync();
-        if (backendReady && frontendReady)
+        var qdrantReady = !_ragEnabled || await IsQdrantReadyAsync();
+        if (backendReady && frontendReady && qdrantReady)
         {
-            SetStatus("服务运行中", "检测到前端与后端均已就绪。", Color.FromArgb(22, 112, 82));
+            SetStatus(
+                "服务运行中",
+                _ragEnabled
+                    ? "检测到前端、后端与知识检索服务均已就绪。"
+                    : "检测到前端与后端均已就绪。",
+                Color.FromArgb(22, 112, 82));
             UpdateControls(true, OwnsAnyProcess());
+        }
+        else if (backendReady && frontendReady && _ragEnabled)
+        {
+            SetStatus("知识检索未就绪", "前后端正在运行，但 Qdrant 尚不可用。可点击启动进行恢复。", Color.FromArgb(171, 104, 21));
+            UpdateControls(false, OwnsAnyProcess());
         }
         else
         {
@@ -387,11 +541,8 @@ internal sealed class LauncherForm : Form
 
         await Task.Run(() =>
         {
-            StopProcess(_frontendProcess, "前端");
-            StopProcess(_backendProcess, "后端");
+            StopOwnedProcesses();
         });
-        _frontendProcess = null;
-        _backendProcess = null;
         _isBusy = false;
         SetStatus("服务已停止", "可以随时重新启动。", Color.FromArgb(65, 78, 84));
         UpdateControls(false, false);
@@ -416,9 +567,63 @@ internal sealed class LauncherForm : Form
         }
     }
 
+    private void StopOwnedProcesses()
+    {
+        StopProcess(_frontendProcess, "前端");
+        StopProcess(_backendProcess, "后端");
+        StopOwnedQdrant();
+        _frontendProcess = null;
+        _backendProcess = null;
+        _qdrantKeepAliveProcess = null;
+    }
+
+    private void StopOwnedQdrant()
+    {
+        if (!_ownsQdrantService)
+        {
+            return;
+        }
+        try
+        {
+            var wsl = CommandFinder.Find("wsl.exe");
+            if (wsl is not null)
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = wsl,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                foreach (var argument in new[]
+                {
+                    "-d",
+                    RagConfiguration.WslDistribution,
+                    "--",
+                    "systemctl",
+                    "--user",
+                    "stop",
+                    RagConfiguration.ServiceName,
+                })
+                {
+                    startInfo.ArgumentList.Add(argument);
+                }
+                using var stop = Process.Start(startInfo);
+                stop?.WaitForExit(5000);
+            }
+        }
+        catch (Exception exception)
+        {
+            AppendLog($"停止 Qdrant 服务失败: {exception.Message}");
+        }
+        StopProcess(_qdrantKeepAliveProcess, "Qdrant/WSL");
+        _ownsQdrantService = false;
+    }
+
     private async Task<bool> IsBackendReadyAsync() => await IsUrlReadyAsync(BackendHealthUrl);
 
     private async Task<bool> IsFrontendReadyAsync() => await IsUrlReadyAsync(FrontendUrl);
+
+    private async Task<bool> IsQdrantReadyAsync() => await IsUrlReadyAsync(QdrantHealthUrl);
 
     private async Task<bool> IsUrlReadyAsync(string url)
     {
@@ -473,7 +678,9 @@ internal sealed class LauncherForm : Form
     }
 
     private bool OwnsAnyProcess() =>
-        (_backendProcess is { HasExited: false }) || (_frontendProcess is { HasExited: false });
+        (_backendProcess is { HasExited: false })
+        || (_frontendProcess is { HasExited: false })
+        || (_qdrantKeepAliveProcess is { HasExited: false });
 
     private void AppendProcessLine(string label, string? line)
     {
@@ -515,8 +722,7 @@ internal sealed class LauncherForm : Form
 
         if (answer == DialogResult.Yes)
         {
-            StopProcess(_frontendProcess, "前端");
-            StopProcess(_backendProcess, "后端");
+            StopOwnedProcesses();
         }
     }
 }

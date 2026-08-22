@@ -10,6 +10,7 @@ from app.agent_runtime.revision import create_revision_plan
 from app.db.models import AnalysisResult
 from app.db.session import get_db
 from app.external_context.followup_provider import PersistedFollowupEvidenceProvider
+from app.knowledge.factory import build_knowledge_retrieval_service
 from app.schemas.analysis import AnalysisChatRequest
 from app.memory.context_builder import build_conversation_context
 from app.memory.history_service import MetricHistoryService
@@ -20,6 +21,7 @@ from app.memory.revision_repository import (
 )
 from app.memory.project_profile import ProjectProfileService
 from app.observability.agent_trace import AgentTraceRecorder
+from app.services.runtime_config import runtime_config
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -105,6 +107,9 @@ def chat_with_analysis(
             evidence_provider=PersistedFollowupEvidenceProvider(
                 db,
                 project_id=result.project_id,
+                knowledge_service=build_knowledge_retrieval_service(
+                    db, runtime_config.knowledge_rag_settings()
+                ),
             ),
             selected_memory_ids=selected_memory_ids,
             revision_context=(
@@ -191,6 +196,13 @@ def chat_with_analysis(
         selected_memory_ids=list(trace.get("selected_memory_ids", [])),
         verification_failures=list(trace.get("verification_failures", [])),
         fallback_reasons=list(trace.get("fallback_reasons", [])),
+        status=str(trace.get("status", "completed")),
+        duration_ms=int(trace.get("duration_ms", 0)),
+        replan_count=int(trace.get("replan_count", 0)),
+        output_repair_count=int(trace.get("output_repair_count", 0)),
+        evidence_events=list(trace.get("evidence_events", [])),
+        budget=dict(trace.get("budget", {})),
+        planning_disclosure=dict(trace.get("planning_disclosure", {})),
     )
     db.commit()
     return {**answer, "conversation_id": conversation.id}

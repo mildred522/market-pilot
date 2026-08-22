@@ -135,12 +135,26 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
 
           {result.mode === "insufficient_data" ? (
             <div className="followup-insufficient-note">
-              <strong>当前报告缺少这项事实</strong>
-              <span>已保留可以确认的内容，没有用邻近指标代替。</span>
+              <strong>{result.missing_evidence?.length ? "当前项目缺少外部证据" : "当前报告缺少这项事实"}</strong>
+              <span>{insufficientGuidance(result)}</span>
               {result.available_sections?.length ? (
                 <small>当前已有：{result.available_sections.join("、")}</small>
               ) : null}
             </div>
+          ) : null}
+
+          {result.agent_trace?.evidence_events?.length ? (
+            <details className="followup-evidence-refs">
+              <summary>查看证据核验记录</summary>
+              <ul>
+                {result.agent_trace.evidence_events.map((event, index) => (
+                  <li key={`${event.capability}-${index}`}>
+                    {evidenceCapabilityLabel(event.capability)}：
+                    {event.status === "completed" ? `已取得 ${event.evidence_refs.length} 项证据` : "未取得可用证据"}
+                  </li>
+                ))}
+              </ul>
+            </details>
           ) : null}
 
           {activeParentId ? (
@@ -188,14 +202,26 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
 }
 
 function AnswerSections({ sections }: { sections: FollowupSections }) {
+  const findingGroups = [
+    ["current_report", "基于门店数据"],
+    ["external", "外部行业证据"],
+    ["history", "历史经营数据"],
+    ["reference", "目标与参考基准"],
+    ["mixed", "综合证据"],
+  ] as const;
   return (
     <div className="followup-answer-sections">
-      {sections.data_findings.length ? (
-        <section>
-          <h3>基于门店数据</h3>
-          <ul>{sections.data_findings.map((item, index) => <li key={`${item.text}-${index}`}>{item.text}</li>)}</ul>
-        </section>
-      ) : null}
+      {findingGroups.map(([scope, title]) => {
+        const findings = sections.data_findings.filter(
+          (item) => (item.scope ?? "current_report") === scope,
+        );
+        return findings.length ? (
+          <section key={scope}>
+            <h3>{title}</h3>
+            <ul>{findings.map((item, index) => <li key={`${item.text}-${index}`}>{item.text}</li>)}</ul>
+          </section>
+        ) : null;
+      })}
       {sections.general_advice.length ? (
         <section>
           <h3>通用经营建议</h3>
@@ -236,6 +262,30 @@ function friendlyFallbackReason(reason?: string): string {
   if (reason.includes("not configured")) return "模型尚未配置，已返回保存的报告结论。";
   if (reason.includes("timed out") || reason.includes("network")) return "模型响应超时，已返回保存的报告结论。";
   return "模型回答未通过证据校验，已返回报告中能够确认的内容。";
+}
+
+function insufficientGuidance(result: AnalysisFollowupResponse): string {
+  if (result.missing_evidence?.includes("location_competitors")) {
+    return "需要先完成商圈或选址分析，保存周边竞品快照后才能比较具体门店。";
+  }
+  if (result.missing_evidence?.includes("external_industry_context")) {
+    return "需要先接入或更新行业与城市资料，不能用门店指标代替市场证据。";
+  }
+  if (result.missing_evidence?.includes("metric_history")) {
+    return "需要至少两期经营报告，当前单期数据无法判断历史变化。";
+  }
+  return "已保留可以确认的内容，没有用邻近指标代替。";
+}
+
+function evidenceCapabilityLabel(
+  capability: "metric_history" | "external_industry_context" | "location_competitors",
+): string {
+  const labels = {
+    metric_history: "历史经营数据",
+    external_industry_context: "行业与城市资料",
+    location_competitors: "周边竞品快照",
+  };
+  return labels[capability];
 }
 
 function followupModeLabel(mode: AnalysisFollowupResponse["mode"]): string {

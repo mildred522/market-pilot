@@ -1,9 +1,12 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from fastapi.testclient import TestClient
+import pytest
 
 from app.agent_runtime.contracts import RevisionLessonCandidate, RevisionPlan
+from app.agent_runtime.llm_client import LlmOutputError
 from app.agent_runtime.revision import create_revision_plan
+from app.api import analysis as analysis_api
 from app.db.models import (
     AnalysisResult,
     Base,
@@ -32,6 +35,19 @@ class RevisionClient:
                     rule={"answer_order": "conclusion_first", "length": "short"},
                 )
             ],
+        )
+
+
+class InvalidPublicAnswerClient:
+    configured = True
+    provider = "fake"
+    model = "fake"
+
+    def generate_json(self, **_kwargs):
+        raise LlmOutputError(
+            "invalid JSON",
+            candidate_content="不得出现在公开响应中的候选文本",
+            error_code="invalid_json",
         )
 
 
@@ -179,6 +195,34 @@ def test_chat_api_creates_root_child_and_confirmation_versions():
     assert correction["revision_plan"]["revision_type"] == "recompute_metrics"
     assert len(versions) == 3
     assert versions[-1]["parent_version_id"] == child["answer_version_id"]
+
+
+def test_chat_api_does_not_expose_rejected_model_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    with TestClient(app) as client:
+        project = client.post(
+            "/projects", json={"name": "拒绝候选保护店", "stage": "operating"}
+        ).json()
+        report = client.post(
+            "/operating/analyze-sample",
+            json={"project_id": project["id"], "question": "完整分析"},
+        ).json()
+        monkeypatch.setattr(
+            analysis_api,
+            "llm_client_from_environment",
+            lambda _role: InvalidPublicAnswerClient(),
+        )
+
+        response = client.post(
+            f"/analysis/{report['analysis_id']}/chat",
+            json={"question": "下一步应该怎么做？"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "candidate" not in payload["failure_detail"]
+    assert "不得出现在公开响应中的候选文本" not in response.text
 
 
 def _session() -> Session:

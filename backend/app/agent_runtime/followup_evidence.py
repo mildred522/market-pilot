@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,6 +37,17 @@ class CapabilityEvidenceResult(BaseModel):
     message: str | None = None
 
 
+class EvidenceRetrievalContext(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    question: str = Field(min_length=1, max_length=2000)
+    purpose: str = Field(min_length=1, max_length=300)
+    success_condition: str = Field(min_length=1, max_length=300)
+    requirement: Literal["required", "optional"]
+    project_profile: dict[str, Any] = Field(default_factory=dict)
+    as_of: datetime
+
+
 class FollowupEvidenceProvider(Protocol):
     def available_capabilities(
         self, project_profile: dict[str, Any]
@@ -44,7 +56,7 @@ class FollowupEvidenceProvider(Protocol):
     def retrieve(
         self,
         capability: FollowupEvidenceCapability,
-        project_profile: dict[str, Any],
+        context: EvidenceRetrievalContext,
     ) -> CapabilityEvidenceResult: ...
 
 
@@ -78,6 +90,9 @@ def apply_followup_evidence_policy(
         seen.add(capability)
         if capability not in available:
             rejected.append(_rejection(capability, "capability_unavailable"))
+            continue
+        if not _capability_matches_question(question, capability):
+            rejected.append(_rejection(capability, "capability_not_relevant"))
             continue
         if request.requirement == "optional" and not _explicitly_requests_context(
             question, capability
@@ -142,8 +157,16 @@ def execute_followup_evidence_request(
         )
     if provider is None:
         return _failure(request.capability, "capability_unavailable")
+    context = EvidenceRetrievalContext(
+        question=question,
+        purpose=request.purpose,
+        success_condition=request.success_condition,
+        requirement=request.requirement,
+        project_profile=project_profile,
+        as_of=datetime.now(UTC),
+    )
     try:
-        return provider.retrieve(request.capability, project_profile)
+        return provider.retrieve(request.capability, context)
     except (LookupError, ValueError) as error:
         return _failure(request.capability, "evidence_unavailable", str(error))
     except Exception:
@@ -180,6 +203,21 @@ def _explicitly_requests_context(
         "location_competitors": ("附近", "周边", "商圈", "竞品", "竞争对手"),
     }
     return any(keyword in question for keyword in keywords[capability])
+
+
+def _capability_matches_question(
+    question: str, capability: FollowupEvidenceCapability
+) -> bool:
+    local_keywords = ("附近", "周边", "商圈", "竞品", "竞争对手", "公里")
+    industry_keywords = ("行业", "市场", "趋势", "品类", "成都", "当地", "本地")
+    history_keywords = ("上次", "上期", "之前", "历史", "相比", "变化")
+    if capability == "location_competitors":
+        return any(keyword in question for keyword in local_keywords)
+    if capability == "metric_history":
+        return any(keyword in question for keyword in history_keywords)
+    if any(keyword in question for keyword in industry_keywords):
+        return True
+    return not any(keyword in question for keyword in local_keywords)
 
 
 def _rejection(

@@ -18,6 +18,14 @@ export type IntegrationStatus = {
   };
 };
 
+export type KnowledgeRagStatus = {
+  enabled: boolean;
+  configured: boolean;
+  collection: string;
+  dense_model: string;
+  reranker_model: string | null;
+};
+
 export type IntegrationTestResult = {
   ok: boolean;
   latency_ms: number;
@@ -47,6 +55,7 @@ export type DashboardOverview = {
   integrations: {
     baidu: IntegrationStatus;
     agent: IntegrationStatus;
+    knowledge_rag: KnowledgeRagStatus;
   };
   recent_analyses: Array<{
     id: number;
@@ -132,6 +141,7 @@ export type OperatingMetrics = {
 };
 
 export type AgentTrace = {
+  request_id?: string;
   mode: "llm" | "hybrid" | "deterministic";
   status?: "completed" | "degraded" | "failed";
   provider: string;
@@ -162,6 +172,82 @@ export type AgentTrace = {
   } | null;
   duration_ms: number;
   run_id?: number;
+};
+
+export type AgentRunUsage = {
+  model_calls: number;
+  tool_calls: number;
+  replan_count: number;
+  output_repair_count: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  token_usage_complete: boolean;
+};
+
+export type AgentRunSummary = {
+  request_id: string;
+  project_id: number;
+  analysis_id: number;
+  run_id: number | null;
+  operation: "operating_analysis" | "followup";
+  status: "completed" | "degraded" | "failed";
+  created_at: string;
+  duration_ms: number;
+  usage: AgentRunUsage;
+};
+
+export type AgentRunStage = {
+  stage: "plan" | "model" | "tool" | "retrieve" | "replan" | "verify" | "fallback";
+  label: string;
+  status: "completed" | "degraded" | "failed";
+  duration_ms: number | null;
+  public_detail: string | null;
+  role: string | null;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  retry_count: number | null;
+  error_code: string | null;
+};
+
+export type AgentRunDetail = AgentRunSummary & {
+  initial_plan: {
+    intent: string;
+    goal: string;
+    workflow: string | null;
+    dimensions: string[];
+    tools: string[];
+    missing_inputs: string[];
+    requires_external_api: boolean;
+  };
+  revised_plan: {
+    intent: string;
+    goal: string;
+    workflow: string | null;
+    dimensions: string[];
+    tools: string[];
+    missing_inputs: string[];
+    requires_external_api: boolean;
+  } | null;
+  timeline_order: "logical";
+  timeline: AgentRunStage[];
+  verification: { failure_count: number; passed: boolean };
+  fallback_reasons: string[];
+  selected_memory_count: number;
+  budget: {
+    limits: Record<string, number>;
+    used: Record<string, number>;
+    exhausted_dimensions: string[];
+    evidence_truncated: boolean;
+  };
+  planning_disclosure: {
+    candidate_workflow_count?: number;
+    catalog_characters?: number;
+    legacy_catalog_characters?: number;
+    reduction_percent?: number;
+  };
 };
 
 export type DiscountSegment = {
@@ -319,17 +405,32 @@ export type AnalysisFollowupResponse = {
   fallback_reason?: string;
   supporting_evidence?: string[];
   missing_metrics?: string[];
+  missing_evidence?: Array<"metric_history" | "external_industry_context" | "location_competitors">;
   available_sections?: string[];
+  agent_trace?: {
+    replan_count?: number;
+    output_repair_count?: number;
+    evidence_events?: Array<{
+      capability: "metric_history" | "external_industry_context" | "location_competitors";
+      requirement: "required" | "optional";
+      status: "completed" | "failed";
+      evidence_refs: string[];
+      error: { code: string | null; message: string | null } | null;
+    }>;
+  };
   failure_detail?: {
     stage: string;
     reason: string;
-    candidate: string | null;
   };
   prompt_version: string;
 };
 
 export type FollowupSections = {
-  data_findings: Array<{ text: string; evidence_refs: string[] }>;
+  data_findings: Array<{
+    text: string;
+    evidence_refs: string[];
+    scope?: "current_report" | "external" | "history" | "reference" | "mixed";
+  }>;
   general_advice: string[];
   missing_information: string[];
 };

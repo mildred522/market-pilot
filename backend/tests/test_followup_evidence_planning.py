@@ -118,12 +118,14 @@ class FakeEvidenceProvider:
     def __init__(self, outcomes: dict[str, CapabilityEvidenceResult]) -> None:
         self.outcomes = outcomes
         self.calls: list[str] = []
+        self.contexts = []
 
     def available_capabilities(self, _profile):
         return set(self.outcomes)
 
-    def retrieve(self, capability, _profile):
+    def retrieve(self, capability, context):
         self.calls.append(capability)
+        self.contexts.append(context)
         return self.outcomes[capability]
 
 
@@ -211,12 +213,73 @@ def test_followup_replans_once_after_required_evidence_failure():
         "external_industry_context",
         "location_competitors",
     ]
+    assert provider.contexts[0].question == "结合成都趋势和附近竞品分析"
+    assert provider.contexts[0].project_profile == {
+        "city": "chengdu",
+        "category": "milk-tea",
+    }
+    assert provider.contexts[0].success_condition == "返回带来源和时间范围的事实"
     assert result["agent_trace"]["replan_count"] == 1
+    assert result["agent_trace"]["evidence_events"] == [
+        {
+            "action": "retrieve_evidence",
+            "capability": "external_industry_context",
+            "requirement": "required",
+            "status": "failed",
+            "evidence_refs": [],
+            "error": {"code": "provider_timeout", "message": None},
+        },
+        {
+            "action": "retrieve_evidence",
+            "capability": "location_competitors",
+            "requirement": "required",
+            "status": "completed",
+            "evidence_refs": [
+                "external.location_snapshot.7.metrics.competitor_count"
+            ],
+            "error": None,
+        },
+    ]
     assert [item["role"] for item in result["llm_calls"]] == [
         "followup",
         "replanner",
         "followup",
     ]
+
+
+def test_external_evidence_is_not_labelled_as_store_data():
+    provider = FakeEvidenceProvider(
+        {
+            "external_industry_context": CapabilityEvidenceResult(
+                capability="external_industry_context",
+                status="completed",
+                facts=(
+                    EvidenceMaterial(
+                        canonical_ref="external.knowledge.source.1.version.1.chunk.kv1-c0001",
+                        source="external_context",
+                        label="行业趋势",
+                        value="持续上新有助于保持产品差异化。",
+                    ),
+                ),
+            )
+        }
+    )
+
+    result = ReportFollowupAgent(
+        ScriptedPlanningClient("external_industry_context")
+    ).answer(
+        question="结合行业趋势给出建议",
+        summary="当前报告",
+        metrics={"_project_profile": {"category": "新茶饮"}},
+        evidence=[],
+        actions=[],
+        risks=[],
+        evidence_provider=provider,
+    )
+
+    assert "外部行业证据" in result["answer"]
+    assert "基于门店数据" not in result["answer"]
+    assert result["sections"]["data_findings"][0]["scope"] == "external"
 
 
 def test_optional_external_failure_does_not_trigger_replan():
@@ -236,6 +299,26 @@ def test_optional_external_failure_does_not_trigger_replan():
 
     assert decision.approved == ()
     assert decision.rejected[0]["error_code"] == "optional_retrieval_not_justified"
+
+
+def test_industry_context_cannot_substitute_for_local_competitor_evidence():
+    request = FollowupEvidenceRequest(
+        capability="external_industry_context",
+        purpose="查找附近竞品",
+        requirement="required",
+        success_condition="返回三公里内的竞品",
+    )
+
+    decision = apply_followup_evidence_policy(
+        [request],
+        question="附近三公里有哪些直接竞品？",
+        history_available=False,
+        provider_capabilities={"external_industry_context"},
+        attempted_capabilities=set(),
+    )
+
+    assert decision.approved == ()
+    assert decision.rejected[0]["error_code"] == "capability_not_relevant"
 
 
 def _retrieve_step(capability: str) -> FollowupStep:

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.agent_runtime.budget import AgentRunBudget
 from app.agent_runtime.contracts import (
     AgentPlan,
     CompactAgentSynthesis,
@@ -96,8 +97,9 @@ def test_orchestrator_uses_llm_plan_and_grounded_synthesis():
     ]
     assert "期限：14 天" in report["actions"][0]
     assert "metrics.revenue.total_revenue" in report["evidence"][0]
-    assert '"output_contract"' in client.user_prompts[0]
-    assert '"label": "总营收"' in client.user_prompts[0]
+    assert '"workflow_catalog"' in client.user_prompts[0]
+    assert '"output_contract"' not in client.user_prompts[0]
+    assert '"label": "总营收"' not in client.user_prompts[0]
     assert '"metric_evidence"' in client.user_prompts[1]
     assert '"metric_definitions"' not in client.user_prompts[1]
     llm_calls = report["agent_trace"]["llm_calls"]
@@ -107,6 +109,26 @@ def test_orchestrator_uses_llm_plan_and_grounded_synthesis():
     assert len(report["agent_trace"]["request_id"]) == 36
     assert report["agent_trace"]["initial_plan"]["intent"] == "operating_diagnosis"
     assert report["agent_trace"]["final_plan"]["intent"] == "operating_diagnosis"
+    assert report["agent_trace"]["planning_disclosure"]["reduction_percent"] >= 80
+
+
+def test_orchestrator_skips_synthesizer_after_model_budget_is_exhausted():
+    client = FakeLlmClient()
+    service = AgentService(
+        OperatingAgentOrchestrator(
+            client,
+            budget=AgentRunBudget(max_model_calls=1),
+        )
+    )
+
+    report = _analyze(service)
+
+    assert client.calls == ["AgentPlan"]
+    assert report["agent_trace"]["mode"] == "hybrid"
+    assert report["agent_trace"]["budget"]["used"]["model_calls"] == 1
+    assert report["agent_trace"]["budget"]["exhausted_dimensions"] == [
+        "model_calls"
+    ]
 
 
 def test_orchestrator_falls_back_when_llm_cites_unknown_metric():

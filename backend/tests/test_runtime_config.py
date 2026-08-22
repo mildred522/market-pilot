@@ -4,7 +4,7 @@ import pytest
 
 from app.agent_runtime import llm_client as llm_client_module
 from app.agent_runtime.llm_client import OpenAiCompatibleLlmClient, llm_client_from_environment
-from app.services.runtime_config import RuntimeConfigStore
+from app.services.runtime_config import RuntimeConfigStore, _default_secret_store
 from app.services.secret_store import EncryptedSecretStore, WindowsDpapiProtector
 
 
@@ -61,6 +61,28 @@ def test_windows_dpapi_round_trip_is_user_scoped_encryption():
     assert protector.unprotect(encrypted) == plaintext
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows config path only")
+def test_default_secret_store_uses_stable_user_config_path(monkeypatch, tmp_path):
+    monkeypatch.delenv("MARKET_PILOT_CONFIG_PATH", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    store = _default_secret_store()
+
+    assert store is not None
+    assert store.path == tmp_path / "MarketPilot" / "integration_config.dpapi"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows config path only")
+def test_secret_store_path_can_be_overridden(monkeypatch, tmp_path):
+    configured_path = tmp_path / "custom.dpapi"
+    monkeypatch.setenv("MARKET_PILOT_CONFIG_PATH", str(configured_path))
+
+    store = _default_secret_store()
+
+    assert store is not None
+    assert store.path == configured_path
+
+
 def test_agent_models_can_be_configured_by_role_with_base_fallback(monkeypatch):
     config = RuntimeConfigStore()
     config.set_agent(
@@ -92,3 +114,28 @@ def test_agent_models_can_be_configured_by_role_with_base_fallback(monkeypatch):
         "synthesizer": "quality-synthesizer",
         "followup": "base-model",
     }
+
+
+def test_knowledge_rag_is_disabled_by_default_and_reads_environment(monkeypatch):
+    for name in (
+        "KNOWLEDGE_RAG_ENABLED",
+        "QDRANT_URL",
+        "QDRANT_COLLECTION",
+        "KNOWLEDGE_RERANK_ENABLED",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    config = RuntimeConfigStore()
+
+    assert config.knowledge_rag_settings().enabled is False
+    assert config.status()["knowledge_rag"]["configured"] is False
+
+    monkeypatch.setenv("KNOWLEDGE_RAG_ENABLED", "true")
+    monkeypatch.setenv("QDRANT_URL", "http://qdrant.test:6333")
+    monkeypatch.setenv("QDRANT_COLLECTION", "knowledge_test_v2")
+    monkeypatch.setenv("KNOWLEDGE_RERANK_ENABLED", "false")
+
+    settings = config.knowledge_rag_settings()
+    assert settings.enabled is True
+    assert settings.configured is True
+    assert settings.collection == "knowledge_test_v2"
+    assert settings.rerank_enabled is False

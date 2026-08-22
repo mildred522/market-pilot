@@ -158,6 +158,11 @@ def _persist_report(db: Session, report: dict[str, object]) -> dict[str, object]
             if "evidence" in str(item).lower() or "validation" in str(item).lower()
         ],
         fallback_reasons=list(agent_trace.get("fallback_reasons", [])),
+        status=run_status,
+        duration_ms=int(agent_trace.get("duration_ms", 0)),
+        replan_count=int(agent_trace.get("replan_count", 0)),
+        budget=dict(agent_trace.get("budget", {})),
+        planning_disclosure=dict(agent_trace.get("planning_disclosure", {})),
     )
     db.commit()
     db.refresh(result)

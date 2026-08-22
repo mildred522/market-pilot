@@ -83,6 +83,16 @@ class BaiduPoi(BaseModel):
     average_price: float | None = None
 
 
+class BaiduRouteMatrixItem(BaseModel):
+    distance_meters: int = Field(ge=0)
+    duration_seconds: int = Field(ge=0)
+
+
+class BaiduRouteMatrixResult(BaseModel):
+    mode: Literal["driving", "riding", "walking"]
+    routes: list[BaiduRouteMatrixItem]
+
+
 class BaiduPoiSearchResult(BaseModel):
     query: str
     center_latitude: float | None = None
@@ -94,3 +104,6 @@ class BaiduPoiSearchResult(BaseModel):
     page_size: int = Field(default=20, ge=1, le=20)
     total: int
     pois: list[BaiduPoi]
+    pagination_supported: bool = True
+    provider: Literal["baidu_webapi", "baidu_mcp"] = "baidu_webapi"
+    provider_warning: str | None = None

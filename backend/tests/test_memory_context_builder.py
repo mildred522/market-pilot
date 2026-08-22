@@ -67,7 +67,11 @@ def test_followup_prompt_keeps_current_report_separate_from_history():
     prompt = json.loads(client.prompt)
     assert prompt["conversation_history"]["trust"] == "untrusted_historical_context"
     assert prompt["conversation_history"]["messages"][0]["content"] == "上一轮问题"
-    assert prompt["report"]["summary"]["value"] == "当前报告摘要"
+    facts = {
+        item["canonical_ref"]: item
+        for item in prompt["evidence_pack"]["facts"]
+    }
+    assert facts["report.summary"]["value"] == "当前报告摘要"
 import json
 
 from app.agent_runtime.contracts import FollowupStep

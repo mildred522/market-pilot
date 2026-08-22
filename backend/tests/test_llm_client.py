@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.agent_runtime import llm_client as llm_client_module
-from app.agent_runtime.contracts import AgentPlan
+from app.agent_runtime.contracts import AgentPlan, FollowupStep
 from app.agent_runtime.llm_client import (
     DisabledLlmClient,
     LlmError,
@@ -86,6 +86,53 @@ def test_openai_compatible_client_rejects_invalid_schema():
         )
     assert captured.value.error_code == "schema_validation"
     assert captured.value.candidate_content == '{"intent": "missing"}'
+
+
+def test_openai_compatible_client_applies_schema_defaults_to_null_containers():
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "action": "retrieve",
+                                    "arguments": None,
+                                    "evidence_refs": None,
+                                    "evidence_requests": [
+                                        {
+                                            "capability": "external_industry_context",
+                                            "purpose": "read market context",
+                                            "requirement": "required",
+                                            "success_condition": "return sourced facts",
+                                        }
+                                    ],
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+    )
+    client = OpenAiCompatibleLlmClient(
+        api_key="test-key",
+        model="test-model",
+        transport=transport,
+    )
+
+    result = client.generate_json(
+        system_prompt="follow up",
+        user_prompt="question",
+        response_model=FollowupStep,
+        temperature=0.1,
+    )
+
+    assert result.arguments.model_dump(exclude_none=True) == {}
+    assert result.evidence_refs == []
+    assert result.evidence_requests[0].capability == "external_industry_context"
 
 
 def test_openai_compatible_client_preserves_and_redacts_invalid_json_candidate():

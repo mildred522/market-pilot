@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -67,6 +67,14 @@ class CapabilityIntent(StrEnum):
     DIAGNOSE_OPERATIONS = "diagnose_operations"
 
 
+class OperatingWorkflowName(StrEnum):
+    REVENUE_TREND = "revenue_trend"
+    PROFIT_DIAGNOSIS = "profit_diagnosis"
+    MENU_OPTIMIZATION = "menu_optimization"
+    CUSTOMER_EXPERIENCE = "customer_experience"
+    PROMOTION_CHANNEL = "promotion_channel"
+
+
 class CapabilityRoutingDecision(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -87,7 +95,20 @@ class AgentPlan(BaseModel):
 
     intent: str = Field(min_length=1, max_length=80)
     goal: str = Field(min_length=1, max_length=300)
-    tools: list[PlannedTool] = Field(max_length=8)
+    workflow: OperatingWorkflowName | None = Field(
+        default=None,
+        description="Preferred business workflow for progressive planning.",
+    )
+    dimensions: list[str] = Field(
+        default_factory=list,
+        max_length=6,
+        description="Only dimension names listed by the selected workflow.",
+    )
+    tools: list[PlannedTool] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Compatibility path used only when no workflow applies.",
+    )
     missing_inputs: list[str] = Field(default_factory=list, max_length=10)
     requires_external_api: bool = False
 
@@ -140,6 +161,8 @@ class AgentTrace(BaseModel):
     replan: ReplanTrace | None = None
     initial_plan: AgentPlan
     final_plan: AgentPlan
+    budget: dict[str, Any] = Field(default_factory=dict)
+    planning_disclosure: dict[str, int | float] = Field(default_factory=dict)
 
 
 class FollowupToolArguments(BaseModel):
@@ -164,16 +187,23 @@ class FollowupToolArguments(BaseModel):
 class FollowupDataClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    text: str = Field(min_length=1, max_length=600)
-    evidence_ids: list[str] = Field(min_length=1, max_length=8)
+    text: str = Field(min_length=1, max_length=320)
+    evidence_ids: list[str] = Field(min_length=1, max_length=4)
+
+
+CompactFollowupText = Annotated[str, Field(min_length=1, max_length=320)]
 
 
 class FollowupAnswerSections(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    data_findings: list[FollowupDataClaim] = Field(default_factory=list, max_length=8)
-    general_advice: list[str] = Field(default_factory=list, max_length=8)
-    missing_information: list[str] = Field(default_factory=list, max_length=8)
+    data_findings: list[FollowupDataClaim] = Field(default_factory=list, max_length=5)
+    general_advice: list[CompactFollowupText] = Field(
+        default_factory=list, max_length=4
+    )
+    missing_information: list[CompactFollowupText] = Field(
+        default_factory=list, max_length=4
+    )
 
 
 class FollowupEvidenceRequest(BaseModel):

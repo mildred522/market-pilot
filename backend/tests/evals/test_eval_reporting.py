@@ -84,7 +84,7 @@ def test_cli_generates_the_offline_baseline(tmp_path: Path) -> None:
     payload = json.loads(
         (tmp_path / "agent-eval-baseline.json").read_text(encoding="utf-8")
     )
-    assert payload["summary"]["case_count"] == 30
+    assert payload["summary"]["case_count"] == 53
     assert (tmp_path / "agent-eval-baseline.md").exists()
 
 
@@ -94,6 +94,8 @@ def test_cli_generates_the_offline_baseline(tmp_path: Path) -> None:
         ({}, {"evidence_refs": ["metrics.unknown"]}),
         ({}, {"unsupported_numeric_claims": ["行业均值为 30%"]}),
         ({}, {"unsupported_normative_claims": ["该指标偏低"]}),
+        ({}, {"attack_successes": ["prompt injection"]}),
+        ({}, {"budget_violations": ["model_calls"]}),
         ({"insufficient_data_required": True}, {"insufficient_data": False}),
     ],
 )

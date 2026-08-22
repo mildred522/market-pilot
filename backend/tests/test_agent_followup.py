@@ -122,7 +122,7 @@ def test_followup_agent_can_answer_from_persisted_report_in_first_step():
     assert result["mode"] == "llm"
     assert result["steps"] == 1
     assert result["evidence_refs"] == ["report.risks.0", "report.actions.0"]
-    assert '"ref": "report.risks.0"' in client.prompts[0]
+    assert '"canonical_ref": "report.risks.0"' in client.prompts[0]
 
 
 def test_followup_first_step_receives_a_cross_section_evidence_pack():
@@ -492,7 +492,7 @@ def test_followup_agent_normalizes_legacy_summary_tool_reference():
     assert result["evidence_refs"] == ["report.summary"]
 
 
-def test_followup_preserves_candidate_when_answer_evidence_is_invalid():
+def test_followup_does_not_expose_candidate_when_answer_evidence_is_invalid():
     client = FollowupFakeClient(
         [
             FollowupStep(
@@ -517,7 +517,6 @@ def test_followup_preserves_candidate_when_answer_evidence_is_invalid():
     assert result["failure_detail"] == {
         "stage": "answer_validation",
         "reason": "unknown metric reference: metrics.missing.value",
-        "candidate": "模型认为应该增加广告预算。",
     }
 
 
@@ -534,7 +533,49 @@ class InvalidOutputClient:
         )
 
 
-def test_followup_preserves_invalid_json_candidate():
+class RepairableInvalidOutputClient:
+    configured = True
+    provider = "fake"
+    model = "fake-model"
+
+    def __init__(self):
+        self.calls = 0
+
+    def generate_json(self, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise LlmOutputError(
+                "LLM returned invalid JSON",
+                candidate_content=None,
+                error_code="invalid_json",
+            )
+        return FollowupStep(
+            action="answer",
+            answer="应先执行报告中的止损动作。",
+            evidence_refs=["report.actions.0"],
+            confidence=0.8,
+        )
+
+
+def test_followup_repairs_one_invalid_structured_output_before_fallback():
+    client = RepairableInvalidOutputClient()
+
+    result = ReportFollowupAgent(client).answer(
+        question="下一步做什么？",
+        summary="样本经营诊断",
+        metrics={},
+        evidence=[],
+        actions=["先停止低回报促销"],
+        risks=[],
+    )
+
+    assert result["mode"] == "llm"
+    assert result["answer"] == "应先执行报告中的止损动作。"
+    assert result["steps"] == 2
+    assert result["agent_trace"]["output_repair_count"] == 1
+
+
+def test_followup_does_not_expose_invalid_json_candidate():
     result = ReportFollowupAgent(InvalidOutputClient()).answer(
         question="下一步做什么？",
         summary="样本经营诊断",
@@ -545,7 +586,7 @@ def test_followup_preserves_invalid_json_candidate():
     )
 
     assert result["failure_detail"]["stage"] == "invalid_json"
-    assert result["failure_detail"]["candidate"] == "这是一段未包装成 JSON 的候选回答。"
+    assert "candidate" not in result["failure_detail"]
 
 
 def test_followup_normalizes_field_alias_and_exposes_exact_metric_catalog():
@@ -619,6 +660,27 @@ def test_followup_returns_data_insufficient_for_metric_missing_from_old_report()
     ]
     assert "未包含" in result["answer"]
     assert "channels" not in result["available_sections"]
+
+
+def test_followup_distinguishes_missing_local_evidence_from_missing_metrics():
+    client = FollowupFakeClient(
+        [FollowupStep(action="insufficient_data", answer="没有附近门店数据。")]
+    )
+
+    result = ReportFollowupAgent(client).answer(
+        question="附近三公里有哪些直接竞品？",
+        summary="当前报告",
+        metrics={"revenue": {"total_revenue": 336}},
+        evidence=[],
+        actions=[],
+        risks=[],
+    )
+
+    assert result["mode"] == "insufficient_data"
+    assert result["missing_metrics"] == []
+    assert result["missing_evidence"] == ["location_competitors"]
+    assert result["failure_detail"]["stage"] == "evidence_availability"
+    assert "商圈/选址分析" in result["answer"]
 
 
 def test_followup_retries_generic_insufficient_data_when_relevant_evidence_exists():

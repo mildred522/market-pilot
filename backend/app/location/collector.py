@@ -1,8 +1,8 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from app.external_context.baidu_client import BaiduMapClient
 from app.external_context.contracts import BaiduPoi
+from app.external_context.provider import LocationProvider
 from app.location.contracts import NormalizedPoiFeature, PoiClassification
 
 RING_RADII = (300, 500, 800, 1500)
@@ -42,7 +42,7 @@ class PoiCollector:
 
     def __init__(
         self,
-        client: BaiduMapClient,
+        client: LocationProvider,
         *,
         keyword_groups: Sequence[PoiKeywordGroup] = (
             DEFAULT_COMPETITOR_KEYWORD_GROUPS
@@ -118,6 +118,7 @@ class PoiCollector:
     ) -> str | None:
         retrieved = 0
         total = 0
+        provider_warning: str | None = None
         for page_num in range(self._max_pages):
             page = self._client.search_nearby_page(
                 query=keyword,
@@ -137,6 +138,17 @@ class PoiCollector:
                 )
             retrieved += len(page.pois)
             total = page.total
+            provider_warning = page.provider_warning
+            if not page.pagination_supported:
+                warning = (
+                    "POI collection pagination unsupported for "
+                    f"keyword={keyword!r}, radius_meters={radius}"
+                )
+                return (
+                    f"{provider_warning}; {warning}"
+                    if provider_warning
+                    else warning
+                )
             if (
                 not page.pois
                 or retrieved >= page.total
@@ -144,12 +156,13 @@ class PoiCollector:
             ):
                 break
         if retrieved < total:
-            return (
+            warning = (
                 "POI collection truncated for "
                 f"keyword={keyword!r}, radius_meters={radius}: "
                 f"retrieved {retrieved} of {total}"
             )
-        return None
+            return f"{provider_warning}; {warning}" if provider_warning else warning
+        return provider_warning
 
     @staticmethod
     def _to_feature(

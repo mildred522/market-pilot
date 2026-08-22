@@ -12,8 +12,14 @@ from app.agent_runtime.contracts import (
     AgentTrace,
     ReplanTrace,
 )
+from app.agent_runtime.budget import AgentRunBudget, BudgetTracker
 from app.agent_runtime.llm_client import LlmClient, llm_client_from_environment
-from app.agent_runtime.planning import create_operating_plan, create_operating_replan
+from app.agent_runtime.llm_client import DisabledLlmClient
+from app.agent_runtime.planning import (
+    create_operating_plan,
+    create_operating_replan,
+    planner_disclosure_stats,
+)
 from app.agent_runtime.prompts import PROMPT_VERSION
 from app.agent_runtime.synthesis import synthesize_operating_report
 from app.agent_runtime.tool_contracts import ToolExecutionBatch
@@ -35,6 +41,7 @@ class OperatingAgentOrchestrator:
         *,
         planner_client: LlmClient | None = None,
         synthesizer_client: LlmClient | None = None,
+        budget: AgentRunBudget | None = None,
     ) -> None:
         self._planner_client = client or planner_client or llm_client_from_environment(
             "planner"
@@ -42,6 +49,7 @@ class OperatingAgentOrchestrator:
         self._synthesizer_client = (
             client or synthesizer_client or llm_client_from_environment("synthesizer")
         )
+        self._budget = budget or AgentRunBudget()
 
     def run(
         self,
@@ -55,6 +63,7 @@ class OperatingAgentOrchestrator:
         cost_assumptions: dict[str, Any] | None,
     ) -> OperatingAgentRun:
         started = perf_counter()
+        budget_tracker = BudgetTracker(self._budget)
         llm_calls = []
         context = OperatingToolContext(
             orders=orders,
@@ -62,8 +71,12 @@ class OperatingAgentOrchestrator:
             reviews=reviews,
             cost_assumptions=cost_assumptions,
         )
+        disclosure = planner_disclosure_stats(question, context)
+        planner_client = self._planner_client
+        if planner_client.configured and not budget_tracker.reserve("model_calls"):
+            planner_client = DisabledLlmClient()
         plan, planning_used_llm, planning_fallbacks = create_operating_plan(
-            client=self._planner_client,
+            client=planner_client,
             question=question,
             context=context,
             analysis_mode=analysis_mode,
@@ -84,7 +97,16 @@ class OperatingAgentOrchestrator:
             for item in tool_batch.executions
             if item.status == "failed" and item.recoverable
         ]
+        replan_allowed = True
         if tool_batch.status == "failed" and recoverable_failures:
+            replan_allowed = (
+                not self._planner_client.configured
+                or (
+                    budget_tracker.reserve("replans")
+                    and budget_tracker.reserve("model_calls")
+                )
+            )
+        if tool_batch.status == "failed" and recoverable_failures and replan_allowed:
             replanned, replan_used_llm, replan_fallbacks = create_operating_replan(
                 client=self._planner_client,
                 question=question,
@@ -169,8 +191,14 @@ class OperatingAgentOrchestrator:
                 "synthesizer: skipped after required tool failure"
             ]
         else:
+            synthesizer_client = self._synthesizer_client
+            if (
+                synthesizer_client.configured
+                and not budget_tracker.reserve("model_calls")
+            ):
+                synthesizer_client = DisabledLlmClient()
             state, synthesis_used_llm, synthesis_fallbacks = synthesize_operating_report(
-                client=self._synthesizer_client,
+                client=synthesizer_client,
                 state=state,
                 plan=plan,
                 metadata_sink=llm_calls,
@@ -200,5 +228,7 @@ class OperatingAgentOrchestrator:
             replan=replan_trace,
             initial_plan=initial_plan,
             final_plan=plan,
+            budget=budget_tracker.snapshot(),
+            planning_disclosure=disclosure,
         )
         return OperatingAgentRun(state=state, plan=plan, trace=trace)

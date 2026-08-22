@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,9 +11,20 @@ from app.agent_runtime.contracts import FollowupEvidenceCapability
 from app.agent_runtime.followup_evidence import (
     CapabilityEvidenceResult,
     EvidenceMaterial,
+    EvidenceRetrievalContext,
 )
 from app.db.models import ExternalContextSnapshot
-from app.external_context.reference_repository import ReferenceDatasetRepository
+from app.external_context.reference_repository import (
+    InvalidReferenceKey,
+    ReferenceDatasetRepository,
+)
+
+
+class KnowledgeEvidenceService(Protocol):
+    @property
+    def available(self) -> bool: ...
+
+    def retrieve(self, context: EvidenceRetrievalContext): ...
 
 
 class PersistedFollowupEvidenceProvider:
@@ -23,18 +34,24 @@ class PersistedFollowupEvidenceProvider:
         *,
         project_id: int,
         reference_repository: ReferenceDatasetRepository | None = None,
+        knowledge_service: KnowledgeEvidenceService | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._db = db
         self._project_id = project_id
         self._references = reference_repository or ReferenceDatasetRepository()
+        self._knowledge = knowledge_service
         self._now = now or (lambda: datetime.now(UTC))
 
     def available_capabilities(
         self, project_profile: dict[str, Any]
     ) -> set[FollowupEvidenceCapability]:
         available: set[FollowupEvidenceCapability] = set()
-        if project_profile.get("city") or project_profile.get("category"):
+        if (
+            project_profile.get("city")
+            or project_profile.get("category")
+            or (self._knowledge is not None and self._knowledge.available)
+        ):
             available.add("external_industry_context")
         if self._latest_snapshot() is not None:
             available.add("location_competitors")
@@ -43,17 +60,18 @@ class PersistedFollowupEvidenceProvider:
     def retrieve(
         self,
         capability: FollowupEvidenceCapability,
-        project_profile: dict[str, Any],
+        context: EvidenceRetrievalContext,
     ) -> CapabilityEvidenceResult:
         if capability == "external_industry_context":
-            return self._reference_context(project_profile)
+            return self._reference_context(context)
         if capability == "location_competitors":
             return self._location_competitors()
         raise ValueError(f"unsupported persisted evidence capability: {capability}")
 
     def _reference_context(
-        self, project_profile: dict[str, Any]
+        self, context: EvidenceRetrievalContext
     ) -> CapabilityEvidenceResult:
+        project_profile = context.project_profile
         year = self._now().year - 1
         datasets = []
         for loader, raw_key in (
@@ -64,11 +82,8 @@ class PersistedFollowupEvidenceProvider:
                 continue
             try:
                 datasets.append(loader(_reference_key(raw_key), year))
-            except FileNotFoundError:
+            except (FileNotFoundError, InvalidReferenceKey):
                 continue
-        if not datasets:
-            raise LookupError("no matching city or category reference dataset")
-
         facts: list[EvidenceMaterial] = []
         for dataset in datasets:
             source_by_id = {source.source_id: source for source in dataset.sources}
@@ -111,10 +126,18 @@ class PersistedFollowupEvidenceProvider:
                     provenance={"dataset_id": dataset.dataset_id},
                 )
             )
+        if self._knowledge is not None and self._knowledge.available:
+            try:
+                facts.extend(self._knowledge.retrieve(context).facts)
+            except LookupError:
+                pass
+        facts_by_ref = {fact.canonical_ref: fact for fact in facts}
+        if not facts_by_ref:
+            raise LookupError("no matching external industry evidence")
         return CapabilityEvidenceResult(
             capability="external_industry_context",
             status="completed",
-            facts=tuple(facts),
+            facts=tuple(facts_by_ref.values()),
         )
 
     def _location_competitors(self) -> CapabilityEvidenceResult:
