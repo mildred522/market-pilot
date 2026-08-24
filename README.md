@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/requirements.txt)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)](frontend/package.json)
 [![Quality Gate](https://github.com/mildred522/market-pilot/actions/workflows/quality.yml/badge.svg)](https://github.com/mildred522/market-pilot/actions/workflows/quality.yml)
-[![Tests](https://img.shields.io/badge/tests-484%20passed-22C55E?style=flat-square)](docs/interview-evidence.md)
+[![Tests](https://img.shields.io/badge/tests-494%20passed-22C55E?style=flat-square)](docs/interview-evidence.md)
 [![Agent Eval](https://img.shields.io/badge/Agent%20Eval-53%2F53-7C3AED?style=flat-square)](docs/agent-evaluation.md)
 [![Last Commit](https://img.shields.io/github/last-commit/mildred522/market-pilot?style=flat-square&color=17695B)](https://github.com/mildred522/market-pilot/commits/main)
 
@@ -25,7 +25,7 @@
 Market Pilot 是面向单店餐饮的全生命周期决策 Agent。开店前，它评估投资、加盟与商圈潜力；开店后，它读取订单、菜单成本和评论，调用确定性工具计算经营指标，再由 LLM 生成有引用、可修订的行动建议。
 
 > [!NOTE]
-> 这不是“上传 CSV 后让模型自由发挥”的聊天壳。营业额、毛利率、保本线与渠道贡献由程序计算，模型只负责受限规划和证据综合；当前 484 项回归测试与 53 条 Agent Cases 均通过，其中包含 23 条对抗案例。
+> 这不是“上传 CSV 后让模型自由发挥”的聊天壳。营业额、毛利率、保本线与渠道贡献由程序计算，模型只负责受限规划和证据综合；当前 494 项回归测试与 53 条 Agent Cases 均通过，其中包含 23 条对抗案例。
 
 > [!TIP]
 > 当前版本新增百度地图 MCP Provider：选址业务统一依赖 `LocationProvider`，可在 WebAPI、官方 MCP Server 和受控 fallback 三种模式间切换。MCP 原始响应必须先归一化为项目 POI 契约，LLM 和评分层不会直接消费外部工具返回。
@@ -143,6 +143,10 @@ flowchart LR
     V --> A["Answer Version"]
     A --> M["结构化 Memory"]
     A --> O["Execution Trace"]
+    A -->|"经营事实更正"| H["Correction Proposal"]
+    H --> K["人工确认"]
+    K --> I["依赖图增量重算"]
+    I --> A2["New Analysis Version"]
 ```
 
 经营分析提供 `full` 与 `focused` 两种规划模式。完整体检执行当前输入支持的核心工具集；聚焦问题先从业务工作流卡片中选择分析维度，再由策略层确定性展开 1 至 4 个必要工具。Planner 不再读取所有 Tool 的完整指标契约；当前 15 条经营 Golden Cases 的工作流覆盖率为 100%，目录字符数平均缩减 94.9%。必要工具发生可恢复失败时允许一次重规划，可选工具失败则保留带警告的局部结果。
@@ -208,6 +212,10 @@ flowchart LR
 
 表达偏好可以自动激活；经营约束保存为待确认规则；经营事实更正会生成 `confirmation_required` 版本，不会未经确认覆盖原报告。
 
+### 人工确认的执行闭环
+
+“租金不是 18,000，应为 25,000”会先生成白名单更正单，展示源值、目标值和影响范围。只有用户确认后，系统才原子领取更正单、检查源报告是否仍为最新版本，并按依赖图只重算受影响工具。成功后创建新报告、新输入快照和指标差异；重复确认返回同一结果，拒绝、版本冲突或工具失败不会产生部分写入。
+
 ## 质量证据
 
 ```powershell
@@ -218,7 +226,7 @@ python -m scripts.run_agent_evals
 
 | 质量门 | 当前结果 |
 | --- | ---: |
-| 回归测试 | **484 passed**, 2 skipped |
+| 回归测试 | **494 passed**, 2 skipped |
 | Agent Cases | **53 / 53**，含 23 条对抗案例 |
 | Focused Tool Precision / Recall / Exact-set | **1.000 / 1.000 / 1.000** |
 | Evidence Validity / Safety Pass Rate | **1.000 / 1.000** |
@@ -239,13 +247,13 @@ python -m scripts.run_agent_evals
 
 | 状态 | 能力 | 预期价值 |
 | --- | --- | --- |
-| **Next** | 经营事实确认、原始数据更新与受影响指标增量重算 | 把 `confirmation_required` 补成完整事务闭环 |
+| **Shipped** | 人工确认的经营事实更正 | 白名单提案、幂等确认、陈旧版本保护、增量重算、指标差异与失败回滚 |
 | **Shipped** | 带来源、发布时间和有效期的行业知识 RAG | 已接入 Qwen3 dense/reranker、中文 BM25、Qdrant RRF、证据合并与故障降级 |
 | **Shipped** | 百度地图双 Provider | WebAPI 承担稳定采集，MCP 补充详情与路线能力，并仅对可重试错误受控降级 |
 | **Planned** | 周报任务与异常主动提醒 | 从被动追问升级为持续经营监控 Agent |
 | **Planned** | 多门店同口径基准与门店分群 | 区分单店波动、商圈问题和可复制经营能力 |
 | **Exploring** | 发票、排班表、菜单图片等多模态经营资料解析 | 降低手工整理 CSV 的使用门槛 |
-| **Exploring** | 调价、缩时段、降租与营销预算的情景模拟 | 在执行动作前比较利润、现金流与风险变化 |
+| **Next** | 调价、降租与佣金变化的 What-if 情景模拟 | 复用指标依赖图，在不写入正式事实前比较利润、现金流与风险变化 |
 
 ## 五分钟演示
 
@@ -253,7 +261,8 @@ python -m scripts.run_agent_evals
 2. 提交开店前问卷，查看投资压力、加盟风险和核验动作。
 3. 生成样例经营报告，展示保本线、渠道利润、菜品矩阵与证据面板。
 4. 追问“根据现有表现推荐一些菜品”，观察数据结论、通用建议和信息缺口分区。
-5. 要求“再结合成都趋势”或“回答简短一点”，展示证据检索、强制修订和版本时间线。
+5. 更正“租金不是 18,000，应为 25,000”，确认后展示增量重算、新旧指标和执行 Trace。
+6. 要求“再结合成都趋势”或“回答简短一点”，展示证据检索、强制修订和版本时间线。
 
 完整讲解词见 [Demo 脚本](docs/demo-script.md)，可上传样本位于 `outputs/operating-demo/`。
 
@@ -306,7 +315,7 @@ pagent/
 <summary><b>当前边界</b></summary>
 
 - 外部追问读取已登记行业数据和已持久化竞品快照，不在追问内实时抓取网页或地图。
-- 经营事实更正尚未完成“确认、更新原始数据、增量重算”的事务接口。
+- 经营事实更正当前只支持 8 个经营假设字段，不支持自然语言直接修改 CSV 行。
 - 当前不包含登录权限、外卖平台自动取数、多门店集团管理和合同法律审查。
 - SQLite 继续负责精确指标与版本查询；Qdrant 文档索引默认关闭，启用后由同一追问 Provider 合并审核事实、BM25/dense-RRF 片段和旧参考集，并在模型或服务不可用时降级。
 
@@ -324,6 +333,7 @@ pagent/
 - [文档知识 RAG 落地方案](docs/design/rag-implementation-plan.md)
 - [文档知识导入手册](docs/knowledge-ingestion-operations.md)
 - [百度地图 MCP Provider](docs/design/baidu-mcp-provider.md)
+- [人工确认的经营事实更正](docs/design/confirmed-correction-workflow.md)
 - [ADR：结构化记忆不用 RAG](docs/decisions/structured-memory-without-rag.md)
 - [ADR：受策略约束的规划](docs/decisions/policy-constrained-planning.md)
 

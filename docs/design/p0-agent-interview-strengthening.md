@@ -1,6 +1,6 @@
 # P0 Agent 面试强化实施计划
 
-> 实施状态（2026-08-22）：R0-R4 已完成；R5 已加入四路 GitHub Actions 工作流并完成本地验证，等待推送后确认远端运行结果。当前基线为 484 passed、2 skipped，Agent Eval 53/53，attack successes 与 budget violations 均为 0。
+> 实施状态（2026-08-24）：R0-R5 已完成并接入 GitHub Actions。当前基线为 494 passed、2 skipped，Agent Eval 53/53，attack successes 与 budget violations 均为 0。
 
 - 状态：Approved for implementation
 - 日期：2026-08-21

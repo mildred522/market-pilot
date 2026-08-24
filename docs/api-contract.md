@@ -254,7 +254,7 @@ Response:
 
 ## POST /analysis/{analysis_id}/chat
 
-对已生成的经营报告进行有限 ReAct 追问。
+对已生成的经营报告进行 Evidence-first 追问或创建回答修订。
 
 Request：
 
@@ -264,4 +264,35 @@ Request：
 }
 ```
 
-模型最多执行 3 轮，只能使用 `list_metric_sections`、`read_metric` 和 `read_report_summary` 三个只读工具。回答必须引用有效的 `metrics.*` 路径。模型未配置、调用失败、越权调用工具或引用不存在的指标时返回确定性报告摘要，并在 `fallback_reason` 说明降级原因。
+回答先使用当前报告编译出的短 ID `EvidencePack`。需要历史、行业或本地竞品时，只能申请策略允许的抽象检索能力；Replan 和 Claim Repair 各最多一次。数字、排名和比较声明必须通过 evidence ref 校验，模型失败时保留可验证部分。
+
+修改已有回答：
+
+```json
+{
+  "parent_version_id": 12,
+  "feedback": "租金不是 18000，应为 25000"
+}
+```
+
+白名单经营事实更正返回 `mode=confirmation_required` 和 `correction_proposals`。此时尚未写入新值或执行工具。
+
+## GET /analysis/{analysis_id}/corrections
+
+返回源报告下持久化的经营事实更正单。状态包括 `pending`、`applying`、`applied` 和 `rejected`；响应包含旧值、新值、幂等键和已生成的新报告 ID。
+
+## POST /corrections/{proposal_id}/confirm
+
+Request：
+
+```json
+{
+  "idempotency_key": "proposal-issued-uuid"
+}
+```
+
+确认时检查幂等键和源报告版本，按字段依赖只执行受影响工具，并创建新的不可变 `AnalysisResult`。重复提交同一已应用更正返回相同 `analysis_id`；错误幂等键、非 pending 状态或陈旧源报告返回 `409`；重算失败返回 `422` 并回滚。
+
+## POST /corrections/{proposal_id}/reject
+
+将 pending 更正单标记为 `rejected`，不修改项目假设、报告或上传文件。已应用或已拒绝的更正单返回 `409`。
