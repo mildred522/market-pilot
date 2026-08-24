@@ -21,6 +21,7 @@
 - [文档知识 RAG 落地方案](rag-implementation-plan.md)：来源版本、结构切分、中文混合检索、Agent 接入与分轮交付。
 - [P0 Agent 面试强化计划](p0-agent-interview-strengthening.md)：Run 可观测性、执行预算、对抗评测与 CI 门禁。
 - [领域工作流渐进式披露](progressive-workflow-disclosure.md)：用业务工作流卡片替代 Planner 全量 Tool 契约，并由策略层按需展开工具。
+- [前端设计系统](frontend-design-system.md)：面向经营工作台的高密度布局、语义颜色、图表选择和响应式约束。
 - [人工确认的经营事实更正](confirmed-correction-workflow.md)：白名单更正单、原子确认、增量重算、不可变报告版本与失败回滚。
 - [文档知识导入手册](../knowledge-ingestion-operations.md)：审核清单、安全导入、Qdrant 启动和失败恢复。
 

@@ -19,11 +19,15 @@ export function AgentRunStatus({
   trace: AgentTrace;
   analysisId: number;
 }) {
+  const engineLabel = trace.mode === "deterministic"
+    ? "本地规则引擎"
+    : trace.model ?? trace.provider;
+
   return (
     <div className={`agent-run-status agent-run-${trace.mode}`}>
       <div>
         <strong>{MODE_LABELS[trace.mode]}</strong>
-        <span>{trace.model ?? trace.provider}</span>
+        <span>{engineLabel}</span>
         <span>{trace.selected_tools.length} 个分析工具</span>
         {trace.status && trace.status !== "completed" ? (
           <span>{STATUS_LABELS[trace.status]}</span>
