@@ -16,7 +16,7 @@ from app.external_context.baidu_client import (
 from app.external_context.factory import get_location_provider_factory
 from app.external_context.provider import LocationProvider
 from app.external_context.snapshot_service import ExternalContextSnapshotService
-from app.location.collector import PoiCollector
+from app.location.collector import PoiCollector, QUOTA_AWARE_COMPETITOR_KEYWORD_GROUPS
 from app.location.evidence import EvidenceVerificationError, LocationEvidenceVerifier
 from app.location.feature_builder import LocationFeatureBuilder
 from app.location.contracts import LocationAnalysisResult
@@ -47,7 +47,12 @@ def get_location_service_factory() -> Callable[[Session, LocationProvider], Loca
         return LocationAnalysisService(
             session=db,
             baidu_client=baidu_client,
-            poi_collector=PoiCollector(baidu_client),
+            poi_collector=PoiCollector(
+                baidu_client,
+                keyword_groups=QUOTA_AWARE_COMPETITOR_KEYWORD_GROUPS,
+                max_pages=1,
+                collapse_rings=True,
+            ),
             feature_builder=LocationFeatureBuilder(),
             scorer=LocationScorer(),
             snapshot_service=ExternalContextSnapshotService(),
@@ -138,7 +143,10 @@ def manual_analysis(
             ),
             radius_meters=payload.radius_meters,
         )
-        _raise_for_provider_warnings(analysis.warnings_json)
+        _raise_for_provider_warnings(
+            analysis.warnings_json,
+            analysis_status=analysis.status,
+        )
         return _response_for_row(analysis, source=source, request=payload)
     except BaiduMapConfigurationError as error:
         raise _structured_error(
@@ -184,7 +192,10 @@ def recommendations(
                 else None
             ),
         )
-        _raise_for_provider_warnings(analysis.warnings_json)
+        _raise_for_provider_warnings(
+            analysis.warnings_json,
+            analysis_status=analysis.status,
+        )
         return _response_for_row(analysis, request=payload)
     except BaiduMapConfigurationError as error:
         raise _structured_error(
@@ -400,12 +411,12 @@ def _provider_http_error(error: BaiduMapResponseError) -> HTTPException:
 def _provider_http_error_for_kind(kind: str, *, retryable: bool) -> HTTPException:
     code = f"baidu_{kind}_error"
     status_code = (
-        status.HTTP_503_SERVICE_UNAVAILABLE
+        status.HTTP_429_TOO_MANY_REQUESTS
+        if kind in {"quota", "rate_limit"}
+        else status.HTTP_503_SERVICE_UNAVAILABLE
         if kind in {"authentication", "configuration"} or retryable
         else status.HTTP_403_FORBIDDEN
         if kind in {"permission", "ip_restriction", "signature"}
-        else status.HTTP_429_TOO_MANY_REQUESTS
-        if kind == "quota"
         else status.HTTP_400_BAD_REQUEST
         if kind in {"request", "unknown"}
         else status.HTTP_503_SERVICE_UNAVAILABLE
@@ -413,7 +424,11 @@ def _provider_http_error_for_kind(kind: str, *, retryable: bool) -> HTTPExceptio
     return _structured_error(status_code, code, "Baidu provider request failed")
 
 
-def _raise_for_provider_warnings(warnings: list[str]) -> None:
+def _raise_for_provider_warnings(
+    warnings: list[str],
+    *,
+    analysis_status: str,
+) -> None:
     for warning in warnings:
         parts = warning.split(":")
         try:
@@ -421,6 +436,8 @@ def _raise_for_provider_warnings(warnings: list[str]) -> None:
             kind = parts[provider_index + 1]
             disposition = parts[provider_index + 2]
         except (ValueError, IndexError):
+            continue
+        if analysis_status == "degraded" and kind in {"quota", "rate_limit"}:
             continue
         if kind:
             raise _provider_http_error_for_kind(

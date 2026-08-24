@@ -1,3 +1,6 @@
+import os
+import threading
+import time
 from enum import Enum
 from math import isfinite
 from typing import Any
@@ -20,6 +23,7 @@ class BaiduMapErrorKind(str, Enum):
     SIGNATURE = "signature"
     PERMISSION = "permission"
     QUOTA = "quota"
+    RATE_LIMIT = "rate_limit"
     REQUEST = "request"
     RETRYABLE = "retryable"
     UNKNOWN = "unknown"
@@ -37,7 +41,7 @@ class BaiduMapResponseError(RuntimeError):
         self.provider_status = provider_status
         self.kind = BaiduMapErrorKind(kind)
         self.retryable = (
-            self.kind == BaiduMapErrorKind.RETRYABLE
+            self.kind in {BaiduMapErrorKind.RETRYABLE, BaiduMapErrorKind.RATE_LIMIT}
             if retryable is None
             else retryable
         )
@@ -78,9 +82,28 @@ _PROVIDER_STATUS_KINDS = {
     261: BaiduMapErrorKind.PERMISSION,
     301: BaiduMapErrorKind.QUOTA,
     302: BaiduMapErrorKind.QUOTA,
-    401: BaiduMapErrorKind.QUOTA,
-    402: BaiduMapErrorKind.QUOTA,
+    401: BaiduMapErrorKind.RATE_LIMIT,
+    402: BaiduMapErrorKind.RATE_LIMIT,
 }
+
+_REQUEST_THROTTLE_LOCK = threading.Lock()
+_next_request_at = 0.0
+
+
+def _wait_for_request_slot() -> None:
+    global _next_request_at
+    try:
+        max_qps = max(0.1, float(os.getenv("BAIDU_MAP_MAX_QPS", "2.5")))
+    except ValueError:
+        max_qps = 2.5
+    interval = 1 / max_qps
+    with _REQUEST_THROTTLE_LOCK:
+        now = time.monotonic()
+        delay = max(0.0, _next_request_at - now)
+        if delay:
+            time.sleep(delay)
+            now = time.monotonic()
+        _next_request_at = now + interval
 
 
 class BaiduMapClient:
@@ -100,6 +123,7 @@ class BaiduMapClient:
         self._ak = ak
         self._http_client = http_client
         self._timeout_seconds = timeout_seconds
+        self._throttle_requests = http_client is None
 
     @classmethod
     def from_env(
@@ -271,13 +295,22 @@ class BaiduMapClient:
         *,
         url: str | None = None,
     ) -> dict[str, Any]:
-        if self._http_client is not None:
-            payload = self._request(self._http_client, params, url=url)
-        else:
-            with httpx.Client() as http_client:
-                payload = self._request(http_client, params, url=url)
+        attempts = 2 if self._throttle_requests else 1
+        payload: dict[str, Any] = {}
+        status: int | None = None
+        for attempt in range(attempts):
+            if self._throttle_requests:
+                _wait_for_request_slot()
+            if self._http_client is not None:
+                payload = self._request(self._http_client, params, url=url)
+            else:
+                with httpx.Client() as http_client:
+                    payload = self._request(http_client, params, url=url)
+            status = _optional_int(payload.get("status"))
+            if status not in {401, 402} or attempt == attempts - 1:
+                break
+            time.sleep(1)
 
-        status = _optional_int(payload.get("status"))
         if status != 0:
             message = payload.get("message", "unknown provider error")
             safe_message = str(message).replace(self._ak, "[redacted]")
@@ -375,7 +408,8 @@ class BaiduMapClient:
                 "Baidu Place API returned an HTTP error",
                 provider_status=status,
                 kind=kind,
-                retryable=kind == BaiduMapErrorKind.RETRYABLE,
+                retryable=kind
+                in {BaiduMapErrorKind.RETRYABLE, BaiduMapErrorKind.RATE_LIMIT},
             ) from None
         except httpx.RequestError:
             raise BaiduMapResponseError(
@@ -416,7 +450,7 @@ class BaiduMapClient:
 
 def _http_error_kind(status: int) -> BaiduMapErrorKind:
     if status == 429:
-        return BaiduMapErrorKind.QUOTA
+        return BaiduMapErrorKind.RATE_LIMIT
     if status == 401:
         return BaiduMapErrorKind.AUTHENTICATION
     if status == 403:

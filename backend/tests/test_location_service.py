@@ -475,7 +475,7 @@ def test_analyze_manual_uses_reference_baseline_when_retryable_outage_has_no_sna
     ]
 
 
-def test_analyze_manual_persists_classified_permanent_supplier_failure():
+def test_analyze_manual_degrades_quota_failure_to_reference_evidence():
     session = make_session()
     error = BaiduMapResponseError(
         "quota exceeded",
@@ -493,10 +493,13 @@ def test_analyze_manual_persists_classified_permanent_supplier_failure():
         longitude=104.0668,
     )
 
-    assert analysis.status == "failed"
-    assert analysis.result_json == {}
-    assert analysis.evidence_json == []
-    assert analysis.warnings_json == ["baidu_map:quota:permanent"]
+    assert analysis.status == "degraded"
+    assert analysis.result_json["conclusion"] == "继续调研"
+    assert analysis.evidence_json
+    assert analysis.warnings_json == [
+        "baidu_map:quota:permanent",
+        "reference fallback:datasets=category-milk-tea-2025,city-chengdu-2025",
+    ]
 
 
 class CandidateSource:
@@ -520,7 +523,7 @@ class CandidateSource:
         ]
         self.generated_regions = []
 
-    def generate(self, *, region):
+    def generate(self, *, region, city=None):
         self.generated_regions.append(region)
         return self.candidates
 
@@ -592,19 +595,19 @@ def test_recommendations_bound_screening_and_deep_analysis_to_requested_count():
         max_candidates=5,
     )
 
-    assert len(screening.calls) == 10
+    assert len(screening.calls) == 7
     assert all(call["radius_meters"] == 1500 for call in screening.calls)
     assert len(collector.calls) == 5
     assert {call["latitude"] for call in collector.calls} == {
-        30 + index / 100 for index in range(5, 10)
+        30 + index / 100 for index in range(2, 7)
     }
     assert len(analysis.result_json["candidates"]) == 5
     assert analysis.mode == "recommendations"
     assert analysis.center_latitude is None
     assert source.generated_regions == ["High-tech Zone"]
     assert analysis.result_json["candidates"][0]["transition_input"] == {
-        "latitude": 30.05,
-        "longitude": 104.05,
+        "latitude": 30.02,
+        "longitude": 104.02,
         "coordinate_system": "bd09ll",
     }
 

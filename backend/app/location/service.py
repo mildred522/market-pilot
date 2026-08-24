@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.agent_runtime.contracts import CapabilityIntent
 from app.db.models import LocationAnalysis
 from app.tools.break_even_tool import calculate_break_even
-from app.external_context.baidu_client import BaiduMapResponseError
+from app.external_context.baidu_client import BaiduMapErrorKind, BaiduMapResponseError
 from app.external_context.contracts import EvidenceRecord, ExternalContextData
 from app.external_context.reference_repository import ReferenceDatasetRepository
 from app.location.collector import (
@@ -22,6 +22,7 @@ from app.location.candidates import (
     CandidateGenerator,
     CandidateScreener,
     ScreenedCandidate,
+    ScreeningMetrics,
 )
 from app.location.contracts import (
     ConfidenceInputs,
@@ -196,7 +197,10 @@ class LocationAnalysisService:
                 )
             except BaiduMapResponseError as error:
                 warning = self._provider_warning(error)
-                if not error.retryable:
+                if not error.retryable and error.kind not in {
+                    BaiduMapErrorKind.QUOTA,
+                    BaiduMapErrorKind.RATE_LIMIT,
+                }:
                     return self._persist(
                         mode="manual",
                         project_id=project_id,
@@ -371,7 +375,7 @@ class LocationAnalysisService:
             "finance_assumptions": finance_metrics.get("assumptions"),
         }
         try:
-            generated = generator.generate(region=region)
+            generated = generator.generate(region=region, city=city)
         except BaiduMapResponseError as error:
             return self._persist(
                 mode="recommendations",
@@ -384,14 +388,16 @@ class LocationAnalysisService:
                 commit=False,
             )
 
-        # Full screening costs three provider calls per candidate. Pre-rank
-        # anchor clusters and keep a bounded exploration pool so requesting a
-        # few recommendations does not screen every generated cluster.
-        screening_pool = generator.screen(generated)[: max_candidates * 2]
+        # Full screening costs three provider calls per candidate. Keep two
+        # exploration candidates beyond the requested result count without
+        # doubling the provider-call budget.
+        screening_pool = generator.screen(generated)[: max_candidates + 2]
 
         screened, warnings, screening_failures = self._screen_candidates(
             screening_pool, radius_meters=radius_meters
         )
+        generation_warnings = list(getattr(generator, "warnings", []))
+        warnings = [*generation_warnings, *warnings]
         # Deep analysis is substantially more expensive than screening. Only
         # analyze the number of candidates the caller can actually receive.
         screened = screened[:max_candidates]
@@ -504,6 +510,7 @@ class LocationAnalysisService:
             if (
                 child_degraded
                 or child_failed
+                or bool(generation_warnings)
                 or bool(screening_failures)
                 or insufficient_candidates
             )
@@ -550,6 +557,22 @@ class LocationAnalysisService:
                     f"{self._provider_warning(error)}"
                 )
                 retryable_failures.append(error.retryable)
+                if error.kind in {
+                    BaiduMapErrorKind.QUOTA,
+                    BaiduMapErrorKind.RATE_LIMIT,
+                }:
+                    metrics = ScreeningMetrics(
+                        demand_proxies=0,
+                        competitors=0,
+                        transit=0,
+                    )
+                    screened.append(
+                        ScreenedCandidate(
+                            candidate=candidate,
+                            score=self._candidate_screener.score(metrics),
+                            metrics=metrics,
+                        )
+                    )
             except httpx.TransportError:
                 warnings.append(
                     f"candidate_screening:{identifier}:"
@@ -814,11 +837,22 @@ class LocationAnalysisService:
         longitude: float,
         radius_meters: int = SNAPSHOT_RADIUS_METERS,
     ) -> dict[str, Any]:
+        keyword_groups = getattr(
+            self._collector,
+            "keyword_groups",
+            DEFAULT_COMPETITOR_KEYWORD_GROUPS,
+        )
         keyword_classifications = {
             keyword: group.classification.value
-            for group in DEFAULT_COMPETITOR_KEYWORD_GROUPS
+            for group in keyword_groups
             for keyword in group.keywords
         }
+        effective_radii = getattr(self._collector, "effective_radii", None)
+        radii = (
+            effective_radii(radius_meters)
+            if effective_radii is not None
+            else RING_RADII
+        )
         return {
             "project_id": project_id,
             "provider": "baidu_map",
@@ -829,9 +863,11 @@ class LocationAnalysisService:
             "radius_meters": radius_meters,
             "now": self._now(),
             "keywords": tuple(keyword_classifications),
-            "radii": RING_RADII,
+            "radii": radii,
             "keyword_classifications": keyword_classifications,
             "scoring_version": SCORING_VERSION,
+            "max_pages": getattr(self._collector, "max_pages", 8),
+            "page_size": getattr(self._collector, "page_size", 20),
         }
 
     @staticmethod

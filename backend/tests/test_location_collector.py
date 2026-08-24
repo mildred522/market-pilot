@@ -2,7 +2,11 @@ import httpx
 import pytest
 
 from app.external_context.baidu_client import BaiduMapClient
-from app.location.collector import PoiCollector, PoiKeywordGroup
+from app.location.collector import (
+    PoiCollector,
+    PoiKeywordGroup,
+    QUOTA_AWARE_COMPETITOR_KEYWORD_GROUPS,
+)
 from app.location.contracts import PoiClassification
 
 
@@ -170,6 +174,30 @@ def test_collect_competitors_uses_all_default_keywords_and_rings_with_call_cap()
         0,
         1,
     }
+
+
+def test_quota_aware_profile_collapses_keywords_and_radius_to_two_calls():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"status": 0, "total": 0, "results": []})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        result = PoiCollector(
+            BaiduMapClient("test-ak", http_client=http_client),
+            keyword_groups=QUOTA_AWARE_COMPETITOR_KEYWORD_GROUPS,
+            max_pages=1,
+            collapse_rings=True,
+        ).collect_competitors(
+            latitude=30.5728,
+            longitude=104.0668,
+            max_radius_meters=600,
+        )
+
+    assert len(result) == 0
+    assert len(requests) == 2
+    assert {int(request.url.params["radius"]) for request in requests} == {600}
 
 
 def test_collect_competitors_collects_baidu_total_150_in_eight_pages():

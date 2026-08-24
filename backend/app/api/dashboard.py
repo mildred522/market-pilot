@@ -172,6 +172,7 @@ def _baidu_error_message(error: BaiduMapResponseError) -> str:
         "signature": "百度 SN 签名校验失败",
         "permission": "百度 AK 未开通地点检索服务",
         "quota": "百度地图调用额度或并发已达到限制",
+        "rate_limit": "百度地图请求过快，请稍后重试",
         "retryable": "百度地图暂时不可用或请求超时",
     }
     return messages.get(error.kind.value, "百度地图请求失败")

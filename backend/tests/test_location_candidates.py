@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 import pytest
 
+from app.external_context.baidu_client import BaiduMapErrorKind, BaiduMapResponseError
 from app.external_context.contracts import BaiduPoi, BaiduPoiSearchResult
 from app.location.candidates import (
     BaiduCandidateScreeningCollector,
@@ -120,6 +123,28 @@ def test_generate_rejects_provider_results_outside_requested_region_scope():
     )
 
     assert CandidateGenerator(client).generate(region="Requested region") == []
+
+
+def test_generate_uses_geocoded_region_center_when_place_quota_is_unavailable():
+    class QuotaClient:
+        def search_region_page(self, **_):
+            raise BaiduMapResponseError(
+                "quota",
+                provider_status=302,
+                kind=BaiduMapErrorKind.QUOTA,
+            )
+
+        def geocode(self, **_):
+            return SimpleNamespace(latitude=30.5993, longitude=104.0723)
+
+    generator = CandidateGenerator(QuotaClient())
+
+    candidates = generator.generate(region="High-tech Zone", city="Chengdu")
+
+    assert len(candidates) == 1
+    assert candidates[0].representative.anchor_type == "region_center"
+    assert candidates[0].latitude == 30.5993
+    assert generator.warnings[-1] == "candidate_generation:region_center_fallback"
 
 
 @pytest.mark.parametrize("invalid_count", [True, False, 3.0, 0, -1, 31])

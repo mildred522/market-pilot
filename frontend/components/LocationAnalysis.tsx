@@ -25,7 +25,7 @@ const initial = {
   latitude: 30.5728,
   longitude: 104.0668,
   radius_meters: 1500,
-  candidate_count: 5,
+  candidate_count: 3,
   monthly_rent: 20000,
   gross_margin: 0.65,
   labor_cost: 30000,

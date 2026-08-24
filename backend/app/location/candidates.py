@@ -4,6 +4,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from math import asin, cos, radians, sin, sqrt
 
+from app.external_context.baidu_client import BaiduMapResponseError
 from app.external_context.contracts import BaiduPoi
 
 EARTH_RADIUS_METERS = 6_371_008.8
@@ -131,12 +132,9 @@ class CandidateGenerator:
     MAX_RAW_ANCHORS = 30
     CLUSTER_RADIUS_METERS = 400
     ANCHOR_QUERIES = (
-        ("shopping_centers", "购物中心 商业综合体"),
+        ("commercial_office", "购物中心 商业综合体 写字楼 产业园"),
         ("transit_hubs", "地铁站 公交枢纽"),
-        ("office_parks", "写字楼 产业园"),
-        ("communities", "社区"),
-        ("schools_universities", "学校 大学"),
-        ("public_facilities", "医院 景区 公共设施"),
+        ("community_services", "社区 学校 大学 医院 公共设施"),
     )
 
     def __init__(self, client, *, max_raw_anchors: int = MAX_RAW_ANCHORS) -> None:
@@ -148,26 +146,58 @@ class CandidateGenerator:
             raise ValueError("max_raw_anchors must be between 1 and 30")
         self._client = client
         self._max_raw_anchors = max_raw_anchors
+        self.warnings: list[str] = []
 
-    def generate(self, *, region: str) -> list[LocationCandidate]:
+    def generate(self, *, region: str, city: str | None = None) -> list[LocationCandidate]:
+        self.warnings = []
         groups: list[list[CandidateAnchor]] = []
         for anchor_type, query in self.ANCHOR_QUERIES:
-            result = self._client.search_region_page(
-                query=query,
-                region=region,
-                page_num=0,
-                page_size=20,
-                scope=2,
-                coord_type=3,
-                filter=None,
-            )
+            try:
+                result = self._client.search_region_page(
+                    query=query,
+                    region=region,
+                    page_num=0,
+                    page_size=20,
+                    scope=2,
+                    coord_type=3,
+                    filter=None,
+                )
+            except BaiduMapResponseError as error:
+                disposition = "retryable" if error.retryable else "permanent"
+                self.warnings.append(
+                    f"candidate_generation:{anchor_type}:baidu_map:"
+                    f"{error.kind.value}:{disposition}"
+                )
+                groups.append([])
+                continue
             if result.region != region:
                 groups.append([])
                 continue
             groups.append(
                 [self._to_anchor(item, anchor_type, region) for item in result.pois]
             )
-        return self.cluster(self._round_robin(groups))
+        candidates = self.cluster(self._round_robin(groups))
+        if candidates or not city or not hasattr(self._client, "geocode"):
+            return candidates
+        try:
+            center = self._client.geocode(address=f"{region}政府", city=city)
+        except BaiduMapResponseError as error:
+            disposition = "retryable" if error.retryable else "permanent"
+            self.warnings.append(
+                "candidate_generation:region_center:baidu_map:"
+                f"{error.kind.value}:{disposition}"
+            )
+            return []
+        anchor = CandidateAnchor(
+            uid=f"region-center:{city}:{region}",
+            name=f"{region}中心",
+            latitude=center.latitude,
+            longitude=center.longitude,
+            anchor_type="region_center",
+            region=region,
+        )
+        self.warnings.append("candidate_generation:region_center_fallback")
+        return [self._candidate([anchor])]
 
     def cluster(
         self, anchors: Iterable[CandidateAnchor]

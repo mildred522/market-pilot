@@ -36,6 +36,14 @@ DEFAULT_COMPETITOR_KEYWORD_GROUPS = (
     PoiKeywordGroup(PoiClassification.SUBSTITUTE, ("咖啡", "甜品")),
 )
 
+QUOTA_AWARE_COMPETITOR_KEYWORD_GROUPS = (
+    PoiKeywordGroup(
+        PoiClassification.DIRECT_COMPETITOR,
+        ("奶茶 茶饮 现制饮品 果茶 饮品店",),
+    ),
+    PoiKeywordGroup(PoiClassification.SUBSTITUTE, ("咖啡 甜品",)),
+)
+
 
 class PoiCollector:
     MAX_PAGES = 8
@@ -50,6 +58,7 @@ class PoiCollector:
         radii: Sequence[int] = RING_RADII,
         page_size: int = 20,
         max_pages: int = MAX_PAGES,
+        collapse_rings: bool = False,
     ) -> None:
         if (
             isinstance(page_size, bool)
@@ -70,6 +79,33 @@ class PoiCollector:
         self._radii = tuple(radii)
         self._page_size = page_size
         self._max_pages = min(max_pages, self.MAX_PAGES)
+        self._collapse_rings = collapse_rings
+
+    @property
+    def keyword_groups(self) -> tuple[PoiKeywordGroup, ...]:
+        return self._keyword_groups
+
+    @property
+    def page_size(self) -> int:
+        return self._page_size
+
+    @property
+    def max_pages(self) -> int:
+        return self._max_pages
+
+    def effective_radii(self, max_radius_meters: int | None = None) -> tuple[int, ...]:
+        if self._collapse_rings and max_radius_meters is not None:
+            if max_radius_meters < min(self._radii):
+                raise ValueError("max_radius_meters is below the smallest collection ring")
+            return (max_radius_meters,)
+        radii = (
+            tuple(radius for radius in self._radii if radius <= max_radius_meters)
+            if max_radius_meters is not None
+            else self._radii
+        )
+        if not radii:
+            raise ValueError("max_radius_meters is below the smallest collection ring")
+        return (max(radii),) if self._collapse_rings else radii
 
     def collect_competitors(
         self,
@@ -78,13 +114,7 @@ class PoiCollector:
         longitude: float,
         max_radius_meters: int | None = None,
     ) -> PoiCollectionResult:
-        radii = (
-            tuple(radius for radius in self._radii if radius <= max_radius_meters)
-            if max_radius_meters is not None
-            else self._radii
-        )
-        if not radii:
-            raise ValueError("max_radius_meters is below the smallest collection ring")
+        radii = self.effective_radii(max_radius_meters)
         collected: dict[str, NormalizedPoiFeature] = {}
         warnings: list[str] = []
         for group in self._keyword_groups:

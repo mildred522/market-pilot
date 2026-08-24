@@ -374,13 +374,18 @@ def test_missing_ak_is_structured_503(monkeypatch):
 
 @pytest.mark.parametrize(
     ("kind", "expected"),
-    [(BaiduMapErrorKind.AUTHENTICATION, 503), (BaiduMapErrorKind.PERMISSION, 403), (BaiduMapErrorKind.QUOTA, 429),
-     (BaiduMapErrorKind.RETRYABLE, 503)],
+    [
+        (BaiduMapErrorKind.AUTHENTICATION, 503),
+        (BaiduMapErrorKind.PERMISSION, 403),
+        (BaiduMapErrorKind.QUOTA, 429),
+        (BaiduMapErrorKind.RATE_LIMIT, 429),
+        (BaiduMapErrorKind.RETRYABLE, 503),
+    ],
 )
 def test_provider_errors_are_classified(kind, expected, api_setup):
     session, project_id, _, service = api_setup
     service.row = None
-    service.error = BaiduMapResponseError("provider", kind=kind, retryable=kind == BaiduMapErrorKind.RETRYABLE)
+    service.error = BaiduMapResponseError("provider", kind=kind)
     with TestClient(app) as http:
         response = http.post(
             "/pre-open/location/manual-analysis",
@@ -395,6 +400,7 @@ def test_provider_errors_are_classified(kind, expected, api_setup):
     [
         ("permission", 403),
         ("quota", 429),
+        ("rate_limit", 429),
         ("ip_restriction", 403),
         ("signature", 403),
     ],
@@ -414,6 +420,24 @@ def test_prefixed_screening_provider_warnings_are_not_returned_as_success(
         )
     assert response.status_code == expected
     assert response.json()["detail"]["code"] == f"baidu_{warning_kind}_error"
+
+
+def test_degraded_quota_warning_returns_limited_result(api_setup):
+    session, project_id, _, service = api_setup
+    service.row = make_row(session, project_id, result=valid_result())
+    service.row.status = "degraded"
+    service.row.warnings_json = [
+        "candidate_screening:anchor-1:baidu_map:quota:permanent"
+    ]
+
+    with TestClient(app) as http:
+        response = http.post(
+            "/pre-open/location/manual-analysis",
+            json=payload(project_id, address=None, latitude=30.5, longitude=104.0),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
 
 
 @pytest.mark.parametrize(

@@ -267,6 +267,8 @@ def test_search_page_normalizes_transport_error_without_exposing_api_key():
         (101, "configuration"),
         (210, "ip_restriction"),
         (211, "signature"),
+        (401, "rate_limit"),
+        (402, "rate_limit"),
         (999, "unknown"),
     ],
 )
@@ -284,7 +286,7 @@ def test_provider_statuses_have_stable_error_kind(status: int, kind: str):
     error = exc_info.value
     assert error.provider_status == status
     assert error.kind == kind
-    assert error.retryable is (kind == "retryable")
+    assert error.retryable is (kind in {"retryable", "rate_limit"})
     assert "secret-test-ak" not in str(error)
 
 
@@ -310,7 +312,7 @@ def test_timeout_is_retryable_and_structured():
 
 @pytest.mark.parametrize(
     ("http_status", "kind"),
-    [(429, "quota"), (403, "permission"), (500, "retryable")],
+    [(429, "rate_limit"), (403, "permission"), (500, "retryable")],
 )
 def test_http_errors_are_structured_and_classified(
     http_status: int,
@@ -329,7 +331,7 @@ def test_http_errors_are_structured_and_classified(
     error = exc_info.value
     assert error.provider_status == http_status
     assert error.kind == kind
-    assert error.retryable is (kind == "retryable")
+    assert error.retryable is (kind in {"retryable", "rate_limit"})
 
 
 def test_from_env_requires_server_api_key(monkeypatch):
