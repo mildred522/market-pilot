@@ -1,4 +1,4 @@
-import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AnswerVersion, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AnswerVersion, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -188,6 +188,25 @@ export function askAnalysis(
 export function getAnswerVersions(analysisId: number): Promise<AnswerVersion[]> {
   return request<AnswerVersion[]>(`/analysis/${analysisId}/answer-versions`, {
     cache: "no-store"
+  });
+}
+
+export function getCorrections(analysisId: number): Promise<CorrectionProposal[]> {
+  return request<CorrectionProposal[]>(`/analysis/${analysisId}/corrections`, {
+    cache: "no-store"
+  });
+}
+
+export function confirmCorrection(proposal: CorrectionProposal): Promise<CorrectionConfirmation> {
+  return request<CorrectionConfirmation>(`/corrections/${proposal.id}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ idempotency_key: proposal.idempotency_key })
+  });
+}
+
+export function rejectCorrection(proposalId: number): Promise<CorrectionProposal> {
+  return request<CorrectionProposal>(`/corrections/${proposalId}/reject`, {
+    method: "POST"
   });
 }
 

@@ -39,7 +39,7 @@ class AgentRunSummary(BaseModel):
     project_id: int
     analysis_id: int
     run_id: int | None
-    operation: Literal["operating_analysis", "followup"]
+    operation: Literal["operating_analysis", "followup", "confirmed_correction"]
     status: RunStatus
     created_at: datetime
     duration_ms: int = Field(ge=0)

@@ -13,6 +13,7 @@ from app.schemas.operating import (
 )
 from app.memory.project_profile import ProjectProfileService
 from app.observability.agent_trace import AgentTraceRecorder
+from app.corrections.repository import AnalysisInputSnapshotRepository
 from app.services.agent_service import AgentService
 from app.services.csv_ingestion_service import (
     CsvIngestionError,
@@ -79,7 +80,21 @@ def analyze_operating(
         },
         source="user_input",
     )
-    return _persist_report(db, report)
+    return _persist_report(
+        db,
+        report,
+        input_snapshot={
+            "input_kind": "uploaded",
+            "question": payload.question,
+            "analysis_mode": payload.analysis_mode,
+            "sources": {
+                "orders": payload.orders.model_dump(mode="json"),
+                "menu_items": payload.menu_items.model_dump(mode="json"),
+                "reviews": payload.reviews.model_dump(mode="json"),
+            },
+            "cost_assumptions": assumptions,
+        },
+    )
 
 
 @router.post("/analyze-sample")
@@ -88,6 +103,16 @@ def analyze_operating_sample(
 ) -> dict[str, object]:
     _require_operating_project(db, payload.project_id)
     service = AgentService()
+    assumptions = {
+        "monthly_rent": 18000.0,
+        "monthly_labor": 24000.0,
+        "monthly_utilities": 3000.0,
+        "monthly_marketing": 2000.0,
+        "other_fixed_costs": 3000.0,
+        "cash_balance": 120000.0,
+        "delivery_commission_rate": 0.2,
+        "delivery_packaging_per_order": 1.5,
+    }
     report = service.analyze_operating(
         project_id=payload.project_id,
         question=payload.question,
@@ -95,22 +120,28 @@ def analyze_operating_sample(
         orders=pd.read_csv(SAMPLE_DIR / "orders.csv"),
         menu=pd.read_csv(SAMPLE_DIR / "menu_items.csv"),
         reviews=pd.read_csv(SAMPLE_DIR / "reviews.csv"),
-        cost_assumptions={
-            "monthly_rent": 18000.0,
-            "monthly_labor": 24000.0,
-            "monthly_utilities": 3000.0,
-            "monthly_marketing": 2000.0,
-            "other_fixed_costs": 3000.0,
-            "cash_balance": 120000.0,
-            "delivery_commission_rate": 0.2,
-            "delivery_packaging_per_order": 1.5,
+        cost_assumptions=assumptions,
+    )
+
+    return _persist_report(
+        db,
+        report,
+        input_snapshot={
+            "input_kind": "sample",
+            "question": payload.question,
+            "analysis_mode": payload.analysis_mode,
+            "sources": {"sample": True},
+            "cost_assumptions": assumptions,
         },
     )
 
-    return _persist_report(db, report)
 
-
-def _persist_report(db: Session, report: dict[str, object]) -> dict[str, object]:
+def _persist_report(
+    db: Session,
+    report: dict[str, object],
+    *,
+    input_snapshot: dict[str, object],
+) -> dict[str, object]:
     agent_trace = dict(report.get("agent_trace", {}))  # type: ignore[arg-type]
     run_status = str(agent_trace.get("status", "completed"))
     if run_status not in {"completed", "degraded", "failed"}:
@@ -137,6 +168,15 @@ def _persist_report(db: Session, report: dict[str, object]) -> dict[str, object]
     )
     db.add(result)
     db.flush()
+    AnalysisInputSnapshotRepository(db).create(
+        analysis_id=result.id,
+        project_id=int(report["project_id"]),
+        input_kind=str(input_snapshot["input_kind"]),
+        question=str(input_snapshot["question"]),
+        analysis_mode=str(input_snapshot["analysis_mode"]),
+        sources=dict(input_snapshot["sources"]),  # type: ignore[arg-type]
+        cost_assumptions=dict(input_snapshot["cost_assumptions"]),  # type: ignore[arg-type]
+    )
     AgentTraceRecorder(db).record(
         request_id=str(agent_trace["request_id"]),
         project_id=int(report["project_id"]),

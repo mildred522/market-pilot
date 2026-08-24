@@ -6,7 +6,8 @@ import type { AgentRunDetail, AgentRunSummary } from "@/lib/types";
 
 const OPERATION_LABELS = {
   operating_analysis: "经营报告",
-  followup: "报告追问"
+  followup: "报告追问",
+  confirmed_correction: "事实更正重算"
 };
 
 const STATUS_LABELS = {

@@ -1,8 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { askAnalysis, getAnswerVersions } from "@/lib/api";
-import type { AnalysisFollowupResponse, AnswerVersion, FollowupSections } from "@/lib/types";
+import Link from "next/link";
+import { askAnalysis, confirmCorrection, getAnswerVersions, getCorrections, rejectCorrection } from "@/lib/api";
+import type { AnalysisFollowupResponse, AnswerVersion, CorrectionConfirmation, CorrectionProposal, FollowupSections } from "@/lib/types";
 
 export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
   const [question, setQuestion] = useState("");
@@ -10,6 +11,9 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
   const [revisionParentId, setRevisionParentId] = useState<number | null>(null);
   const [result, setResult] = useState<AnalysisFollowupResponse | null>(null);
   const [versions, setVersions] = useState<AnswerVersion[]>([]);
+  const [corrections, setCorrections] = useState<CorrectionProposal[]>([]);
+  const [correctionResults, setCorrectionResults] = useState<Record<number, CorrectionConfirmation>>({});
+  const [correctionActionId, setCorrectionActionId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -28,9 +32,42 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
 
   async function refreshVersions() {
     try {
-      setVersions(await getAnswerVersions(analysisId));
+      const [nextVersions, nextCorrections] = await Promise.all([
+        getAnswerVersions(analysisId),
+        getCorrections(analysisId)
+      ]);
+      setVersions(nextVersions);
+      setCorrections(nextCorrections);
     } catch {
       setVersions([]);
+      setCorrections([]);
+    }
+  }
+
+  async function applyCorrection(proposal: CorrectionProposal) {
+    setCorrectionActionId(proposal.id);
+    setError("");
+    try {
+      const confirmation = await confirmCorrection(proposal);
+      setCorrectionResults((current) => ({ ...current, [proposal.id]: confirmation }));
+      await refreshVersions();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "经营事实更正失败");
+    } finally {
+      setCorrectionActionId(null);
+    }
+  }
+
+  async function declineCorrection(proposal: CorrectionProposal) {
+    setCorrectionActionId(proposal.id);
+    setError("");
+    try {
+      await rejectCorrection(proposal.id);
+      await refreshVersions();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "拒绝更正失败");
+    } finally {
+      setCorrectionActionId(null);
     }
   }
 
@@ -180,6 +217,63 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
         </div>
       ) : null}
 
+      {corrections.length ? (
+        <section className="correction-workflow" aria-label="经营事实更正">
+          <div className="correction-heading">
+            <div>
+              <p className="kicker">Human-in-the-loop</p>
+              <h3>经营事实更正</h3>
+            </div>
+            <span>确认后生成新报告，旧报告不会被覆盖</span>
+          </div>
+          <ul>
+            {corrections.map((proposal) => {
+              const confirmation = correctionResults[proposal.id];
+              return (
+                <li key={proposal.id}>
+                  <div className="correction-diff">
+                    <strong>{correctionFieldLabel(proposal.field)}</strong>
+                    <span>{formatCorrectionValue(proposal.field, proposal.old_value)}</span>
+                    <b aria-label="变更为">→</b>
+                    <span>{formatCorrectionValue(proposal.field, proposal.new_value)}</span>
+                  </div>
+                  <p>{proposal.reason}</p>
+                  {proposal.status === "pending" ? (
+                    <div className="correction-actions">
+                      <button
+                        disabled={correctionActionId === proposal.id}
+                        onClick={() => void applyCorrection(proposal)}
+                        type="button"
+                      >
+                        {correctionActionId === proposal.id ? "处理中" : "确认并重算"}
+                      </button>
+                      <button
+                        className="secondary-button"
+                        disabled={correctionActionId === proposal.id}
+                        onClick={() => void declineCorrection(proposal)}
+                        type="button"
+                      >
+                        拒绝
+                      </button>
+                    </div>
+                    ) : proposal.status === "applying" ? (
+                      <span className="correction-pending">正在重算，请稍候</span>
+                    ) : proposal.status === "applied" && proposal.applied_analysis_id ? (
+                    <div className="correction-outcome">
+                      <span>已确认并生成报告 #{proposal.applied_analysis_id}</span>
+                      <Link href={`/analysis/${proposal.applied_analysis_id}`}>查看新报告</Link>
+                      {confirmation ? <small>共更新 {confirmation.metric_changes.length} 项指标</small> : null}
+                    </div>
+                  ) : (
+                    <span className="correction-rejected">已拒绝，未修改任何数据</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       {versions.length ? (
         <details className="followup-version-history">
           <summary>回答版本（{versions.length}）</summary>
@@ -313,4 +407,25 @@ function formatDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function correctionFieldLabel(field: CorrectionProposal["field"]): string {
+  const labels: Record<CorrectionProposal["field"], string> = {
+    monthly_rent: "月租",
+    monthly_labor: "人工成本",
+    monthly_utilities: "水电成本",
+    monthly_marketing: "营销费用",
+    other_fixed_costs: "其他固定成本",
+    cash_balance: "现金余额",
+    delivery_commission_rate: "外卖佣金率",
+    delivery_packaging_per_order: "单均包材成本"
+  };
+  return labels[field];
+}
+
+function formatCorrectionValue(field: CorrectionProposal["field"], value: number): string {
+  if (field === "delivery_commission_rate") {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
 }

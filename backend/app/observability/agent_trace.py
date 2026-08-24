@@ -47,7 +47,7 @@ class AgentTraceRecorder:
         *,
         request_id: str,
         project_id: int,
-        operation: Literal["operating_analysis", "followup"],
+        operation: Literal["operating_analysis", "followup", "confirmed_correction"],
         run_id: int | None,
         analysis_id: int | None,
         initial_plan: dict[str, Any],
@@ -106,10 +106,11 @@ def _safe_plan(value: dict[str, Any]) -> dict[str, Any]:
                 safe_tools.append(item[:80])
             elif isinstance(item, dict) and isinstance(item.get("name"), str):
                 safe_tools.append(str(item["name"])[:80])
+    workflow = value.get("workflow")
     return {
         "intent": str(value.get("intent", ""))[:80],
         "goal": str(value.get("goal", ""))[:300],
-        "workflow": str(value.get("workflow", ""))[:80] or None,
+        "workflow": str(workflow)[:80] if workflow not in {None, ""} else None,
         "dimensions": [
             str(item)[:80] for item in value.get("dimensions", [])[:6]
         ]

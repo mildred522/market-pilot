@@ -190,7 +190,7 @@ export type AgentRunSummary = {
   project_id: number;
   analysis_id: number;
   run_id: number | null;
-  operation: "operating_analysis" | "followup";
+  operation: "operating_analysis" | "followup" | "confirmed_correction";
   status: "completed" | "degraded" | "failed";
   created_at: string;
   duration_ms: number;
@@ -400,6 +400,7 @@ export type AnalysisFollowupResponse = {
     requires_confirmation: boolean;
   };
   memory_updates?: Array<{ id: number; type: string; status: string }>;
+  correction_proposals?: CorrectionProposal[];
   steps: number;
   tool_calls: Array<{ tool: string; arguments: Record<string, unknown> }>;
   fallback_reason?: string;
@@ -423,6 +424,34 @@ export type AnalysisFollowupResponse = {
     reason: string;
   };
   prompt_version: string;
+};
+
+export type CorrectionProposal = {
+  id: number;
+  source_analysis_id: number;
+  source_answer_version_id: number;
+  field: "monthly_rent" | "monthly_labor" | "monthly_utilities" | "monthly_marketing" | "other_fixed_costs" | "cash_balance" | "delivery_commission_rate" | "delivery_packaging_per_order";
+  old_value: number;
+  new_value: number;
+  reason: string;
+  status: "pending" | "applying" | "applied" | "rejected" | "failed";
+  idempotency_key: string;
+  applied_analysis_id: number | null;
+  error_code: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CorrectionConfirmation = {
+  proposal: CorrectionProposal;
+  analysis_id: number;
+  source_analysis_id: number;
+  summary: string;
+  metric_changes: Array<{
+    path: string;
+    old_value: unknown;
+    new_value: unknown;
+  }>;
 };
 
 export type FollowupSections = {

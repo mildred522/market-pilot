@@ -7,6 +7,10 @@ from app.agent_runtime.followup import ReportFollowupAgent
 from app.agent_runtime.llm_client import llm_client_from_environment
 from app.agent_runtime.prompts import PROMPT_VERSION
 from app.agent_runtime.revision import create_revision_plan
+from app.corrections.repository import (
+    AnalysisInputSnapshotRepository,
+    CorrectionProposalRepository,
+)
 from app.db.models import AnalysisResult
 from app.db.session import get_db
 from app.external_context.followup_provider import PersistedFollowupEvidenceProvider
@@ -86,6 +90,7 @@ def chat_with_analysis(
         answer = _confirmation_required_answer(
             parent_answer=parent.answer if parent is not None else "",
             feedback=payload.feedback or "",
+            has_explicit_correction=bool(revision_plan.corrections),
             llm_calls=revision_llm_calls,
             selected_memory_ids=selected_memory_ids,
         )
@@ -156,6 +161,29 @@ def chat_with_analysis(
         source_version_id=version.id,
         candidates=list(plan_payload.get("lessons", [])),
     )
+    proposals = []
+    if revision_plan is not None and revision_plan.requires_confirmation:
+        snapshot = AnalysisInputSnapshotRepository(db).get_for_analysis(result.id)
+        if snapshot is not None:
+            proposal_repository = CorrectionProposalRepository(db)
+            for candidate in revision_plan.corrections:
+                old_value = snapshot.cost_assumptions_json.get(candidate.field)
+                if (
+                    isinstance(old_value, (int, float))
+                    and not isinstance(old_value, bool)
+                    and float(old_value) != candidate.new_value
+                ):
+                    proposals.append(
+                        proposal_repository.create(
+                            project_id=result.project_id,
+                            source_analysis_id=result.id,
+                            source_answer_version_id=version.id,
+                            target_field=candidate.field,
+                            old_value=float(old_value),
+                            new_value=candidate.new_value,
+                            reason=candidate.reason,
+                        )
+                    )
     answer["answer_version_id"] = version.id
     answer["parent_version_id"] = version.parent_version_id
     answer["revision_plan"] = {
@@ -168,6 +196,17 @@ def chat_with_analysis(
             "status": lesson.status,
         }
         for lesson in lessons
+    ]
+    answer["correction_proposals"] = [
+        {
+            "id": proposal.id,
+            "field": proposal.target_field,
+            "old_value": proposal.old_value,
+            "new_value": proposal.new_value,
+            "status": proposal.status,
+            "idempotency_key": proposal.idempotency_key,
+        }
+        for proposal in proposals
     ]
     repository.append_exchange(
         conversation_id=conversation.id,
@@ -258,24 +297,38 @@ def _confirmation_required_answer(
     *,
     parent_answer: str,
     feedback: str,
+    has_explicit_correction: bool,
     llm_calls: list,
     selected_memory_ids: list[int],
 ) -> dict[str, object]:
     request_id = str(uuid4())
+    if has_explicit_correction:
+        answer_text = (
+            "已生成经营事实更正单，尚未修改原始数据或重新计算指标。"
+            "请核对新旧值后确认或拒绝。"
+        )
+        mode = "confirmation_required"
+        quality = "confirmation_required"
+        missing_information = [f"待确认的更正：{feedback}"]
+    else:
+        answer_text = (
+            "识别到经营事实更正意图，但没有找到可确认的明确字段和新值。"
+            "请说明要修改的经营假设及具体数值。"
+        )
+        mode = "insufficient_data"
+        quality = "insufficient"
+        missing_information = [f"缺少明确的新值：{feedback}"]
     return {
-        "answer": (
-            "已记录这项经营事实更正，但尚未修改原始数据或重新计算指标。"
-            "请确认更正后再执行重算。"
-        ),
+        "answer": answer_text,
         "sections": {
             "data_findings": [],
             "general_advice": [],
-            "missing_information": [f"待确认的更正：{feedback}"],
+            "missing_information": missing_information,
         },
         "evidence_refs": [],
         "confidence": 1.0,
-        "quality": "confirmation_required",
-        "mode": "confirmation_required",
+        "quality": quality,
+        "mode": mode,
         "steps": 0,
         "tool_calls": [],
         "prompt_version": PROMPT_VERSION,

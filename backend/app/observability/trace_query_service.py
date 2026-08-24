@@ -255,7 +255,11 @@ def _status(value: Any) -> str:
 
 
 def _operation(value: str) -> str:
-    return value if value in {"operating_analysis", "followup"} else "followup"
+    return (
+        value
+        if value in {"operating_analysis", "followup", "confirmed_correction"}
+        else "followup"
+    )
 
 
 def _sum_optional(calls: list[dict[str, Any]], key: str) -> int | None:

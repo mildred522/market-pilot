@@ -12,6 +12,7 @@ from app.api import (
     agent,
     agent_runs,
     analysis,
+    corrections,
     dashboard,
     files,
     location,
@@ -61,6 +62,7 @@ app.include_router(pre_open.router)
 app.include_router(files.router)
 app.include_router(operating.router)
 app.include_router(analysis.router)
+app.include_router(corrections.router)
 app.include_router(agent_runs.router)
 app.include_router(location.router)
 app.include_router(agent.router)

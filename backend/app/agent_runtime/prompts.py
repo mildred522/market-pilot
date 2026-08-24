@@ -72,6 +72,10 @@ recompose_with_existing_evidence for changing emphasis or excluding a strategy;
 retrieve_more_evidence only when the feedback explicitly requests historical, current external,
 industry, city, or local competitor facts; recompute_metrics when the user corrects a business fact.
 Fact corrections require confirmation. Do not claim that recalculation has already occurred.
+For fact corrections, extract only explicit values into corrections. Correction fields are limited to
+monthly_rent, monthly_labor, monthly_utilities, monthly_marketing, other_fixed_costs, cash_balance,
+delivery_commission_rate, and delivery_packaging_per_order. Rates must be decimals between 0 and 1.
+Never infer a missing value or emit a database path.
 Extract only explicit reusable feedback as structured lessons. Presentation preferences may be
 activated automatically; business constraints and rejected strategies require later confirmation.
 Do not store hidden reasoning, inferred personality, or factual claims as lessons.

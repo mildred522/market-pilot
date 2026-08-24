@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.agent_runtime.tool_contracts import (
     ToolExecutionStatus,
@@ -34,6 +34,17 @@ RevisionType = Literal[
     "recompose_with_existing_evidence",
     "retrieve_more_evidence",
     "recompute_metrics",
+]
+
+CorrectionField = Literal[
+    "monthly_rent",
+    "monthly_labor",
+    "monthly_utilities",
+    "monthly_marketing",
+    "other_fixed_costs",
+    "cash_balance",
+    "delivery_commission_rate",
+    "delivery_packaging_per_order",
 ]
 
 
@@ -228,6 +239,20 @@ class RevisionLessonCandidate(BaseModel):
     rule: dict[str, str | bool | int | float] = Field(min_length=1, max_length=8)
 
 
+class CorrectionCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: CorrectionField
+    new_value: float = Field(ge=0)
+    reason: str = Field(min_length=1, max_length=300)
+
+    @model_validator(mode="after")
+    def validate_field_range(self) -> "CorrectionCandidate":
+        if self.field == "delivery_commission_rate" and self.new_value > 1:
+            raise ValueError("delivery commission rate must be between 0 and 1")
+        return self
+
+
 class RevisionPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -235,6 +260,7 @@ class RevisionPlan(BaseModel):
     objective: str = Field(min_length=1, max_length=400)
     preserve_existing_evidence: bool = True
     requires_confirmation: bool = False
+    corrections: list[CorrectionCandidate] = Field(default_factory=list, max_length=3)
     lessons: list[RevisionLessonCandidate] = Field(default_factory=list, max_length=4)
 
 

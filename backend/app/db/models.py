@@ -124,6 +124,63 @@ class AnalysisResult(Base):
     warnings_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
 
 
+class AnalysisInputSnapshot(Base):
+    __tablename__ = "analysis_input_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("analysis_results.id"), nullable=False, unique=True, index=True
+    )
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    input_kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    analysis_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    sources_json: Mapped[dict[str, Any]] = mapped_column(
+        "sources", JSON, nullable=False, default=dict
+    )
+    cost_assumptions_json: Mapped[dict[str, Any]] = mapped_column(
+        "cost_assumptions", JSON, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+
+class CorrectionProposal(Base):
+    __tablename__ = "correction_proposals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    source_analysis_id: Mapped[int] = mapped_column(
+        ForeignKey("analysis_results.id"), nullable=False, index=True
+    )
+    source_answer_version_id: Mapped[int] = mapped_column(
+        ForeignKey("answer_versions.id"), nullable=False, index=True
+    )
+    target_field: Mapped[str] = mapped_column(String(64), nullable=False)
+    old_value: Mapped[float] = mapped_column(Float, nullable=False)
+    new_value: Mapped[float] = mapped_column(Float, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True, index=True
+    )
+    applied_analysis_id: Mapped[int | None] = mapped_column(
+        ForeignKey("analysis_results.id"), nullable=True, index=True
+    )
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
 class AgentExecutionTrace(Base):
     __tablename__ = "agent_execution_traces"
 
