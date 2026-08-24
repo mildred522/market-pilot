@@ -33,8 +33,10 @@ export function AppNavigation() {
 
   if (pathname === "/") return null;
 
+  const reportNavigation = pathname.startsWith("/analysis/");
+
   return (
-    <header className="app-navigation">
+    <header className={`app-navigation${reportNavigation ? " app-navigation-report" : ""}`}>
       <div className="app-navigation-inner">
         <Link className="app-navigation-brand" href="/" aria-label="返回 Market Pilot 控制台">
           <span>MP</span>

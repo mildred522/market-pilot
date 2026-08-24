@@ -12,8 +12,10 @@ export default async function AnalysisPage({ params }: AnalysisPageProps) {
   const report = await getAnalysis(Number(id));
 
   return (
-    <main className="shell report-shell">
-      <AgentReport report={report} />
-    </main>
+    <div className="report-page">
+      <main className="shell report-shell">
+        <AgentReport report={report} />
+      </main>
+    </div>
   );
 }

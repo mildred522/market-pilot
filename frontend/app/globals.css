@@ -1,20 +1,20 @@
 :root {
   color-scheme: light;
-  --bg: #f5f3ef;
+  --bg: #f3f5f6;
   --panel: #ffffff;
-  --ink: #1e2320;
-  --muted: #64706a;
-  --line: #ddd8ce;
+  --ink: #17211c;
+  --muted: #5f6b65;
+  --line: #d8dfe0;
   --accent: #2f6f5e;
   --accent-strong: #184b3f;
-  --surface-subtle: #edf1ef;
+  --surface-subtle: #eef2f1;
   --ink-soft: #3f4c46;
   --success: #176b4b;
   --warning: #a16207;
   --danger: #b42318;
   --info: #2463a6;
-  --report-line: #dce4e0;
-  --report-shadow: 0 1px 2px rgb(20 38 30 / 4%);
+  --report-line: #d9e0e1;
+  --report-shadow: 0 1px 2px rgb(15 23 20 / 3%);
 }
 
 
@@ -2110,9 +2110,29 @@ h1 {
 }
 
 /* Market Pilot operating workbench */
+.report-page {
+  min-height: calc(100vh - 60px);
+  background: #eef1f3;
+}
+
+.app-navigation-report {
+  border-color: #d7dee0;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 1px 0 rgb(17 36 28 / 3%);
+}
+
+.app-navigation-report .app-navigation-inner {
+  width: min(1360px, calc(100% - 48px));
+  min-height: 60px;
+}
+
+.app-navigation-report .app-navigation-brand { color: #143d31; }
+.app-navigation-report nav a { color: #59655f; }
+
 .report-shell {
   width: min(1360px, calc(100% - 48px));
-  padding: 28px 0 80px;
+  min-height: 0;
+  padding: 20px 0 72px;
 }
 
 .report-layout {
@@ -2121,16 +2141,21 @@ h1 {
 
 .report-context-nav {
   margin: 0;
-  padding: 0 0 12px;
+  padding: 0 2px 10px;
   border-color: var(--report-line);
 }
 
 .report-overview {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 310px;
-  gap: 44px;
+  gap: 36px;
   align-items: end;
-  padding: 26px 0 24px;
+  margin-bottom: -14px;
+  padding: 22px 24px 30px;
+  border: 1px solid var(--report-line);
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: #ffffff;
 }
 
 .report-meta {
@@ -2153,7 +2178,7 @@ h1 {
 
 .report-overview h1 {
   margin: 0;
-  font-size: clamp(34px, 4vw, 54px);
+  font-size: clamp(32px, 3.2vw, 46px);
   font-weight: 760;
   letter-spacing: 0;
   line-height: 1.08;
@@ -2163,13 +2188,14 @@ h1 {
   max-width: 860px;
   margin: 14px 0 0;
   color: var(--ink-soft);
-  font-size: 15px;
-  line-height: 1.72;
+  font-size: 14px;
+  line-height: 1.68;
 }
 
 .report-health {
-  padding: 16px 0 2px 18px;
+  padding: 15px 16px;
   border-left: 3px solid var(--warning);
+  background: #f6f8f7;
 }
 
 .report-health-stable { border-color: var(--success); }
@@ -2186,13 +2212,13 @@ h1 {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid var(--report-line);
-  border-radius: 6px;
+  border-radius: 0 0 6px 6px;
   background: var(--panel);
   box-shadow: var(--report-shadow);
 }
 
 .report-shell .metric-item {
-  min-height: 102px;
+  min-height: 96px;
   align-content: start;
   gap: 5px;
   padding: 16px;
@@ -2213,7 +2239,7 @@ h1 {
   border: 1px solid #cddbd4;
   border-left: 3px solid var(--success);
   border-radius: 4px;
-  background: #f7faf8;
+  background: #ffffff;
 }
 
 .report-shell .agent-run-status > div { gap: 6px 16px; }
@@ -2244,7 +2270,7 @@ h1 {
   border: 1px solid var(--report-line);
   border-radius: 6px;
   background: var(--panel);
-  box-shadow: var(--report-shadow);
+  box-shadow: none;
 }
 
 .report-grid-menu-stack .report-section { height: auto; }
@@ -2362,6 +2388,8 @@ h1 {
 }
 
 @media (max-width: 640px) {
+  .app-navigation-report .app-navigation-inner { width: 100%; padding-inline: 12px; }
+  .app-navigation-report nav { width: calc(100vw - 24px); }
   .report-shell { width: min(100% - 24px, 560px); padding-top: 18px; }
   .report-overview { grid-template-columns: 1fr; gap: 20px; padding-top: 18px; }
   .report-overview h1 { font-size: 34px; }
