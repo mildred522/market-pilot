@@ -125,6 +125,15 @@ def test_generate_rejects_provider_results_outside_requested_region_scope():
     assert CandidateGenerator(client).generate(region="Requested region") == []
 
 
+def test_generate_qualifies_ambiguous_district_with_city():
+    query = CandidateGenerator.ANCHOR_QUERIES[0][1]
+    client = RegionClient({query: [poi(1)]})
+
+    CandidateGenerator(client).generate(region="High-tech Zone", city="Chengdu")
+
+    assert all(call["region"] == "ChengduHigh-tech Zone" for call in client.calls)
+
+
 def test_generate_uses_geocoded_region_center_when_place_quota_is_unavailable():
     class QuotaClient:
         def search_region_page(self, **_):

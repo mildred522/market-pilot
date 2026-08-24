@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { AutocompleteField } from "@/components/AutocompleteField";
+import { CandidateMap } from "@/components/CandidateMap";
 import { analyzeLocationManually, createProject, getLocationSuggestions, recommendLocations } from "@/lib/api";
 import {
   ALL_DISTRICT_OPTIONS,
@@ -151,15 +152,69 @@ export function LocationAnalysis() {
           <button disabled={loading} type="submit">{loading ? "分析中..." : mode === "manual" ? "分析这个点位" : "推荐候选商圈"}</button>
         </form>
 
-        <LocationResultView result={result} error={error} onEvaluate={evaluateCandidate} />
+        <LocationResultView result={result} error={error} radiusMeters={form.radius_meters} onEvaluate={evaluateCandidate} />
       </div>
     </section>
   );
 }
 
-function LocationResultView({ result, error, onEvaluate }: { result: LocationResult | null; error: string; onEvaluate: (candidate: LocationResult["candidates"][number]) => void }) {
+function LocationResultView({ result, error, radiusMeters, onEvaluate }: { result: LocationResult | null; error: string; radiusMeters: number; onEvaluate: (candidate: LocationResult["candidates"][number]) => void }) {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const selectCandidate = useCallback((index: number) => setSelectedIndex(index), []);
+
+  useEffect(() => setSelectedIndex(0), [result?.analysis_id]);
+
   if (error) return <section className="result-surface"><p className="error-text">{error}</p></section>;
   if (!result) return <section className="result-surface"><p className="muted-text">选择分析模式并提交条件，结果会显示在这里。</p></section>;
-  if (result.mode === "recommendations") return <section className="result-surface"><div className="result-heading"><div><p className="kicker">Candidate areas</p><h2>候选商圈</h2></div><span className={`status-mark status-${result.status}`}>{result.status}</span></div><div className="candidate-list">{result.candidates.map((candidate) => <article className="candidate-row" key={`${candidate.name}-${candidate.center.latitude}`}><div><p className="candidate-rank">{candidate.name}</p><h3>{candidate.opportunity.score ?? "-"} <small>机会分</small></h3><p className="muted-text">可信度 {candidate.confidence.score ?? "-"} · {candidate.finance.feasibility ?? "未测算"}</p><p>{candidate.warnings[0] ?? candidate.recommendations[0]}</p></div><button type="button" onClick={() => onEvaluate(candidate)}>评估具体铺位</button></article>)}</div></section>;
+  if (result.mode === "recommendations") return (
+    <section className="result-surface candidate-results" aria-live="polite">
+      <div className="result-heading">
+        <div><p className="kicker">Candidate areas</p><h2>候选商圈</h2></div>
+        <span className={`status-mark status-${result.status}`}>{result.status}</span>
+      </div>
+      {result.status === "degraded" ? (
+        <p className="candidate-data-note">外部地点数据暂时受限。地图用于定位候选区域，不代表完整机会评分。</p>
+      ) : null}
+      <CandidateMap
+        candidates={result.candidates}
+        degraded={result.status === "degraded"}
+        radiusMeters={radiusMeters}
+        selectedIndex={selectedIndex}
+        onSelect={selectCandidate}
+      />
+      <div className="candidate-list">
+        {result.candidates.map((candidate, index) => (
+          <article className={`candidate-row${selectedIndex === index ? " is-selected" : ""}`} key={`${candidate.name}-${candidate.center.latitude}`}>
+            <button className="candidate-select" type="button" onClick={() => selectCandidate(index)} aria-pressed={selectedIndex === index}>
+              <span className="candidate-index">{index + 1}</span>
+              <span className="candidate-copy">
+                <span className="candidate-rank">{candidate.name}</span>
+                <span className="candidate-score">{candidate.opportunity.score ?? "-"} <small>机会分</small></span>
+                <span className="muted-text">可信度 {candidate.confidence.score ?? "-"} · {feasibilityLabel(candidate.finance.feasibility)}</span>
+                <span>{candidateMessage(candidate.warnings[0] ?? candidate.recommendations[0])}</span>
+              </span>
+            </button>
+            <button className="candidate-evaluate" type="button" onClick={() => onEvaluate(candidate)}>评估具体铺位</button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
   return <section className="result-surface"><div className="result-heading"><div><p className="kicker">Point analysis</p><h2>{result.opportunity.conclusion ?? "分析结果"}</h2></div><span className={`status-mark status-${result.status}`}>{result.status}</span></div><div className="location-metrics"><div><span>机会评分</span><strong>{result.opportunity.score ?? "-"}</strong></div><div><span>数据可信度</span><strong>{result.confidence.score ?? "-"}</strong></div><div><span>财务状态</span><strong>{result.finance.feasibility ?? "-"}</strong></div></div><h3>现场核验</h3><ul>{result.recommendations.map((item) => <li key={item}>{item}</li>)}</ul><h3>风险与警告</h3><ul>{[...result.risks, ...result.warnings].map((item) => <li key={item}>{item}</li>)}</ul></section>;
+}
+
+function candidateMessage(message?: string) {
+  if (!message) return "建议结合现场客流、租金和铺位条件继续核验。";
+  if (message.includes("baidu_map:quota")) return "外部地点额度受限，当前候选点按可用区域信息降级生成。";
+  if (message.startsWith("Verify pedestrian conditions")) return "建议现场核验步行客流、可见性和经营限制。";
+  return message;
+}
+
+function feasibilityLabel(value?: string) {
+  const labels: Record<string, string> = {
+    feasible: "财务可行",
+    infeasible: "未达到财务条件",
+    uncertain: "需要补充测算"
+  };
+  return value ? (labels[value] ?? value) : "未测算";
 }

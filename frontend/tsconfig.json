@@ -25,6 +25,10 @@
       {
         "name": "next"
       }
+    ],
+    "types": [
+      "node",
+      "@baidumap/jsapi-v4-types"
     ]
   },
   "include": [

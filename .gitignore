@@ -49,3 +49,4 @@ backend/storage/
 .idea/
 .DS_Store
 Thumbs.db
+/.vercel/

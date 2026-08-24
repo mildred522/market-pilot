@@ -1,0 +1,16 @@
+.git
+.github
+.playwright-cli
+backend
+docs
+launcher
+outputs
+scripts
+tests
+frontend/.next
+frontend/.vercel
+frontend/node_modules
+*.db
+*.db-shm
+*.db-wal
+*.log

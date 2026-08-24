@@ -150,12 +150,13 @@ class CandidateGenerator:
 
     def generate(self, *, region: str, city: str | None = None) -> list[LocationCandidate]:
         self.warnings = []
+        search_region = region if not city or city in region else f"{city}{region}"
         groups: list[list[CandidateAnchor]] = []
         for anchor_type, query in self.ANCHOR_QUERIES:
             try:
                 result = self._client.search_region_page(
                     query=query,
-                    region=region,
+                    region=search_region,
                     page_num=0,
                     page_size=20,
                     scope=2,
@@ -170,7 +171,7 @@ class CandidateGenerator:
                 )
                 groups.append([])
                 continue
-            if result.region != region:
+            if result.region != search_region:
                 groups.append([])
                 continue
             groups.append(

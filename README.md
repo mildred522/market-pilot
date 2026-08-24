@@ -277,6 +277,7 @@ python -m scripts.run_agent_evals
 
 ```dotenv
 BAIDU_MAP_AK=
+NEXT_PUBLIC_BAIDU_MAP_BROWSER_AK=
 BAIDU_MAP_PROVIDER=webapi
 BAIDU_MAP_MCP_URL=https://mcp.map.baidu.com/mcp
 BAIDU_MAP_MCP_TIMEOUT_SECONDS=15
@@ -290,7 +291,8 @@ CORS_ORIGINS=http://localhost:3000
 - Planner、Synthesizer、Follow-up 可以分别配置模型。
 - 模型未配置、调用失败、Schema 错误或引用无效时自动降级。
 - `BAIDU_MAP_PROVIDER` 可设为 `webapi`、`mcp` 或 `webapi_with_mcp_fallback`。
-- 百度地图密钥仅由后端使用；工作台本地保存时采用 Windows DPAPI 加密。
+- `BAIDU_MAP_AK` 仅由后端使用；工作台本地保存时采用 Windows DPAPI 加密。
+- `NEXT_PUBLIC_BAIDU_MAP_BROWSER_AK` 仅用于 JSAPI 4.0 底图和候选点标注，需要在百度控制台绑定本地域名和 Vercel 正式域名。
 
 </details>
 
