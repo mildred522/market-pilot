@@ -1,6 +1,7 @@
 # Dependencies and build output
 frontend/node_modules/
 frontend/.next/
+frontend/.vercel/
 backend/.venv/
 launcher/**/bin/
 launcher/**/obj/
@@ -22,6 +23,8 @@ htmlcov/
 
 # Local runtime data
 backend/restaurant_agent.db
+*.db-shm
+*.db-wal
 backend/storage/
 /restaurant_agent.db
 /storage/

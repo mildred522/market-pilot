@@ -1015,6 +1015,41 @@ def test_recommendations_commit_parent_and_children_once(monkeypatch):
     assert len(session.scalars(select(LocationAnalysis)).all()) == 4
 
 
+def test_recommendations_do_not_flush_while_external_collection_is_running(monkeypatch):
+    session = make_session()
+    flush_calls = 0
+    original_flush = session.flush
+
+    def counting_flush(*args, **kwargs):
+        nonlocal flush_calls
+        flush_calls += 1
+        return original_flush(*args, **kwargs)
+
+    class LockAwareCollector(Collector):
+        def collect_competitors(self, **kwargs):
+            assert flush_calls == 0
+            return super().collect_competitors(**kwargs)
+
+    monkeypatch.setattr(session, "flush", counting_flush)
+    service = make_service(
+        session,
+        LockAwareCollector(),
+        Snapshots(),
+        screening_collector=ScreeningCollector(),
+    )
+    service._candidate_generator = CandidateSource(3)
+
+    service.analyze_recommendations(
+        project_id=1,
+        city="Chengdu",
+        region="High-tech Zone",
+        category="milk-tea",
+        max_candidates=3,
+    )
+
+    assert flush_calls >= 1
+
+
 def test_recommendations_roll_back_on_final_commit_error(monkeypatch):
     session = make_session()
     service = make_service(

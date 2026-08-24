@@ -40,6 +40,7 @@ class ExternalContextSnapshotService:
         coord_type: int = 3,
         radius_limit: bool = True,
         commit: bool = True,
+        flush: bool = True,
     ) -> ExternalContextSnapshot:
         if not context.evidence:
             raise ValueError("snapshot requires at least one evidence record")
@@ -92,7 +93,7 @@ class ExternalContextSnapshotService:
         if commit:
             session.commit()
             session.refresh(snapshot)
-        else:
+        elif flush:
             session.flush()
         return snapshot
 

@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 
 load_dotenv()
 
@@ -54,6 +56,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(OperationalError)
+async def database_operational_error(_, error: OperationalError) -> JSONResponse:
+    database_busy = "database is locked" in str(error).lower()
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": {
+                "code": "database_busy" if database_busy else "database_unavailable",
+                "message": (
+                    "数据正在写入，请稍后重试。"
+                    if database_busy
+                    else "数据库暂时不可用，请稍后重试。"
+                ),
+                "retryable": True,
+            }
+        },
+    )
 
 
 app.include_router(projects.router)

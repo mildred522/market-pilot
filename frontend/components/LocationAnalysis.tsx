@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { AutocompleteField } from "@/components/AutocompleteField";
 import { analyzeLocationManually, createProject, getLocationSuggestions, recommendLocations } from "@/lib/api";
 import {
@@ -40,6 +40,7 @@ export function LocationAnalysis() {
   const [result, setResult] = useState<LocationResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
   const matchedCity = normalizeCity(form.city);
   const districtOptions = DISTRICTS_BY_CITY[matchedCity] ?? ALL_DISTRICT_OPTIONS;
 
@@ -58,6 +59,8 @@ export function LocationAnalysis() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setLoading(true);
     setError("");
     setResult(null);
@@ -89,6 +92,7 @@ export function LocationAnalysis() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "分析失败");
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   }

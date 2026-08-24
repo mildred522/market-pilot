@@ -158,6 +158,7 @@ class LocationAnalysisService:
         longitude: float,
         finance_feasibility: FinanceFeasibility,
         commit: bool,
+        flush: bool = True,
         finance_metrics: dict[str, Any] | None = None,
         radius_meters: int = SNAPSHOT_RADIUS_METERS,
     ) -> LocationAnalysis:
@@ -218,6 +219,7 @@ class LocationAnalysisService:
                         ),
                         warnings=[warning],
                         commit=commit,
+                        flush=flush,
                     )
                 warnings.append(warning)
                 snapshot = self._snapshots.find_latest_stale(
@@ -234,6 +236,7 @@ class LocationAnalysisService:
                         finance_feasibility=finance_feasibility,
                         finance_metrics=finance_metrics or {},
                         commit=commit,
+                        flush=flush,
                         radius_meters=radius_meters,
                     )
                 pois = self._snapshot_pois(snapshot)
@@ -258,6 +261,7 @@ class LocationAnalysisService:
                     expires_at=expires_at,
                     warnings=list(collection.warnings),
                     commit=False,
+                    flush=flush,
                 )
 
         result = self._analyze_pois(
@@ -288,6 +292,7 @@ class LocationAnalysisService:
             result=result,
             warnings=warnings,
             commit=commit,
+            flush=flush,
         )
 
     def analyze_recommendations(
@@ -415,6 +420,7 @@ class LocationAnalysisService:
                 commit=False,
             )
         candidate_results: list[dict[str, Any]] = []
+        pending_candidate_rows: list[tuple[dict[str, Any], LocationAnalysis]] = []
         child_degraded = False
         child_failed = False
         for screened_candidate in screened:
@@ -429,6 +435,7 @@ class LocationAnalysisService:
                 finance_metrics=finance_metrics,
                 radius_meters=radius_meters,
                 commit=False,
+                flush=False,
             )
             warnings.extend(
                 f"{candidate.name}:{warning}"
@@ -439,8 +446,7 @@ class LocationAnalysisService:
                 continue
             if analysis.status == "degraded":
                 child_degraded = True
-            candidate_results.append(
-                {
+            candidate_result = {
                     "name": candidate.name,
                     "center": {
                         "latitude": candidate.latitude,
@@ -478,7 +484,11 @@ class LocationAnalysisService:
                     "evidence": analysis.evidence_json,
                     "warnings": analysis.warnings_json,
                 }
-            )
+            candidate_results.append(candidate_result)
+            pending_candidate_rows.append((candidate_result, analysis))
+        self._session.flush()
+        for candidate_result, analysis in pending_candidate_rows:
+            candidate_result["analysis_id"] = analysis.id
         candidate_results.sort(key=_candidate_result_key)
         selected = candidate_results[:max_candidates]
         if len(selected) < max_candidates:
@@ -577,6 +587,7 @@ class LocationAnalysisService:
         finance_feasibility: FinanceFeasibility,
         finance_metrics: dict[str, Any],
         commit: bool,
+        flush: bool = True,
         radius_meters: int = SNAPSHOT_RADIUS_METERS,
     ) -> LocationAnalysis:
         year = self._now().year - 1
@@ -695,6 +706,7 @@ class LocationAnalysisService:
             result=result,
             warnings=all_warnings,
             commit=commit,
+            flush=flush,
         )
 
     def _analyze_pois(
@@ -755,6 +767,7 @@ class LocationAnalysisService:
         expires_at: datetime,
         warnings: list[str],
         commit: bool,
+        flush: bool = True,
     ) -> None:
         evidence = EvidenceRecord(
             source="baidu_map",
@@ -781,6 +794,7 @@ class LocationAnalysisService:
                 warnings=warnings,
             ),
             commit=commit,
+            flush=flush,
         )
 
     @staticmethod
@@ -843,6 +857,7 @@ class LocationAnalysisService:
         evidence_json: list[dict[str, Any]] | None = None,
         warnings: Sequence[str] = (),
         commit: bool = True,
+        flush: bool = True,
     ) -> LocationAnalysis:
         serialized_result = (
             result.model_dump(mode="json") if result is not None else result_json or {}
@@ -867,7 +882,7 @@ class LocationAnalysisService:
         if commit:
             self._session.commit()
             self._session.refresh(analysis)
-        else:
+        elif flush:
             self._session.flush()
         return analysis
 

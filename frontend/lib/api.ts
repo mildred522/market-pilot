@@ -67,7 +67,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       baidu_quota_error: "百度地图调用额度已达到限制，请稍后重试或检查 AK 配额。",
       baidu_ip_restriction_error: "当前服务器出口 IP 未通过百度地图白名单校验。",
       baidu_permission_error: "当前百度 AK 尚未开通所需的地图服务。",
-      baidu_authentication_error: "百度地图 AK 鉴权失败，请检查后端配置。"
+      baidu_authentication_error: "百度地图 AK 鉴权失败，请检查后端配置。",
+      database_busy: "分析数据正在写入，请稍后重试。",
+      database_unavailable: "分析数据库暂时不可用，请稍后重试。"
     };
     throw new Error(
       friendlyMessages[code]

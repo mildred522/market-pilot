@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import Link from "next/link";
 import { AutocompleteField } from "@/components/AutocompleteField";
 import { analyzePreOpen, createProject, getLocationSuggestions } from "@/lib/api";
@@ -32,9 +32,12 @@ export function PreOpenForm() {
   const [report, setReport] = useState<PreOpenReport | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setLoading(true);
     setError("");
     setReport(null);
@@ -64,6 +67,7 @@ export function PreOpenForm() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "提交失败");
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   }
