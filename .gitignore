@@ -22,6 +22,7 @@ __pycache__/
 htmlcov/
 
 # Local runtime data
+/data/olist/
 backend/restaurant_agent.db
 *.db-shm
 *.db-wal
