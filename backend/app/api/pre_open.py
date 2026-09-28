@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.models import AnalysisResult, PreOpenInput, Project
+from app.auth.dependencies import CurrentUser, get_current_user, require_owned_project
+from app.db.models import AnalysisResult, PreOpenInput, Project, utc_now
 from app.db.session import get_db
 from app.schemas.pre_open import PreOpenAnalyzeRequest, PreOpenAnalyzeResponse
 from app.memory.project_profile import ProjectProfileService
@@ -13,11 +14,11 @@ router = APIRouter(prefix="/pre-open", tags=["pre-open"])
 
 @router.post("/analyze", response_model=PreOpenAnalyzeResponse)
 def analyze_pre_open(
-    payload: PreOpenAnalyzeRequest, db: Session = Depends(get_db)
+    payload: PreOpenAnalyzeRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> PreOpenAnalyzeResponse:
-    project = db.get(Project, payload.project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project not found")
+    project = require_owned_project(db, current_user, payload.project_id)
     pre_open_input = PreOpenInput(**payload.model_dump())
     db.add(pre_open_input)
 
@@ -51,6 +52,7 @@ def analyze_pre_open(
         warnings_json=list(assessment.risks),
     )
     db.add(result)
+    project.updated_at = utc_now()
     ProjectProfileService(db).upsert_confirmed(
         project=project,
         city=payload.city,

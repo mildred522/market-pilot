@@ -29,6 +29,7 @@ def test_cors_origins_accepts_explicit_local_test_origin(monkeypatch):
 
     assert cors_origins() == [
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "http://127.0.0.1:3027",
     ]
 

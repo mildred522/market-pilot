@@ -1,6 +1,7 @@
 # Dependencies and build output
 frontend/node_modules/
 frontend/.next/
+frontend/.next-dev/
 frontend/.vercel/
 backend/.venv/
 launcher/**/bin/

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plan / Execute · 餐饮诊断 Demo</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">PLAN<span>/</span>EXECUTE</a>
+      <p>受控经营诊断演示</p>
+      <span class="status"><i></i> 本地样例已就绪</span>
+    </header>
+    <main class="workspace">
+      <section class="command-panel reveal">
+        <p class="eyebrow">Analysis request</p>
+        <h1>把问题交给受控执行链路</h1>
+        <p class="intro">规划只能选择允许的能力；每条结论必须回到可检查的原始指标。</p>
+        <label for="question">经营问题</label>
+        <textarea id="question" rows="3">做一次完整经营体检</textarea>
+        <div class="controls">
+          <fieldset>
+            <legend>执行模式</legend>
+            <label><input type="radio" name="mode" value="full" checked /> 完整体检</label>
+            <label><input type="radio" name="mode" value="focused" /> 聚焦问题</label>
+          </fieldset>
+          <button id="analyze" type="button">运行分析 <span>→</span></button>
+        </div>
+        <details class="upload">
+          <summary>使用自己的 CSV（可选）</summary>
+          <p>上传订单与菜品成本表后，系统先展示自动识别的字段映射。</p>
+          <div class="file-grid">
+            <label>订单 CSV<input id="orders-file" type="file" accept=".csv,text/csv" /></label>
+            <label>菜品成本 CSV<input id="menu-file" type="file" accept=".csv,text/csv" /></label>
+          </div>
+          <pre id="mapping">未上传文件，当前使用内置样例。</pre>
+        </details>
+        <details class="llm-settings">
+          <summary>配置 DeepSeek（可选）</summary>
+          <p>密钥仅发送给本机服务进程；不保存到文件，也不会显示在报告中。</p>
+          <div class="llm-grid">
+            <label>接口地址<input id="llm-endpoint" type="url" value="https://api.deepseek.com/chat/completions" /></label>
+            <label>模型<input id="llm-model" type="text" value="deepseek-v4-flash" /></label>
+            <label class="key-field">API Key<input id="llm-key" type="password" autocomplete="off" placeholder="粘贴 DeepSeek API Key" /></label>
+            <button id="save-llm" type="button">保存到本次服务</button>
+          </div>
+          <p id="llm-status" class="setting-status">未配置，当前使用确定性报告。</p>
+        </details>
+      </section>
+
+      <aside class="run-panel reveal" aria-live="polite">
+        <p class="eyebrow">Execution trace</p>
+        <div id="run-status" class="run-status">等待运行</div>
+        <ol id="plan-list" class="plan-list"><li>选择一个问题后开始规划</li></ol>
+        <div id="replan" class="replan">没有发生重规划</div>
+      </aside>
+
+      <section class="report-panel reveal">
+        <div class="section-heading">
+          <div><p class="eyebrow">Grounded report</p><h2>可验证结论</h2></div>
+          <span id="composition">确定性报告</span>
+        </div>
+        <div id="findings" class="findings empty">运行后，这里会显示带证据编号的业务结论。</div>
+        <div class="evidence-wrap">
+          <h3>Evidence ledger</h3>
+          <div id="evidence" class="evidence">尚无证据。</div>
+        </div>
+      </section>
+    </main>
+    <template id="finding-template"><article class="finding"><p></p><code></code></article></template>
+    <script src="/app.js"></script>
+  </body>
+</html>

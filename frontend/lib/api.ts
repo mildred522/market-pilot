@@ -1,6 +1,21 @@
-import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AnswerVersion, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+  }
+}
+
+function csrfHeaders(): HeadersInit {
+  if (typeof document === "undefined") return {};
+  const token = document.cookie
+    .split("; ")
+    .find((cookie) => cookie.startsWith("market_pilot_csrf="))
+    ?.split("=")[1];
+  return token ? { "X-CSRF-Token": decodeURIComponent(token) } : {};
+}
 
 export type AgentIntent =
   | "assess_feasibility"
@@ -43,8 +58,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        ...csrfHeaders(),
         ...init?.headers
       }
     });
@@ -72,14 +89,38 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       database_busy: "分析数据正在写入，请稍后重试。",
       database_unavailable: "分析数据库暂时不可用，请稍后重试。"
     };
-    throw new Error(
+    throw new ApiRequestError(
       friendlyMessages[code]
       ?? providerMessage
-      ?? `分析服务请求失败（HTTP ${response.status}）`
+      ?? `分析服务请求失败（HTTP ${response.status}）`,
+      response.status
     );
   }
 
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+export function getCurrentUser(): Promise<AuthenticatedUser> {
+  return request<AuthenticatedUser>("/auth/me", { cache: "no-store" });
+}
+
+export function register(email: string, password: string): Promise<AuthenticatedUser> {
+  return request<AuthenticatedUser>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password })
+  });
+}
+
+export function login(email: string, password: string): Promise<AuthenticatedUser> {
+  return request<AuthenticatedUser>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password })
+  });
+}
+
+export function logout(): Promise<void> {
+  return request<void>("/auth/logout", { method: "POST" });
 }
 
 export function createProject(name: string, stage: Stage): Promise<Project> {
@@ -87,6 +128,15 @@ export function createProject(name: string, stage: Stage): Promise<Project> {
     method: "POST",
     body: JSON.stringify({ name, stage })
   });
+}
+
+export function getProjectHistory(query = ""): Promise<ProjectHistoryPage> {
+  const suffix = query.trim() ? `?query=${encodeURIComponent(query.trim())}` : "";
+  return request<ProjectHistoryPage>(`/projects${suffix}`, { cache: "no-store" });
+}
+
+export function getProjectAnalyses(projectId: number): Promise<ProjectAnalyses> {
+  return request<ProjectAnalyses>(`/projects/${projectId}/analyses`, { cache: "no-store" });
 }
 
 export function getDashboardOverview(): Promise<DashboardOverview> {
@@ -188,8 +238,8 @@ export function askAnalysis(
   });
 }
 
-export function getAnswerVersions(analysisId: number): Promise<AnswerVersion[]> {
-  return request<AnswerVersion[]>(`/analysis/${analysisId}/answer-versions`, {
+export function getConversationHistory(analysisId: number): Promise<ConversationHistory> {
+  return request<ConversationHistory>(`/analysis/${analysisId}/conversation`, {
     cache: "no-store"
   });
 }
@@ -286,6 +336,8 @@ export async function uploadCsv(
 
   const response = await fetch(`${API_BASE_URL}/files/upload`, {
     method: "POST",
+    credentials: "include",
+    headers: csrfHeaders(),
     body: formData
   });
 

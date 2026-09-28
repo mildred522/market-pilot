@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, get_current_user, require_owned_project
 from app.db.models import LocationAnalysis, Project
 from app.db.session import get_db
 from app.external_context.baidu_client import (
@@ -72,6 +73,7 @@ def location_suggestions(
     query: str = Query(default="", max_length=80),
     city: str | None = Query(default=None, min_length=1, max_length=80),
     client_factory: Callable[[], LocationProvider] = Depends(get_baidu_client_factory),
+    _: CurrentUser = Depends(get_current_user),
 ) -> LocationSuggestionsResponse:
     normalized_query = query.strip()
     if kind == "city" and not normalized_query:
@@ -110,12 +112,13 @@ def location_suggestions(
 def manual_analysis(
     payload: ManualLocationAnalysisRequest,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
     client_factory: Callable[[], LocationProvider] = Depends(get_baidu_client_factory),
     service_factory: Callable[[Session, LocationProvider], LocationAnalysisService] = Depends(
         get_location_service_factory
     ),
 ) -> LocationAnalysisResponse:
-    _require_project(db, payload.project_id)
+    _require_project(db, current_user, payload.project_id)
     try:
         client = client_factory()
         source = "bd09_input"
@@ -170,12 +173,13 @@ def manual_analysis(
 def recommendations(
     payload: LocationRecommendationsRequest,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
     client_factory: Callable[[], LocationProvider] = Depends(get_baidu_client_factory),
     service_factory: Callable[[Session, LocationProvider], LocationAnalysisService] = Depends(
         get_location_service_factory
     ),
 ) -> LocationAnalysisResponse:
-    _require_project(db, payload.project_id)
+    _require_project(db, current_user, payload.project_id)
     try:
         client = client_factory()
         analysis = service_factory(db, client).analyze_recommendations(
@@ -215,11 +219,13 @@ def recommendations(
 def get_location_analysis(
     analysis_id: int,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
     verifier: LocationEvidenceVerifier = Depends(get_location_evidence_verifier),
 ) -> LocationAnalysisResponse:
     analysis = db.get(LocationAnalysis, analysis_id)
     if analysis is None:
         raise _structured_error(status.HTTP_404_NOT_FOUND, "analysis_not_found", "location analysis not found")
+    _require_project(db, current_user, analysis.project_id)
     try:
         _verify_persisted_analysis(analysis, verifier)
         return _response_for_row(analysis)
@@ -231,11 +237,13 @@ def get_location_analysis(
         ) from error
 
 
-def _require_project(db: Session, project_id: int) -> Project:
-    project = db.get(Project, project_id)
-    if project is None:
-        raise _structured_error(status.HTTP_404_NOT_FOUND, "project_not_found", "project not found")
-    return project
+def _require_project(
+    db: Session, current_user: CurrentUser, project_id: int
+) -> Project:
+    try:
+        return require_owned_project(db, current_user, project_id)
+    except HTTPException as error:
+        raise _structured_error(status.HTTP_404_NOT_FOUND, "project_not_found", "project not found") from error
 
 
 def _coordinate_values(value: BaiduGeocodeResult | dict[str, Any]) -> tuple[float, float]:

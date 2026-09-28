@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, get_current_user, require_owned_analysis, require_owned_project
 from app.corrections.repository import CorrectionProposalRepository
 from app.corrections.service import (
     CorrectionConflictError,
@@ -16,10 +17,11 @@ router = APIRouter(tags=["corrections"])
 
 @router.get("/analysis/{analysis_id}/corrections")
 def list_corrections(
-    analysis_id: int, db: Session = Depends(get_db)
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> list[dict[str, object]]:
-    if db.get(AnalysisResult, analysis_id) is None:
-        raise HTTPException(status_code=404, detail="analysis not found")
+    require_owned_analysis(db, current_user, analysis_id)
     return [
         _serialize(item)
         for item in CorrectionProposalRepository(db).list_for_analysis(analysis_id)
@@ -31,7 +33,12 @@ def confirm_correction(
     proposal_id: int,
     payload: CorrectionConfirmRequest,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, object]:
+    proposal = db.get(CorrectionProposal, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="correction proposal not found")
+    require_owned_project(db, current_user, proposal.project_id)
     service = CorrectionWorkflowService(db)
     try:
         result = service.apply(
@@ -64,8 +71,14 @@ def confirm_correction(
 
 @router.post("/corrections/{proposal_id}/reject")
 def reject_correction(
-    proposal_id: int, db: Session = Depends(get_db)
+    proposal_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, object]:
+    proposal = db.get(CorrectionProposal, proposal_id)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="correction proposal not found")
+    require_owned_project(db, current_user, proposal.project_id)
     try:
         proposal = CorrectionWorkflowService(db).reject(proposal_id)
         db.commit()

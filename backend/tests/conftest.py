@@ -10,6 +10,8 @@ from app.services.runtime_config import RuntimeConfigStore
 
 @pytest.fixture(autouse=True)
 def isolate_persisted_integration_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("AUTH_DISABLED", "true")
     test_config = RuntimeConfigStore()
     runtime_config_module = importlib.import_module("app.services.runtime_config")
     monkeypatch.setattr(runtime_config_module, "runtime_config", test_config)

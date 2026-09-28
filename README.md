@@ -49,6 +49,9 @@ powershell -ExecutionPolicy Bypass -File .\launcher\build-launcher.ps1
 `MARKET_PILOT_WSL_DISTRO`。Qdrant 未安装或正式集合不存在时，启动器会显示明确错误，
 不会把 RAG 不可用误报成完整就绪。
 
+首次启动会要求创建账户；第一个账户会接管此前本地工作区中的无主项目。经营 CSV、
+分析报告、追问记忆与选址快照均按账户所属项目隔离，公共 RAG 仅收录已审核的公开资料。
+
 打开 `http://localhost:3000/demo`，即可按预设路径完成一次五分钟面试演示。
 
 <details>
@@ -291,6 +294,9 @@ AGENT_LLM_BASE_URL=https://api.openai.com/v1
 AGENT_LLM_API_KEY=
 AGENT_LLM_MODEL=
 CORS_ORIGINS=http://localhost:3000
+
+# Keep false only for local HTTP development. Set true for an HTTPS API.
+AUTH_COOKIE_SECURE=false
 ```
 
 - 支持 OpenAI-compatible Chat Completions 接口。

@@ -1,9 +1,5 @@
-import DashboardShell from "../components/DashboardShell";
-import { getDashboardOverview } from "../lib/api";
+import { DashboardLoader } from "@/components/DashboardLoader";
 
-export const dynamic = "force-dynamic";
-
-export default async function HomePage() {
-  const overview = await getDashboardOverview();
-  return <DashboardShell initialOverview={overview} />;
+export default function HomePage() {
+  return <DashboardLoader />;
 }

@@ -1,0 +1,378 @@
+{
+  "manifest_version": 1,
+  "generated_for": "restaurant knowledge source feasibility audit",
+  "channels": [
+    {
+      "channel": "national_statistics",
+      "label": "国家统计与商务数据",
+      "recommended_role": "structured_fact_and_macro_context",
+      "samples": [
+        {
+          "id": "nbs-economic-bulletin-2025",
+          "title": "中华人民共和国2025年国民经济和社会发展统计公报",
+          "publisher": "国家统计局",
+          "url": "https://www.stats.gov.cn/sj/zxfb/202602/t20260228_1962662.html",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        },
+        {
+          "id": "nbs-retail-december-2025",
+          "title": "2025年12月份社会消费品零售总额增长0.9%",
+          "publisher": "国家统计局",
+          "url": "https://www.stats.gov.cn/sj/zxfb/202601/t20260119_1962323.html",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        }
+      ]
+    },
+    {
+      "channel": "city_statistics",
+      "label": "城市统计与政府公报",
+      "recommended_role": "city_baseline_and_structured_fact",
+      "samples": [
+        {
+          "id": "chengdu-statistical-bulletin-2025",
+          "title": "2025年成都市国民经济和社会发展统计公报",
+          "publisher": "成都市统计局",
+          "url": "https://cdstats.chengdu.gov.cn/cdstjj/c154795/2026-04/14/58dc076a80974f999828b691bfca027f/files/0cac2cb9ed15430dac5a694530fdd8a4.pdf",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document",
+          "reuse_glob": "backend/storage/knowledge/raw/chengdu-statistical-bulletin-2025/*.pdf"
+        },
+        {
+          "id": "chengdu-economic-operation-2025",
+          "title": "2025年成都经济运行情况发布",
+          "publisher": "成都市统计局、国家统计局成都调查队",
+          "url": "https://news.chengdu.cn/2026/0123/6972d9f555808711169d4361.shtml",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_mirror"
+        }
+      ]
+    },
+    {
+      "channel": "regulation_and_standards",
+      "label": "法规、规章与标准信息",
+      "recommended_role": "normative_rag_with_effective_date",
+      "samples": [
+        {
+          "id": "samr-online-catering-rule-2026",
+          "title": "网络餐饮服务经营者落实食品安全主体责任监督管理规定",
+          "publisher": "国家市场监督管理总局",
+          "url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/fgs/art/2026/art_d04d512f5ad8470eb61a652c0061dc3a.html",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        },
+        {
+          "id": "samr-made-to-order-drink-guidance-2023",
+          "title": "关于现制饮料的消费提示",
+          "publisher": "国家市场监督管理总局",
+          "url": "https://www.samr.gov.cn/spcjs/yjjl/art/2023/art_da5490e8dcdc446e85313878b3ba8f69.html",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document",
+          "reuse_glob": "backend/storage/knowledge/raw/samr-made-to-order-drink-guidance-2023/*"
+        },
+        {
+          "id": "made-to-order-tea-material-standard-metadata",
+          "title": "现制茶饮品原辅料要求（标准信息页）",
+          "publisher": "全国标准信息公共服务平台",
+          "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=412DFD6B0747F252E06397BE0A0A0A78",
+          "capture_mode": "metadata_only",
+          "sample_kind": "real_public_metadata",
+          "rights_note": "标准全文不复制入库，仅保存标准号、状态、范围和官方链接。"
+        }
+      ]
+    },
+    {
+      "channel": "exchange_disclosure",
+      "label": "交易所披露与上市公司文件",
+      "recommended_role": "company_and_industry_evidence_with_bias_label",
+      "samples": [
+        {
+          "id": "mixue-prospectus-2025",
+          "title": "蜜雪集团招股章程",
+          "publisher": "香港交易所披露易",
+          "url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0221/11543479/2025022100055_c.pdf",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document",
+          "reuse_glob": "backend/storage/knowledge/raw/mixue-prospectus-industry-overview-2025/*.pdf"
+        },
+        {
+          "id": "nayuki-annual-report-2024",
+          "title": "奈雪的茶2024年年度报告",
+          "publisher": "香港交易所披露易",
+          "url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0429/2025042901441.pdf",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        }
+      ]
+    },
+    {
+      "channel": "industry_association",
+      "label": "行业协会报告",
+      "recommended_role": "industry_context_with_methodology_limits",
+      "samples": [
+        {
+          "id": "ccfa-new-tea-report-2023",
+          "title": "2023新茶饮研究报告",
+          "publisher": "中国连锁经营协会、美团新餐饮研究院",
+          "url": "https://www.ccfa.org.cn/portal/cn/xiangxi.jsp?id=444980&type=33",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document",
+          "reuse_glob": "backend/storage/knowledge/raw/ccfa-meituan-new-tea-report-2023/*.html"
+        },
+        {
+          "id": "ccfa-new-tea-report-2021",
+          "title": "2021新茶饮研究报告",
+          "publisher": "中国连锁经营协会新茶饮委员会",
+          "url": "https://www.ccfa.org.cn/portal/cn/xiangxi.jsp?id=442838&type=33",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        },
+        {
+          "id": "china-hotel-catering-report-2025",
+          "title": "2025中国餐饮业年度报告",
+          "publisher": "中国饭店协会",
+          "url": "https://www.chinahotel.org.cn/articles/17427",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        }
+      ]
+    },
+    {
+      "channel": "map_platform",
+      "label": "地图与POI平台",
+      "recommended_role": "live_structured_tool_not_rag",
+      "samples": [
+        {
+          "id": "baidu-poi-snapshot-1",
+          "title": "真实百度地图POI查询快照 1",
+          "publisher": "百度地图开放平台",
+          "capture_mode": "sqlite_snapshot",
+          "sample_kind": "real_api_response",
+          "sqlite_row_id": 1
+        },
+        {
+          "id": "baidu-poi-snapshot-2",
+          "title": "真实百度地图POI查询快照 2",
+          "publisher": "百度地图开放平台",
+          "capture_mode": "sqlite_snapshot",
+          "sample_kind": "real_api_response",
+          "sqlite_row_id": 2
+        },
+        {
+          "id": "amap-place-search-api-doc",
+          "title": "高德地图搜索POI Web服务API文档",
+          "publisher": "高德开放平台",
+          "url": "https://lbs.amap.com/api/webservice/guide/api-advanced/search",
+          "capture_mode": "metadata_only",
+          "sample_kind": "real_public_document"
+        }
+      ]
+    },
+    {
+      "channel": "brand_official",
+      "label": "品牌官网与品牌材料",
+      "recommended_role": "brand_fact_only_not_industry_truth",
+      "samples": [
+        {
+          "id": "yum-china-q2-results-2025",
+          "title": "百胜中国2025年第二季度财务业绩报告",
+          "publisher": "百胜中国控股有限公司",
+          "url": "https://ir.yumchina.com/static-files/e85483df-1308-48e6-a439-5bbecff3d510",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        },
+        {
+          "id": "yum-china-q3-results-2025",
+          "title": "百胜中国2025年第三季度财务业绩报告",
+          "publisher": "百胜中国控股有限公司",
+          "url": "https://ir.yumchina.com/static-files/8e6ceb01-efb9-4c74-a28a-51258d571945",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        }
+      ]
+    },
+    {
+      "channel": "academic_research",
+      "label": "学术论文与期刊摘要",
+      "recommended_role": "mechanism_and_hypothesis_not_current_market_fact",
+      "samples": [
+        {
+          "id": "tea-consumption-regurgitation-2024",
+          "title": "新式茶饮消费对传统茶消费意愿的反哺效应分析",
+          "publisher": "茶叶科学",
+          "url": "https://www.tea-science.com/CN/10.13305/j.cnki.jts.2024.05.004",
+          "capture_mode": "metadata_only",
+          "sample_kind": "real_public_abstract"
+        },
+        {
+          "id": "new-tea-marketing-strategy-2024",
+          "title": "新式茶饮的营销策略探究——以喜茶为例",
+          "publisher": "产业创新研究",
+          "url": "https://cycx.cbpt.cnki.net/portal/journal/portal/client/paper/c279418e79822538cf88f587d938a2ab",
+          "capture_mode": "metadata_only",
+          "sample_kind": "real_public_abstract"
+        }
+      ]
+    },
+    {
+      "channel": "commercial_property",
+      "label": "商业地产与租金研究",
+      "recommended_role": "directional_location_context_with_scope",
+      "samples": [
+        {
+          "id": "jll-chengdu-q1-2025",
+          "title": "2025年第一季度成都商业及物流地产市场报告",
+          "publisher": "仲量联行",
+          "url": "https://www.joneslanglasalle.com.cn/zh-cn/newsroom/chengdu-property-review-1q25",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        },
+        {
+          "id": "jll-chengdu-q2-2025",
+          "title": "2025年上半年成都商业及物流地产市场报告",
+          "publisher": "仲量联行",
+          "url": "https://www.joneslanglasalle.com.cn/zh-cn/newsroom/chengdu-property-review-2q25",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        },
+        {
+          "id": "savills-chengdu-retail-2024q4",
+          "title": "成都零售市场简报 2024年第四季度",
+          "publisher": "第一太平戴维斯",
+          "url": "https://pdf.savills.asia/asia-pacific-research/china-research/chengdu-research/chengdu-retail/24q4-cd-retail-cn.pdf",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        }
+      ]
+    },
+    {
+      "channel": "recruitment_and_labor",
+      "label": "招聘与人力成本数据",
+      "recommended_role": "labor_cost_benchmark_prefer_official_aggregate",
+      "samples": [
+        {
+          "id": "chuan-yu-labor-price-2023",
+          "title": "川渝地区2023年人力资源市场工资价位和行业人工成本信息",
+          "publisher": "重庆市人力资源和社会保障局",
+          "url": "https://rlsbj.cq.gov.cn/zwxx_182/tzgg/202408/t20240820_13525467.html",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        },
+        {
+          "id": "sichuan-labor-price-2020",
+          "title": "四川省2020年人力资源市场工资价位和行业人工成本信息",
+          "publisher": "四川省人力资源和社会保障厅",
+          "url": "https://rst.sc.gov.cn/rst/gsgg/2021/11/19/c2916c7001824d93b56ac85ab20eb2f4/files/647fd8196d9f4b33945ba6d5e87c0246.pdf",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        },
+        {
+          "id": "guangdong-labor-price-2023",
+          "title": "广东省2023年人力资源市场工资价位及行业人工成本信息",
+          "publisher": "广东省人力资源和社会保障厅",
+          "url": "https://hrss.gd.gov.cn/attachment/0/546/546000/4396324.pdf",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document",
+          "limitations": "跨地区样本只用于验证工资价位文档结构，不可直接套用到成都。"
+        }
+      ]
+    },
+    {
+      "channel": "news_media",
+      "label": "新闻媒体",
+      "recommended_role": "discovery_and_trend_signal_then_trace_original",
+      "samples": [
+        {
+          "id": "xinhua-naixue-green-2025",
+          "title": "奈雪green店瞄准轻饮轻食需求",
+          "publisher": "新华网客户端",
+          "url": "https://app.xinhuanet.com/news/article.html?articleId=6b7c3b7b41d27cf3bcae3600b3aed06a",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        },
+        {
+          "id": "xinhua-holiday-new-tea-2025",
+          "title": "假日经济带火新茶饮消费",
+          "publisher": "新华网",
+          "url": "https://www.xinhuanet.com/tech/20250506/0becf18ef8564a2094c342f688a30c01/c.html",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_document"
+        }
+      ]
+    },
+    {
+      "channel": "reviews_and_social",
+      "label": "评论、投诉与社交信号",
+      "recommended_role": "live_sentiment_pipeline_not_static_rag",
+      "samples": [
+        {
+          "id": "samr-consumer-rights-2025",
+          "title": "市场监管总局发布2025年消费维权数据",
+          "publisher": "国家市场监督管理总局",
+          "url": "https://www.samr.gov.cn/xw/mtjj/art/2026/art_4cd1ca6847a344f49f5646677b7e4894.html",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_aggregate",
+          "limitations": "投诉聚合数据是评论平台的替代信号，不包含门店级评论文本。"
+        },
+        {
+          "id": "meituan-merchant-feedback-2025",
+          "title": "2025年，商家提的问题，我们都改进了哪些？",
+          "publisher": "美团",
+          "url": "https://www.meituan.com/news/NN260206199002398",
+          "capture_mode": "fulltext",
+          "sample_kind": "real_public_aggregate",
+          "limitations": "平台汇总材料不能替代经授权的门店评论明细。"
+        }
+      ]
+    },
+    {
+      "channel": "merchant_uploaded",
+      "label": "商户上传经营数据",
+      "recommended_role": "private_structured_analytics",
+      "samples": [
+        {
+          "id": "merchant-orders-contract-fixture",
+          "title": "订单CSV字段契约样本（非真实经营数据）",
+          "publisher": "Market Pilot",
+          "capture_mode": "local_file",
+          "local_path": "backend/sample_data/orders.csv",
+          "sample_kind": "synthetic_contract_fixture",
+          "limitations": "不能作为真实来源效果样本，仅用于验证清洗和分析链路。"
+        },
+        {
+          "id": "merchant-reviews-contract-fixture",
+          "title": "评论CSV字段契约样本（非真实经营数据）",
+          "publisher": "Market Pilot",
+          "capture_mode": "local_file",
+          "local_path": "backend/sample_data/reviews.csv",
+          "sample_kind": "synthetic_contract_fixture",
+          "limitations": "需要脱敏后的真实商户导出文件补齐此渠道。"
+        }
+      ]
+    },
+    {
+      "channel": "internal_methodology",
+      "label": "内部方法论与约束",
+      "recommended_role": "planner_policy_and_answer_guardrails",
+      "samples": [
+        {
+          "id": "market-pilot-evidence-rules",
+          "title": "Market Pilot 外部证据使用规则",
+          "publisher": "Market Pilot",
+          "capture_mode": "local_file",
+          "local_path": "backend/data/knowledge/seed/market-pilot-evidence-rules.md",
+          "sample_kind": "real_internal_document"
+        },
+        {
+          "id": "market-pilot-rag-plan",
+          "title": "Market Pilot RAG 落地方案",
+          "publisher": "Market Pilot",
+          "capture_mode": "local_file",
+          "local_path": "docs/design/rag-implementation-plan.md",
+          "sample_kind": "real_internal_document"
+        }
+      ]
+    }
+  ]
+}

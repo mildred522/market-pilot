@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pathlib import Path
 from sqlalchemy.exc import OperationalError
 
 load_dotenv()
@@ -14,6 +15,7 @@ from app.api import (
     agent,
     agent_runs,
     analysis,
+    auth,
     corrections,
     dashboard,
     files,
@@ -46,7 +48,10 @@ def cors_origins() -> list[str]:
         for value in configured.split(",")
         if value.strip().startswith(("http://", "https://"))
     ]
-    return list(dict.fromkeys(origins)) or defaults
+    # Deployment origins extend the local launcher origins instead of replacing
+    # them. This keeps the Windows one-click launcher usable after Vercel (or
+    # another hosted frontend) has been added to CORS_ORIGINS.
+    return list(dict.fromkeys([*defaults, *origins]))
 
 
 app.add_middleware(
@@ -78,6 +83,7 @@ async def database_operational_error(_, error: OperationalError) -> JSONResponse
 
 
 app.include_router(projects.router)
+app.include_router(auth.router)
 app.include_router(dashboard.router)
 app.include_router(pre_open.router)
 app.include_router(files.router)
@@ -87,6 +93,13 @@ app.include_router(corrections.router)
 app.include_router(agent_runs.router)
 app.include_router(location.router)
 app.include_router(agent.router)
+
+
+@app.get("/dev-runtime", include_in_schema=False)
+def dev_runtime():
+    if not os.getenv("MARKET_PILOT_WORKSPACE"):
+        return JSONResponse(status_code=404, content={"detail": "not found"})
+    return {"contract": 1, "workspace": str(Path(__file__).resolve().parents[2])}
 
 
 @app.get("/health")

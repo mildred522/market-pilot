@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 
 namespace MarketPilot.Launcher;
 
@@ -9,6 +12,12 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        using var instanceLock = new Mutex(true, "Local\\MarketPilotLauncher", out var ownsLock);
+        if (!ownsLock)
+        {
+            MessageBox.Show("Market Pilot 启动器已打开。请在现有窗口中查看状态或打开工作台。", "Market Pilot");
+            return;
+        }
         var projectRoot = ProjectLocator.FindProjectRoot(AppContext.BaseDirectory);
 
         if (args.Contains("--check", StringComparer.OrdinalIgnoreCase))
@@ -18,8 +27,82 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
-        Application.Run(new LauncherForm(projectRoot));
+        Application.Run(new LauncherForm(
+            projectRoot,
+            args.Contains("--start", StringComparer.OrdinalIgnoreCase)));
     }
+}
+
+internal static class ProcessTree
+{
+    private const uint SnapshotProcesses = 0x00000002;
+    private static readonly HashSet<string> RuntimeProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "node", "node.exe", "npm", "npm.cmd", "python", "python.exe", "uvicorn"
+    };
+
+    public static int FindRuntimeRoot(int processId)
+    {
+        var current = processId;
+        while (TryGetParentProcessId(current, out var parentId))
+        {
+            try
+            {
+                using var parent = Process.GetProcessById(parentId);
+                if (!RuntimeProcesses.Contains(parent.ProcessName)) break;
+                current = parentId;
+            }
+            catch { break; }
+        }
+        return current;
+    }
+
+    private static bool TryGetParentProcessId(int processId, out int parentProcessId)
+    {
+        parentProcessId = 0;
+        var snapshot = CreateToolhelp32Snapshot(SnapshotProcesses, 0);
+        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return false;
+        try
+        {
+            var entry = new ProcessEntry32 { Size = (uint)Marshal.SizeOf<ProcessEntry32>() };
+            if (!Process32First(snapshot, ref entry)) return false;
+            do
+            {
+                if (entry.ProcessId == processId)
+                {
+                    parentProcessId = (int)entry.ParentProcessId;
+                    return parentProcessId > 0;
+                }
+            } while (Process32Next(snapshot, ref entry));
+            return false;
+        }
+        finally { CloseHandle(snapshot); }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessEntry32
+    {
+        public uint Size;
+        public uint Usage;
+        public uint ProcessId;
+        public IntPtr DefaultHeapId;
+        public uint ModuleId;
+        public uint Threads;
+        public uint ParentProcessId;
+        public int PriorityClassBase;
+        public uint Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string ExecutableFile;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool Process32First(IntPtr snapshot, ref ProcessEntry32 entry);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool Process32Next(IntPtr snapshot, ref ProcessEntry32 entry);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr handle);
 }
 
 internal static class ProjectLocator
@@ -37,6 +120,22 @@ internal static class ProjectLocator
         {
             if (IsProjectRoot(current.FullName))
             {
+                var gitFile = Path.Combine(current.FullName, ".git");
+                if (File.Exists(gitFile))
+                {
+                    var pointer = File.ReadAllText(gitFile).Trim();
+                    if (pointer.StartsWith("gitdir: "))
+                    {
+                        var gitDirectory = Path.GetFullPath(pointer[8..], current.FullName);
+                        var commonFile = Path.Combine(gitDirectory, "commondir");
+                        if (File.Exists(commonFile))
+                        {
+                            var common = Path.GetFullPath(File.ReadAllText(commonFile).Trim(), gitDirectory);
+                            var mainRoot = Directory.GetParent(common)?.FullName;
+                            if (IsProjectRoot(mainRoot)) return mainRoot;
+                        }
+                    }
+                }
                 return current.FullName;
             }
 
@@ -63,7 +162,7 @@ internal static class StartupCheck
         }
 
         Console.WriteLine($"项目目录: {projectRoot}");
-        var python = CommandFinder.Find("python.exe");
+        var python = RuntimeFinder.FindPython(projectRoot);
         var npm = CommandFinder.Find("npm.cmd");
         Console.WriteLine($"Python: {python ?? "未找到"}");
         Console.WriteLine($"Node/npm: {npm ?? "未找到"}");
@@ -146,6 +245,28 @@ internal static class CommandFinder
     }
 }
 
+internal static class RuntimeFinder
+{
+    public static string? FindPython(string? projectRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(projectRoot))
+        {
+            var virtualEnvironmentPython = Path.Combine(
+                projectRoot,
+                "backend",
+                ".venv",
+                "Scripts",
+                "python.exe");
+            if (File.Exists(virtualEnvironmentPython))
+            {
+                return virtualEnvironmentPython;
+            }
+        }
+
+        return CommandFinder.Find("python.exe");
+    }
+}
+
 internal sealed class LauncherForm : Form
 {
     private const string FrontendUrl = "http://127.0.0.1:3000";
@@ -167,13 +288,20 @@ internal sealed class LauncherForm : Form
     private bool _ownsQdrantService;
     private bool _isBusy;
 
-    public LauncherForm(string? projectRoot)
+    public LauncherForm(string? projectRoot, bool startImmediately = false)
     {
         _projectRoot = projectRoot;
         _ragEnabled = projectRoot is not null && RagConfiguration.IsEnabled(projectRoot);
         ConfigureWindow();
         BuildLayout();
-        Shown += async (_, _) => await RefreshStatusAsync();
+        Shown += async (_, _) =>
+        {
+            await RefreshStatusAsync();
+            if (startImmediately)
+            {
+                await StartServicesAsync();
+            }
+        };
         FormClosing += OnFormClosing;
     }
 
@@ -301,7 +429,8 @@ internal sealed class LauncherForm : Form
 
         try
         {
-            var python = CommandFinder.Find("python.exe") ?? throw new InvalidOperationException("未找到 Python。请安装 Python 并加入 PATH。");
+            var python = RuntimeFinder.FindPython(_projectRoot)
+                ?? throw new InvalidOperationException("未找到 Python。请创建 backend/.venv 或安装 Python 并加入 PATH。");
             var npm = CommandFinder.Find("npm.cmd") ?? throw new InvalidOperationException("未找到 Node.js/npm。请安装 Node.js 并加入 PATH。");
 
             if (!Directory.Exists(Path.Combine(_projectRoot, "frontend", "node_modules")))
@@ -316,10 +445,13 @@ internal sealed class LauncherForm : Form
 
             if (!await IsBackendReadyAsync())
             {
-                EnsurePortAvailable(8000, "后端");
+                await RecoverKnownPortConflictAsync(
+                    8000, "后端", "/openapi.json", "Restaurant Agent API",
+                    Path.Combine(_projectRoot, "backend"), "uvicorn"
+                );
                 _backendProcess = StartProcess(
                     python,
-                    "-m uvicorn app.main:app --host 127.0.0.1 --port 8000",
+                    "dev.py",
                     Path.Combine(_projectRoot, "backend"),
                     "后端");
             }
@@ -330,10 +462,13 @@ internal sealed class LauncherForm : Form
 
             if (!await IsFrontendReadyAsync())
             {
-                EnsurePortAvailable(3000, "前端");
+                await RecoverKnownPortConflictAsync(
+                    3000, "前端", "/", "Market Pilot",
+                    Path.Combine(_projectRoot, "frontend"), "next"
+                );
                 _frontendProcess = StartProcess(
                     npm,
-                    "run dev",
+                    "run dev -- --hostname 127.0.0.1 --port 3000",
                     Path.Combine(_projectRoot, "frontend"),
                     "前端");
             }
@@ -386,6 +521,7 @@ internal sealed class LauncherForm : Form
             },
             EnableRaisingEvents = true,
         };
+        process.StartInfo.Environment["MARKET_PILOT_WORKSPACE"] = _projectRoot!;
         process.OutputDataReceived += (_, args) => AppendProcessLine(label, args.Data);
         process.ErrorDataReceived += (_, args) => AppendProcessLine(label, args.Data);
         process.Exited += (_, _) => AppendLog($"{label}进程已退出（代码 {process.ExitCode}）。");
@@ -619,9 +755,23 @@ internal sealed class LauncherForm : Form
         _ownsQdrantService = false;
     }
 
-    private async Task<bool> IsBackendReadyAsync() => await IsUrlReadyAsync(BackendHealthUrl);
+    private async Task<bool> IsBackendReadyAsync() => await IsWorkspaceReadyAsync("http://127.0.0.1:8000/dev-runtime");
 
-    private async Task<bool> IsFrontendReadyAsync() => await IsUrlReadyAsync(FrontendUrl);
+    private async Task<bool> IsFrontendReadyAsync() => await IsWorkspaceReadyAsync(FrontendUrl + "/api/dev-runtime");
+
+    private async Task<bool> IsWorkspaceReadyAsync(string url)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode) return false;
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return json.RootElement.GetProperty("contract").GetInt32() == 1
+                && string.Equals(json.RootElement.GetProperty("workspace").GetString(),
+                    _projectRoot, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
 
     private async Task<bool> IsQdrantReadyAsync() => await IsUrlReadyAsync(QdrantHealthUrl);
 
@@ -638,18 +788,133 @@ internal sealed class LauncherForm : Form
         }
     }
 
-    private static void EnsurePortAvailable(int port, string label)
+    private async Task RecoverKnownPortConflictAsync(
+        int port, string label, string probePath, string productMarker,
+        string expectedSourceDirectory, string runtimeMarker)
+    {
+        if (IsPortAvailable(port))
+        {
+            return;
+        }
+
+        var listenerProcessId = FindListeningProcessId(port)
+            ?? throw new InvalidOperationException($"无法识别占用{label}端口 {port} 的进程。");
+        var isKnownService = await IsKnownMarketPilotServiceAsync(port, probePath, productMarker)
+            || IsKnownMarketPilotRuntime(listenerProcessId, expectedSourceDirectory, runtimeMarker);
+        if (!isKnownService)
+        {
+            throw new InvalidOperationException(
+                $"{label}端口 {port} 已被其他程序占用，且不是可识别的 Market Pilot 服务。"
+            );
+        }
+
+        var processId = ProcessTree.FindRuntimeRoot(listenerProcessId);
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(8));
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException($"无法停止旧{label}服务（PID {processId}）：{exception.Message}");
+        }
+
+        if (!await WaitForPortAvailableAsync(port, TimeSpan.FromSeconds(5)))
+        {
+            throw new InvalidOperationException($"旧{label}服务已停止，但端口 {port} 尚未释放。");
+        }
+        AppendLog($"已停止占用端口 {port} 的旧 Market Pilot {label}服务（PID {processId}）。");
+    }
+
+    private async Task<bool> IsKnownMarketPilotServiceAsync(
+        int port, string probePath, string productMarker)
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync($"http://127.0.0.1:{port}{probePath}");
+            var body = await response.Content.ReadAsStringAsync();
+            return body.Contains(productMarker, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
+    private bool IsKnownMarketPilotRuntime(
+        int processId, string expectedSourceDirectory, string runtimeMarker)
+    {
+        var commandLine = ReadProcessCommandLine(processId);
+        if (string.IsNullOrWhiteSpace(commandLine)
+            || !commandLine.Contains(runtimeMarker, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        var worktreeRoot = Path.Combine(Directory.GetParent(_projectRoot!)!.FullName, ".worktrees");
+        return commandLine.Contains(expectedSourceDirectory, StringComparison.OrdinalIgnoreCase)
+            || commandLine.Contains(worktreeRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ReadProcessCommandLine(int processId)
+    {
+        try
+        {
+            var info = new ProcessStartInfo
+            {
+                FileName = "wmic.exe",
+                Arguments = $"process where processid={processId} get CommandLine /value",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+            };
+            using var process = Process.Start(info);
+            var output = process?.StandardOutput.ReadToEnd();
+            process?.WaitForExit(3000);
+            return output;
+        }
+        catch { return null; }
+    }
+
+    private static int? FindListeningProcessId(int port)
+    {
+        var info = new ProcessStartInfo
+        {
+            FileName = "netstat.exe",
+            Arguments = "-ano -p tcp",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        };
+        using var process = Process.Start(info);
+        var output = process?.StandardOutput.ReadToEnd() ?? "";
+        process?.WaitForExit(3000);
+        var listener = new Regex(
+            $@"^\s*TCP\s+\S+:{port}\s+\S+\s+LISTENING\s+(\d+)\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.Multiline
+        ).Match(output);
+        return listener.Success && int.TryParse(listener.Groups[1].Value, out var processId)
+            ? processId
+            : null;
+    }
+
+    private static bool IsPortAvailable(int port)
     {
         try
         {
             using var listener = new TcpListener(IPAddress.Loopback, port);
             listener.Start();
-            listener.Stop();
+            return true;
         }
-        catch (SocketException)
+        catch (SocketException) { return false; }
+    }
+
+    private static async Task<bool> WaitForPortAvailableAsync(int port, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
         {
-            throw new InvalidOperationException($"{label}端口 {port} 已被其他程序占用。");
+            if (IsPortAvailable(port)) return true;
+            await Task.Delay(150);
         }
+        return IsPortAvailable(port);
     }
 
     private static void OpenBrowser()

@@ -213,6 +213,7 @@ class CorrectionWorkflowService:
         project = self._db.get(Project, proposal.project_id)
         if project is None:
             raise CorrectionConflictError("project is unavailable")
+        project.updated_at = utc_now()
         ProjectProfileService(self._db).upsert_confirmed(
             project=project,
             cost_assumptions={proposal.target_field: proposal.new_value},

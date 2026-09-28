@@ -108,10 +108,16 @@ def test_analysis_chat_api_persists_public_question_and_answer():
             f"/analysis/{report['analysis_id']}/chat",
             json={"question": "这份报告的结论是什么？"},
         )
+        history = client.get(f"/analysis/{report['analysis_id']}/conversation")
 
     assert response.status_code == 200
+    assert history.status_code == 200
     body = response.json()
+    history_body = history.json()
     assert isinstance(body["conversation_id"], int)
+    assert history_body["conversation_id"] == body["conversation_id"]
+    assert [item["role"] for item in history_body["items"]] == ["user", "assistant"]
+    assert history_body["items"][1]["answer_version_id"] == body["answer_version_id"]
     with SessionLocal() as db:
         conversation = db.get(AnalysisConversation, body["conversation_id"])
         assert conversation is not None
@@ -132,3 +138,22 @@ def test_analysis_chat_api_persists_public_question_and_answer():
         assert trace is not None
         assert trace.trace_json["selected_memory_ids"] == []
         assert "content" not in str(trace.trace_json).lower()
+
+
+def test_reading_empty_conversation_does_not_create_one():
+    with TestClient(app) as client:
+        project = client.post(
+            "/projects", json={"name": "空会话店", "stage": "operating"}
+        ).json()
+        report = client.post(
+            "/operating/analyze-sample",
+            json={"project_id": project["id"], "question": "完整分析"},
+        ).json()
+        response = client.get(f"/analysis/{report['analysis_id']}/conversation")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "conversation_id": None,
+        "items": [],
+        "next_before_message_id": None,
+    }

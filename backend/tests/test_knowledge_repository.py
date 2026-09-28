@@ -106,6 +106,78 @@ def test_source_contract_rejects_unstable_source_keys():
         )
 
 
+def test_replace_facts_is_idempotent_for_document_version():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        repository = KnowledgeSourceRepository(db)
+        source = repository.upsert_source(
+            KnowledgeSourceInput(
+                source_key="replace-facts",
+                title="事实替换测试",
+                publisher="测试来源",
+                source_type="official_statistics",
+                canonical_url="https://example.com/facts",
+                reliability_tier=1,
+            )
+        )
+        version, _ = repository.register_version(source.id, _version("sha256:replace"))
+        first = KnowledgeFactInput(
+            fact_key="revenue",
+            label="餐饮收入",
+            value=100,
+            unit="亿元",
+            observed_or_forecast="observed",
+        )
+        replacement = first.model_copy(update={"value": 120})
+
+        repository.replace_facts(version.id, (first,))
+        repository.replace_facts(version.id, (replacement,))
+        db.commit()
+        stored = list(db.scalars(select(KnowledgeFact)))
+
+    assert len(stored) == 1
+    assert stored[0].value_json == 120
+
+
+def test_approve_pending_facts_does_not_change_rejected_facts():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        repository = KnowledgeSourceRepository(db)
+        source = repository.upsert_source(
+            KnowledgeSourceInput(
+                source_key="approve-facts",
+                title="事实审核测试",
+                publisher="测试来源",
+                source_type="official_statistics",
+                canonical_url="https://example.com/approve-facts",
+                reliability_tier=1,
+            )
+        )
+        version, _ = repository.register_version(source.id, _version("sha256:approve"))
+        pending = KnowledgeFactInput(
+            fact_key="pending",
+            label="待审核事实",
+            value=100,
+            observed_or_forecast="observed",
+        )
+        rejected = pending.model_copy(
+            update={"fact_key": "rejected", "label": "已拒绝事实", "review_status": "rejected"}
+        )
+        repository.replace_facts(version.id, (pending, rejected))
+
+        changed = repository.approve_pending_facts(version.id)
+        db.commit()
+        statuses = {
+            fact.fact_key: fact.review_status
+            for fact in db.scalars(select(KnowledgeFact))
+        }
+
+    assert changed == 1
+    assert statuses == {"pending": "approved", "rejected": "rejected"}
+
+
 def test_reviewed_fact_repository_applies_active_city_and_forecast_policy():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

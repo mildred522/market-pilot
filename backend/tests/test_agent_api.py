@@ -112,7 +112,7 @@ def test_unified_agent_rejects_intent_that_conflicts_with_project_stage():
 def test_unified_agent_dispatches_validated_manual_location(monkeypatch):
     observed = {}
 
-    def fake_manual(payload, db, client_factory, service_factory):
+    def fake_manual(payload, db, current_user, client_factory, service_factory):
         observed["payload"] = payload
         return {"mode": "manual", "analysis_id": 42}
 
@@ -169,7 +169,7 @@ def test_unified_location_rejects_low_level_provider_controls():
 def test_unified_agent_dispatches_operating_diagnosis(monkeypatch):
     observed = {}
 
-    def fake_operating(payload, db):
+    def fake_operating(payload, db, current_user):
         observed["payload"] = payload
         return {"analysis_id": 7, "summary": "营业诊断完成"}
 

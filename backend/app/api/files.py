@@ -4,6 +4,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, get_current_user, require_owned_project
 from app.db.models import Project, UploadedFile
 from app.db.session import get_db
 from app.schemas.operating import UploadResponse
@@ -26,10 +27,9 @@ async def upload_file(
     file_type: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> UploadResponse:
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail={"code": "project_not_found", "message": "project not found"})
+    project = require_owned_project(db, current_user, project_id)
     if project.stage != "operating":
         raise HTTPException(status_code=422, detail={"code": "invalid_project_stage", "message": "CSV uploads require an operating project"})
     if file_type not in CSV_FILE_TYPES:
@@ -45,8 +45,9 @@ async def upload_file(
         summary = mapping_summary(frame, file_type)
     except CsvIngestionError as error:
         raise HTTPException(status_code=422, detail={"code": error.code, "message": str(error)}) from error
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    target = UPLOAD_DIR / f"{project_id}-{file_type}-{uuid4().hex}.csv"
+    project_upload_dir = UPLOAD_DIR / current_user.id / str(project.id)
+    project_upload_dir.mkdir(parents=True, exist_ok=True)
+    target = project_upload_dir / f"{file_type}-{uuid4().hex}.csv"
     target.write_bytes(data)
     row = UploadedFile(
         project_id=project_id,

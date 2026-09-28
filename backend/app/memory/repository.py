@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import AnalysisConversation, AnalysisMessage, utc_now
+from app.db.models import AnalysisConversation, AnalysisMessage, Project, utc_now
 from app.memory.contracts import PublicMemoryMessage
 
 
@@ -29,17 +29,27 @@ class ConversationRepository:
             self._db.flush()
         return conversation
 
+    def get_for_analysis(self, analysis_id: int) -> AnalysisConversation | None:
+        """Find persisted history without creating a conversation during a read."""
+        return self._db.scalar(
+            select(AnalysisConversation).where(
+                AnalysisConversation.analysis_id == analysis_id
+            )
+        )
+
     def append_exchange(
         self,
         *,
         conversation_id: int,
         question: str,
         answer: dict[str, Any],
+        answer_version_id: int | None = None,
     ) -> None:
         self._db.add(
             AnalysisMessage(
                 conversation_id=conversation_id,
                 role="user",
+                status="completed",
                 content=question[:4000],
                 mode="public",
                 evidence_refs_json=[],
@@ -49,8 +59,10 @@ class ConversationRepository:
         self._db.add(
             AnalysisMessage(
                 conversation_id=conversation_id,
+                answer_version_id=answer_version_id,
                 role="assistant",
-                content=str(answer.get("answer", ""))[:4000],
+                status="completed",
+                content=str(answer.get("answer", ""))[:8000],
                 mode=str(answer.get("mode", "deterministic"))[:32],
                 evidence_refs_json=_string_list(answer.get("evidence_refs")),
                 tool_calls_json=_tool_calls(answer.get("tool_calls")),
@@ -59,6 +71,25 @@ class ConversationRepository:
         conversation = self._db.get(AnalysisConversation, conversation_id)
         if conversation is not None:
             conversation.updated_at = utc_now()
+            project = self._db.get(Project, conversation.project_id)
+            if project is not None:
+                project.updated_at = utc_now()
+
+    def list_messages(
+        self, conversation_id: int, *, limit: int = 40, before_id: int | None = None
+    ) -> list[AnalysisMessage]:
+        bounded_limit = max(1, min(limit, 100))
+        statement = (
+            select(AnalysisMessage)
+            .where(AnalysisMessage.conversation_id == conversation_id)
+            .order_by(AnalysisMessage.id.desc())
+            .limit(bounded_limit)
+        )
+        if before_id is not None:
+            statement = statement.where(AnalysisMessage.id < before_id)
+        rows = list(self._db.scalars(statement).all())
+        rows.reverse()
+        return rows
 
     def list_recent_messages(
         self, conversation_id: int, *, limit: int = 6

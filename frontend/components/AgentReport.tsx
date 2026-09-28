@@ -14,6 +14,7 @@ import { DiscountProfitPanel } from "@/components/DiscountProfitPanel";
 import { AgentRunStatus } from "@/components/AgentRunStatus";
 import { AnalysisFollowup } from "@/components/AnalysisFollowup";
 import type { AnalysisReport, OperatingMetrics } from "@/lib/types";
+import { presentMetric } from "@/lib/metric-presentation";
 
 function isOperatingMetrics(metrics: AnalysisReport["metrics"]): metrics is OperatingMetrics {
   return "revenue" in metrics && "menu" in metrics && "reviews" in metrics;
@@ -83,10 +84,10 @@ export function AgentReport({ report }: { report: AnalysisReport }) {
             : "default"
         }
       ]
-    : Object.entries(report.metrics as Record<string, number>).map(([key, value]) => ({
-        label: key,
-        value
-      }));
+    : Object.entries(report.metrics as Record<string, number>).map(([key, value]) => {
+        const metric = presentMetric(key, value);
+        return { label: metric.label, value: metric.value, hint: metric.source };
+      });
 
   return (
     <div className="report-layout">
@@ -139,7 +140,7 @@ export function AgentReport({ report }: { report: AnalysisReport }) {
         <EvidencePanel evidence={report.evidence} />
         <ActionList actions={report.actions} />
       </div>
-      {report.stage === "operating" ? <AnalysisFollowup analysisId={report.analysis_id} /> : null}
+      <AnalysisFollowup analysisId={report.analysis_id} stage={report.stage} />
     </div>
   );
 }

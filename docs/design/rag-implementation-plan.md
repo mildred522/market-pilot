@@ -135,7 +135,7 @@ knowledge_sources
   created_at, updated_at
 
 knowledge_document_versions
-  id, source_id, version_number, content_hash(unique per source)
+  id, source_id, version_number, content_hash(unique build fingerprint per source)
   published_at, data_period_start, data_period_end
   effective_from, effective_to, fact_status
   raw_storage_path, media_type, parser_version, chunker_version
@@ -151,10 +151,12 @@ knowledge_ingestion_jobs
   chunks_parsed, chunks_indexed, started_at, finished_at
 ```
 
-`knowledge_sources` describes stable provenance. A new upstream publication or
-changed body creates a `knowledge_document_versions` row instead of overwriting the
-old version. `knowledge_facts` is for reviewed values that require exact comparison;
-it is not a mandatory extraction result for every passage.
+`knowledge_sources` describes stable provenance. The version `content_hash` is a
+SHA-256 build fingerprint over the raw file hash, parser version, chunker version,
+and embedding model. A changed publication or processing pipeline therefore creates
+a `knowledge_document_versions` row instead of overwriting the old version.
+`knowledge_facts` is for reviewed values that require exact comparison; it is not a
+mandatory extraction result for every passage.
 
 ### 6.2 Raw files
 
