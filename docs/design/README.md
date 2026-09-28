@@ -5,6 +5,7 @@
 
 ## 核心架构
 
+- [电商经营 Agent 转型规划](ecommerce-agent-transformation.md)：产品转型、Olist 数据、指标代号层与门禁、ToB 图记忆及验收路径；尚未实施。
 - [系统架构](../restaurant-agent-architecture.md)：业务模块、服务边界、数据流和部署结构。
 - [MVP 架构](../restaurant-agent-mvp-architecture-plan.md)：前后端职责和初始模块划分。
 - [Agent 核心](../agent-core-design.md)：LLM、Plan、Tool、Memory 和可观测性边界。

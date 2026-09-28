@@ -108,6 +108,12 @@ npm run dev
 
 经营诊断支持订单、菜品成本、评论三类 CSV，兼容 UTF-8、UTF-8 BOM 和 GB18030，单文件上限 5 MB。也可以直接使用仓库内的中文样例数据生成完整报告。
 
+### 电商经营 Agent 转型规划（提案）
+
+下一阶段拟从餐饮经营诊断转向真实数据驱动的电商卖家 Agent。业务范围、Olist 数据集下载与验证、指标代号层和 SQL 门禁、Hermes 式记忆沉淀与 Graphiti 式时序图，以及分阶段验收，统一记录在 [电商经营 Agent 转型规划](docs/design/ecommerce-agent-transformation.md)。
+
+**目前仅为规划，尚未实现 Olist 导入或电商经营分析。** 原始 Olist CSV 不能直接上传到当前餐饮经营页面；数据集没有可用的采购成本，不能据此计算毛利。原始数据不纳入仓库。
+
 ## 为什么必须是 Agent
 
 | 普通 LLM 数据分析 | Market Pilot |
