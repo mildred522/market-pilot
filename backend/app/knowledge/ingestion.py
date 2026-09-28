@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -7,9 +8,11 @@ from typing import Protocol
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
+from app.knowledge.admission import KnowledgeAdmissionPolicy
 from app.knowledge.chunker import DeterministicKnowledgeChunker
 from app.knowledge.contracts import KnowledgeDocumentVersionInput
 from app.knowledge.document import AcquiredDocument
+from app.knowledge.fact_extractor import DeterministicKnowledgeFactExtractor
 from app.knowledge.index_store import KnowledgeIndexStore
 from app.knowledge.manifest import KnowledgeManifestEntry
 from app.knowledge.parser import DocumentParser
@@ -33,8 +36,11 @@ class KnowledgeIngestionResult(BaseModel):
     status: str
     document_version_id: int | None = None
     chunks_indexed: int = 0
+    facts_extracted: int = 0
     error_code: str | None = None
     message: str | None = None
+    admission_route: str | None = None
+    admission_warnings: tuple[str, ...] = ()
 
 
 class KnowledgeIngestionCoordinator:
@@ -48,6 +54,8 @@ class KnowledgeIngestionCoordinator:
         chunker: DeterministicKnowledgeChunker,
         index_store: KnowledgeIndexStore,
         embedding_model: str,
+        admission_policy: KnowledgeAdmissionPolicy | None = None,
+        fact_extractor: DeterministicKnowledgeFactExtractor | None = None,
     ) -> None:
         self._db = db
         self._loader = loader
@@ -56,6 +64,8 @@ class KnowledgeIngestionCoordinator:
         self._chunker = chunker
         self._index = index_store
         self._embedding_model = embedding_model
+        self._admission = admission_policy or KnowledgeAdmissionPolicy()
+        self._fact_extractor = fact_extractor or DeterministicKnowledgeFactExtractor()
         self._repository = KnowledgeSourceRepository(db)
 
     def ingest(
@@ -64,6 +74,16 @@ class KnowledgeIngestionCoordinator:
         *,
         manifest_directory: Path,
     ) -> KnowledgeIngestionResult:
+        source_decision = self._admission.classify(entry)
+        if not source_decision.accepted_for_qdrant:
+            return KnowledgeIngestionResult(
+                source_key=entry.source.source_key,
+                status="rejected",
+                error_code=source_decision.reason_codes[0],
+                message="source route is not eligible for Qdrant indexing",
+                admission_route=source_decision.route,
+                admission_warnings=source_decision.warnings,
+            )
         version = None
         job = None
         chunks_indexed = 0
@@ -77,10 +97,16 @@ class KnowledgeIngestionCoordinator:
                 document=acquired,
             )
             source = self._repository.upsert_source(entry.source)
+            build_hash = _document_build_hash(
+                acquired.sha256,
+                parser_version=self._parser.version,
+                chunker_version=self._chunker.version,
+                embedding_model=self._embedding_model,
+            )
             version, created = self._repository.register_version(
                 source.id,
                 KnowledgeDocumentVersionInput(
-                    content_hash=acquired.sha256,
+                    content_hash=build_hash,
                     published_at=entry.published_at,
                     data_period_start=entry.data_period_start,
                     data_period_end=entry.data_period_end,
@@ -95,22 +121,54 @@ class KnowledgeIngestionCoordinator:
                 ),
             )
             if not created and version.index_status == "active":
+                if self._fact_extractor.review_status == "approved":
+                    self._repository.approve_pending_facts(version.id)
                 self._db.commit()
                 return KnowledgeIngestionResult(
                     source_key=entry.source.source_key,
                     status="unchanged",
                     document_version_id=version.id,
                     chunks_indexed=self._index.count(version.id),
+                    facts_extracted=self._repository.count_facts(version.id),
+                    admission_route=source_decision.route,
                 )
 
             version.index_status = "indexing"
             job = self._repository.start_job(version.id)
             parsed = self._parser.parse(acquired, title=entry.source.title)
+            admission = self._admission.assess(entry, acquired, parsed)
+            if not admission.accepted_for_qdrant:
+                now = datetime.now(UTC)
+                self._repository.fail_version(version)
+                self._repository.finish_job(
+                    job,
+                    status="failed",
+                    stage="admission_rejected",
+                    chunks_parsed=0,
+                    chunks_indexed=0,
+                    finished_at=now,
+                    error_code=admission.reason_codes[0],
+                )
+                self._db.commit()
+                return KnowledgeIngestionResult(
+                    source_key=entry.source.source_key,
+                    status="rejected",
+                    document_version_id=version.id,
+                    error_code=admission.reason_codes[0],
+                    message=", ".join(admission.reason_codes),
+                    admission_route=admission.route,
+                    admission_warnings=admission.warnings,
+                )
             chunks = self._chunker.chunk(
                 parsed,
                 entry=entry,
                 source=source,
                 version=version,
+            )
+            facts = (
+                self._fact_extractor.extract(chunks, entry=entry)
+                if admission.extract_structured_facts
+                else ()
             )
             if not chunks:
                 raise ValueError("parser produced no chunks")
@@ -120,6 +178,8 @@ class KnowledgeIngestionCoordinator:
             chunks_indexed = self._index.count(version.id)
             if chunks_indexed != len(chunks):
                 raise ValueError("staged index count does not match parsed chunks")
+
+            self._repository.replace_facts(version.id, facts)
 
             previous = self._repository.active_version(source.id)
             retire_ids = (previous.id,) if previous is not None else ()
@@ -143,6 +203,9 @@ class KnowledgeIngestionCoordinator:
                 status="ingested",
                 document_version_id=version.id,
                 chunks_indexed=chunks_indexed,
+                facts_extracted=len(facts),
+                admission_route=admission.route,
+                admission_warnings=admission.warnings,
             )
         except Exception as error:
             cleanup_error = None
@@ -183,3 +246,16 @@ def _error_code(error: Exception) -> str:
         f"_{character.lower()}" if character.isupper() else character
         for character in name
     ).lstrip("_")[:80]
+
+
+def _document_build_hash(
+    raw_sha256: str,
+    *,
+    parser_version: str,
+    chunker_version: str,
+    embedding_model: str,
+) -> str:
+    identity = "\n".join(
+        (raw_sha256, parser_version, chunker_version, embedding_model)
+    )
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()

@@ -13,5 +13,7 @@ dotnet publish $projectFile `
     -p:DebugSymbols=false `
     --output $outputDirectory
 
+if ($LASTEXITCODE -ne 0) { throw "Launcher build failed." }
+
 Write-Host ""
 Write-Host "Launcher created: $outputDirectory\MarketPilotLauncher.exe"

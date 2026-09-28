@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, get_current_user, require_owned_project
 from app.agent_runtime.contracts import CapabilityIntent, CapabilityName
 from app.agent_runtime.request_router import (
     CapabilityRoutingError,
@@ -42,20 +43,15 @@ logger = logging.getLogger(__name__)
 
 @router.post("/analyze", response_model=AgentAnalyzeResponse)
 def analyze_with_agent(
-    request: AgentAnalyzeRequest, db: Session = Depends(get_db)
+    request: AgentAnalyzeRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> AgentAnalyzeResponse:
     capability = capability_for_intent(request.intent)
     if request.project_id is None:
         return _clarification(request, capability, ["project_id"])
 
-    project = db.get(Project, request.project_id)
-    if project is None:
-        return _input_failure(
-            request,
-            capability,
-            code="project_not_found",
-            message="project not found",
-        )
+    project = require_owned_project(db, current_user, request.project_id)
     try:
         decision = route_capability(intent=request.intent, project_stage=project.stage)
     except CapabilityRoutingError as error:
@@ -91,7 +87,7 @@ def analyze_with_agent(
         )
 
     try:
-        result = _execute(decision.capability, request, payload, db)
+        result = _execute(decision.capability, request, payload, db, current_user)
     except HTTPException as error:
         db.rollback()
         return _classified_http_failure(request, capability, error)
@@ -123,15 +119,16 @@ def _execute(
     request: AgentAnalyzeRequest,
     payload: BaseModel,
     db: Session,
+    current_user: CurrentUser,
 ) -> object:
     if capability == CapabilityName.PRE_OPEN_FEASIBILITY:
         if not isinstance(payload, PreOpenAnalyzeRequest):
             raise TypeError("invalid pre-open capability payload")
-        return analyze_pre_open(payload, db)
+        return analyze_pre_open(payload, db, current_user)
     if capability == CapabilityName.OPERATING_DIAGNOSIS:
         if not isinstance(payload, OperatingAnalyzeRequest):
             raise TypeError("invalid operating capability payload")
-        return analyze_operating(payload, db)
+        return analyze_operating(payload, db, current_user)
 
     if not isinstance(
         payload, (ManualLocationAnalysisRequest, LocationRecommendationsRequest)
@@ -154,12 +151,14 @@ def _execute(
         return manual_analysis(
             payload,  # type: ignore[arg-type]
             db,
+            current_user,
             client_factory,
             service_factory,
         )
     return recommendations(
         payload,  # type: ignore[arg-type]
         db,
+        current_user,
         client_factory,
         service_factory,
     )

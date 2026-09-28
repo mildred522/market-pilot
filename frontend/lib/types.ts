@@ -1,5 +1,11 @@
 export type Stage = "pre_open" | "operating";
 
+export type AuthenticatedUser = {
+  id: string;
+  email: string;
+  is_admin: boolean;
+};
+
 export type IntegrationStatus = {
   configured: boolean;
   source: "saved" | "runtime" | "environment" | null;
@@ -42,7 +48,7 @@ export type DashboardOverview = {
   workspace: {
     name: string;
     role: string;
-    account_mode: "local";
+    account_mode: "authenticated";
   };
   counts: {
     projects: number;
@@ -70,6 +76,47 @@ export type Project = {
   id: number;
   name: string;
   stage: Stage;
+};
+
+export type ProjectHistoryItem = Project & {
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectHistoryPage = {
+  items: ProjectHistoryItem[];
+  next_offset: number | null;
+};
+
+export type AnalysisHistoryItem = {
+  id: number;
+  stage: Stage;
+  summary: string;
+  created_at: string;
+  conversation_id: number | null;
+  conversation_updated_at: string | null;
+};
+
+export type ProjectAnalyses = {
+  project: ProjectHistoryItem;
+  items: AnalysisHistoryItem[];
+};
+
+export type ConversationMessage = {
+  id: number;
+  role: "user" | "assistant";
+  status: "completed" | "pending" | "failed";
+  content: string;
+  mode: string;
+  answer_version_id: number | null;
+  evidence_refs: string[];
+  created_at: string;
+};
+
+export type ConversationHistory = {
+  conversation_id: number | null;
+  items: ConversationMessage[];
+  next_before_message_id: number | null;
 };
 
 export type PreOpenInput = {
@@ -462,19 +509,6 @@ export type FollowupSections = {
   }>;
   general_advice: string[];
   missing_information: string[];
-};
-
-export type AnswerVersion = {
-  id: number;
-  parent_version_id: number | null;
-  original_question: string;
-  user_feedback: string | null;
-  revision_type: string;
-  answer: string;
-  sections: FollowupSections | Record<string, never>;
-  evidence_refs: string[];
-  quality: string;
-  created_at: string;
 };
 
 export type UploadedFileResult = {

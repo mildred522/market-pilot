@@ -13,6 +13,7 @@ load_dotenv()
 from app.db.models import Base
 from app.knowledge.chunker import DeterministicKnowledgeChunker
 from app.knowledge.embeddings import QwenSentenceTransformerEmbeddings
+from app.knowledge.fact_extractor import DeterministicKnowledgeFactExtractor
 from app.knowledge.index_store import InMemoryKnowledgeIndexStore
 from app.knowledge.ingestion import KnowledgeIngestionCoordinator
 from app.knowledge.manifest import load_knowledge_manifest
@@ -57,6 +58,14 @@ def main() -> int:
         "--allow-model-download",
         action="store_true",
         help="Allow dense model download during this offline ingestion run.",
+    )
+    parser.add_argument(
+        "--approve-deterministic-facts",
+        action="store_true",
+        help=(
+            "Mark deterministic facts from this reviewed manifest as approved; "
+            "the default is pending review."
+        ),
     )
     parser.add_argument(
         "--allow-proxy-fake-ip",
@@ -115,6 +124,11 @@ def main() -> int:
             chunker=DeterministicKnowledgeChunker(),
             index_store=index_store,
             embedding_model=settings.dense_model,
+            fact_extractor=DeterministicKnowledgeFactExtractor(
+                review_status=(
+                    "approved" if args.approve_deterministic_facts else "pending"
+                )
+            ),
         )
         selected = [
             entry
@@ -141,7 +155,7 @@ def main() -> int:
             indent=2,
         )
     )
-    return 1 if any(result.status == "failed" for result in results) else 0
+    return 1 if any(result.status in {"failed", "rejected"} for result in results) else 0
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, get_current_user, require_owned_analysis
 from app.agent_runtime.followup import ReportFollowupAgent
 from app.agent_runtime.llm_client import llm_client_from_environment
 from app.agent_runtime.prompts import PROMPT_VERSION
@@ -35,10 +36,9 @@ def chat_with_analysis(
     analysis_id: int,
     payload: AnalysisChatRequest,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, object]:
-    result = db.get(AnalysisResult, analysis_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="analysis not found")
+    result = require_owned_analysis(db, current_user, analysis_id)
     repository = ConversationRepository(db)
     conversation = repository.get_or_create(result.id, result.project_id)
     conversation_context = build_conversation_context(
@@ -212,6 +212,7 @@ def chat_with_analysis(
         conversation_id=conversation.id,
         question=payload.feedback or question,
         answer=answer,
+        answer_version_id=version.id,
     )
     trace = dict(answer.get("agent_trace", {}))
     AgentTraceRecorder(db).record(
@@ -249,11 +250,11 @@ def chat_with_analysis(
 
 @router.get("/{analysis_id}/answer-versions")
 def list_answer_versions(
-    analysis_id: int, db: Session = Depends(get_db)
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> list[dict[str, object]]:
-    result = db.get(AnalysisResult, analysis_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="analysis not found")
+    require_owned_analysis(db, current_user, analysis_id)
     return [
         {
             "id": version.id,
@@ -271,13 +272,55 @@ def list_answer_versions(
     ]
 
 
+@router.get("/{analysis_id}/conversation")
+def get_conversation_history(
+    analysis_id: int,
+    limit: int = Query(default=40, ge=1, le=100),
+    before_message_id: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict[str, object]:
+    """Return persisted conversation data only; this route never invokes an agent."""
+    require_owned_analysis(db, current_user, analysis_id)
+    repository = ConversationRepository(db)
+    conversation = repository.get_for_analysis(analysis_id)
+    if conversation is None:
+        return {
+            "conversation_id": None,
+            "items": [],
+            "next_before_message_id": None,
+        }
+    messages = repository.list_messages(
+        conversation.id, limit=limit, before_id=before_message_id
+    )
+    return {
+        "conversation_id": conversation.id,
+        "items": [
+            {
+                "id": message.id,
+                "role": message.role,
+                "status": message.status,
+                "content": message.content,
+                "mode": message.mode,
+                "answer_version_id": message.answer_version_id,
+                "evidence_refs": message.evidence_refs_json,
+                "created_at": message.created_at,
+            }
+            for message in messages
+        ],
+        "next_before_message_id": (
+            messages[0].id if len(messages) == limit else None
+        ),
+    }
+
+
 @router.get("/{analysis_id}")
 def get_analysis(
-    analysis_id: int, db: Session = Depends(get_db)
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, object]:
-    result = db.get(AnalysisResult, analysis_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="analysis not found")
+    result = require_owned_analysis(db, current_user, analysis_id)
 
     return {
         "analysis_id": result.id,

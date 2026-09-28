@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { DashboardOverview, IntegrationStatus } from "../lib/types";
 import IntegrationSettings from "./IntegrationSettings";
+import { logout } from "@/lib/api";
 
 const stageNames = { pre_open: "开店前", operating: "经营中" };
 
@@ -14,12 +15,17 @@ export default function DashboardShell({ initialOverview }: { initialOverview: D
     setIntegrations((current) => ({ ...current, [name]: status }));
   }
 
+  async function signOut() {
+    await logout();
+    window.location.reload();
+  }
+
   return (
     <main className="control-shell">
       <aside className="control-rail">
         <a className="brand-lockup" href="/"><span>MP</span><strong>Market Pilot</strong></a>
-        <nav aria-label="控制台导航"><a className="is-active" href="#overview">工作台</a><a href="/pre-open#feasibility">开店前分析</a><a href="/pre-open#location">商圈与选址</a><a href="/operating#diagnosis">经营诊断</a><a href="#integrations">集成配置</a></nav>
-        <div className="account-block"><span className="account-avatar">M</span><div><strong>{workspace.name}</strong><small>{workspace.role} · 单用户模式</small></div></div>
+        <nav aria-label="控制台导航"><a className="is-active" href="#overview">工作台</a><a href="/pre-open#feasibility">开店前分析</a><a href="/pre-open#location">商圈与选址</a><a href="/operating#diagnosis">经营诊断</a><a href="/history">历史记录</a><a href="#integrations">集成配置</a></nav>
+        <div className="account-block"><span className="account-avatar">{workspace.name.slice(0, 1).toUpperCase()}</span><div><strong>{workspace.name}</strong><small>{workspace.role} · 私有工作区</small><button onClick={() => void signOut()} type="button">退出登录</button></div></div>
       </aside>
 
       <div className="control-main">

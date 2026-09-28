@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -131,6 +131,42 @@ class KnowledgeSourceRepository:
         self._db.add(fact)
         self._db.flush()
         return fact
+
+    def replace_facts(
+        self,
+        document_version_id: int,
+        values: tuple[KnowledgeFactInput, ...],
+    ) -> tuple[KnowledgeFact, ...]:
+        self._db.execute(
+            delete(KnowledgeFact).where(
+                KnowledgeFact.document_version_id == document_version_id
+            )
+        )
+        facts = tuple(self.add_fact(document_version_id, value) for value in values)
+        self._db.flush()
+        return facts
+
+    def count_facts(self, document_version_id: int) -> int:
+        return int(
+            self._db.scalar(
+                select(func.count(KnowledgeFact.id)).where(
+                    KnowledgeFact.document_version_id == document_version_id
+                )
+            )
+            or 0
+        )
+
+    def approve_pending_facts(self, document_version_id: int) -> int:
+        result = self._db.execute(
+            update(KnowledgeFact)
+            .where(
+                KnowledgeFact.document_version_id == document_version_id,
+                KnowledgeFact.review_status == "pending",
+            )
+            .values(review_status="approved")
+        )
+        self._db.flush()
+        return int(result.rowcount or 0)
 
     def start_job(self, document_version_id: int) -> KnowledgeIngestionJob:
         job = KnowledgeIngestionJob(

@@ -4,6 +4,7 @@ from collections.abc import Generator
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.db.migrations import apply_compatibility_migrations
 from app.db.models import Base
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./restaurant_agent.db")
@@ -30,6 +31,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    apply_compatibility_migrations(engine)
 
 
 def get_db() -> Generator[Session]:

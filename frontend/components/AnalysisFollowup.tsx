@@ -2,15 +2,16 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { askAnalysis, confirmCorrection, getAnswerVersions, getCorrections, rejectCorrection } from "@/lib/api";
-import type { AnalysisFollowupResponse, AnswerVersion, CorrectionConfirmation, CorrectionProposal, FollowupSections } from "@/lib/types";
+import { askAnalysis, confirmCorrection, getConversationHistory, getCorrections, rejectCorrection } from "@/lib/api";
+import type { AnalysisFollowupResponse, ConversationMessage, CorrectionConfirmation, CorrectionProposal, FollowupSections } from "@/lib/types";
 
-export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
+export function AnalysisFollowup({ analysisId, stage }: { analysisId: number; stage: "pre_open" | "operating" }) {
+  const isOperating = stage === "operating";
   const [question, setQuestion] = useState("");
   const [feedback, setFeedback] = useState("");
   const [revisionParentId, setRevisionParentId] = useState<number | null>(null);
   const [result, setResult] = useState<AnalysisFollowupResponse | null>(null);
-  const [versions, setVersions] = useState<AnswerVersion[]>([]);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [corrections, setCorrections] = useState<CorrectionProposal[]>([]);
   const [correctionResults, setCorrectionResults] = useState<Record<number, CorrectionConfirmation>>({});
   const [correctionActionId, setCorrectionActionId] = useState<number | null>(null);
@@ -20,7 +21,7 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
   const feedbackRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    void refreshVersions();
+    void refreshHistory();
   }, [analysisId]);
 
   useEffect(() => {
@@ -30,17 +31,17 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
     return () => window.clearInterval(timer);
   }, [loading]);
 
-  async function refreshVersions() {
+  async function refreshHistory() {
     try {
-      const [nextVersions, nextCorrections] = await Promise.all([
-        getAnswerVersions(analysisId),
-        getCorrections(analysisId)
+      const [nextCorrections, nextConversation] = await Promise.all([
+        getCorrections(analysisId),
+        getConversationHistory(analysisId)
       ]);
-      setVersions(nextVersions);
       setCorrections(nextCorrections);
+      setMessages(nextConversation.items);
     } catch {
-      setVersions([]);
       setCorrections([]);
+      setMessages([]);
     }
   }
 
@@ -50,7 +51,7 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
     try {
       const confirmation = await confirmCorrection(proposal);
       setCorrectionResults((current) => ({ ...current, [proposal.id]: confirmation }));
-      await refreshVersions();
+      await refreshHistory();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "经营事实更正失败");
     } finally {
@@ -63,7 +64,7 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
     setError("");
     try {
       await rejectCorrection(proposal.id);
-      await refreshVersions();
+      await refreshHistory();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "拒绝更正失败");
     } finally {
@@ -96,7 +97,7 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
     try {
       const next = await request();
       setResult(next);
-      await refreshVersions();
+      await refreshHistory();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "追问失败");
     } finally {
@@ -115,11 +116,36 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
     <section className="report-section followup-section">
       <div className="section-heading">
         <div>
-          <p className="kicker">经营顾问</p>
+          <p className="kicker">{isOperating ? "经营顾问" : "开店顾问"}</p>
           <h2>追问这份报告</h2>
         </div>
-        <p>结合门店数据回答；需要历史或外部资料时会单独核验。</p>
+        <p>{isOperating ? "结合门店数据回答；需要历史或外部资料时会单独核验。" : "结合已保存的测算和商圈证据回答；不会改写原始结论。"}</p>
       </div>
+
+      {messages.length ? (
+        <details className="followup-transcript" open>
+          <summary>已保存的对话（{messages.length}）</summary>
+          <ol>
+            {messages.map((message) => (
+              <li className={`followup-transcript-${message.role}`} key={message.id}>
+                <div>
+                  <strong>{message.role === "user" ? "你的问题" : "顾问回答"}</strong>
+                  <span>{formatDate(message.created_at)}</span>
+                </div>
+                <p>{message.content}</p>
+                {message.role === "assistant" && message.answer_version_id ? (
+                  <button
+                    onClick={() => reviseVersion(message.answer_version_id!)}
+                    type="button"
+                  >
+                    基于此回答修改
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
 
       <form className="followup-form" onSubmit={submitQuestion}>
         <input
@@ -127,7 +153,7 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
           maxLength={500}
           name="question"
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="例如：根据现有表现，哪些菜品值得主推？"
+          placeholder={isOperating ? "例如：根据现有表现，哪些菜品值得主推？" : "例如：这个项目最需要补充验证什么？"}
           value={question}
         />
         <button disabled={loading || !question.trim()} type="submit">
@@ -274,23 +300,6 @@ export function AnalysisFollowup({ analysisId }: { analysisId: number }) {
         </section>
       ) : null}
 
-      {versions.length ? (
-        <details className="followup-version-history">
-          <summary>回答版本（{versions.length}）</summary>
-          <ol>
-            {[...versions].reverse().map((version) => (
-              <li key={version.id}>
-                <div>
-                  <strong>版本 #{version.id}</strong>
-                  <span>{versionLabel(version.revision_type)} · {formatDate(version.created_at)}</span>
-                </div>
-                <p>{version.user_feedback || version.original_question}</p>
-                <button onClick={() => reviseVersion(version.id)} type="button">基于此版本修改</button>
-              </li>
-            ))}
-          </ol>
-        </details>
-      ) : null}
     </section>
   );
 }
@@ -387,17 +396,6 @@ function followupModeLabel(mode: AnalysisFollowupResponse["mode"]): string {
   if (mode === "insufficient_data") return "数据不足";
   if (mode === "confirmation_required") return "待确认";
   return "报告数据回答";
-}
-
-function versionLabel(revisionType: string): string {
-  const labels: Record<string, string> = {
-    initial: "初始回答",
-    rewrite_only: "表达调整",
-    recompose_with_existing_evidence: "基于原证据重组",
-    retrieve_more_evidence: "补充证据",
-    recompute_metrics: "事实更正"
-  };
-  return labels[revisionType] ?? "回答修订";
 }
 
 function formatDate(value: string): string {

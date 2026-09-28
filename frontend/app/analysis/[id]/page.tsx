@@ -1,5 +1,4 @@
-import { AgentReport } from "@/components/AgentReport";
-import { getAnalysis } from "@/lib/api";
+import { AnalysisLoader } from "@/components/AnalysisLoader";
 
 type AnalysisPageProps = {
   params: Promise<{
@@ -9,13 +8,5 @@ type AnalysisPageProps = {
 
 export default async function AnalysisPage({ params }: AnalysisPageProps) {
   const { id } = await params;
-  const report = await getAnalysis(Number(id));
-
-  return (
-    <div className="report-page">
-      <main className="shell report-shell">
-        <AgentReport report={report} />
-      </main>
-    </div>
-  );
+  return <AnalysisLoader analysisId={Number(id)} />;
 }

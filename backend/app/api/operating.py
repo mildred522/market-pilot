@@ -4,7 +4,8 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.models import AnalysisResult, AnalysisRun, Project, UploadedFile
+from app.auth.dependencies import CurrentUser, get_current_user, require_owned_project
+from app.db.models import AnalysisResult, AnalysisRun, Project, UploadedFile, utc_now
 from app.db.session import get_db
 from app.schemas.operating import (
     OperatingAnalyzeRequest,
@@ -29,9 +30,11 @@ SAMPLE_DIR = Path(__file__).resolve().parents[2] / "sample_data"
 
 @router.post("/analyze")
 def analyze_operating(
-    payload: OperatingAnalyzeRequest, db: Session = Depends(get_db)
+    payload: OperatingAnalyzeRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, object]:
-    project = _require_operating_project(db, payload.project_id)
+    project = _require_operating_project(db, current_user, payload.project_id)
     try:
         orders = _load_selection(db, payload.project_id, "orders", payload.orders)
         menu = _load_selection(db, payload.project_id, "menu_items", payload.menu_items)
@@ -99,9 +102,11 @@ def analyze_operating(
 
 @router.post("/analyze-sample")
 def analyze_operating_sample(
-    payload: OperatingAnalyzeSampleRequest, db: Session = Depends(get_db)
+    payload: OperatingAnalyzeSampleRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> dict[str, object]:
-    _require_operating_project(db, payload.project_id)
+    _require_operating_project(db, current_user, payload.project_id)
     service = AgentService()
     assumptions = {
         "monthly_rent": 18000.0,
@@ -168,6 +173,9 @@ def _persist_report(
     )
     db.add(result)
     db.flush()
+    project = db.get(Project, int(report["project_id"]))
+    if project is not None:
+        project.updated_at = utc_now()
     AnalysisInputSnapshotRepository(db).create(
         analysis_id=result.id,
         project_id=int(report["project_id"]),
@@ -216,13 +224,10 @@ def _persist_report(
     }
 
 
-def _require_operating_project(db: Session, project_id: int) -> Project:
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "project_not_found", "message": "project not found"},
-        )
+def _require_operating_project(
+    db: Session, current_user: CurrentUser, project_id: int
+) -> Project:
+    project = require_owned_project(db, current_user, project_id)
     if project.stage != "operating":
         raise HTTPException(
             status_code=422,

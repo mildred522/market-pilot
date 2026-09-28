@@ -7,8 +7,11 @@
 
 - `backend/data/knowledge/seed-manifest.json`：五条审核来源及时间、地域、品类口径。
 - `backend/app/knowledge/storage.py`：路径、大小、媒体类型、哈希和公网地址检查。
-- `backend/app/knowledge/parser.py`：Markdown 内置解析和 Docling 可选解析。
+- `backend/app/knowledge/parser.py`：Markdown、HTML、文本型 PDF 和普通 DOCX 的轻量结构化解析，复杂文档可选 Docling。
+- `backend/app/knowledge/admission.py`：来源业务路由与解析后正文质量门禁。
 - `backend/app/knowledge/chunker.py`：按标题层级与文档类型确定性切分。
+- `backend/app/knowledge/fact_extractor.py`：从审核来源中确定性抽取带时间、地域和原文块
+  溯源的结构化事实。
 - `backend/app/knowledge/ingestion.py`：版本注册、暂存、计数校验、激活和回滚。
 - `backend/app/knowledge/qdrant_store.py`：Qdrant dense/BM25 命名向量集合。
 
@@ -26,8 +29,9 @@ python -m scripts.ingest_knowledge `
   --storage-root storage/knowledge
 ```
 
-返回 `ingested` 表示完成，使用同一个持久化索引再次导入相同正文应返回
-`unchanged`。内存索引仅用于单进程验证，不用于在线检索。
+返回 `ingested` 表示完成。原文、解析器、切分器和 embedding 模型均未变化时，再次导入应
+返回 `unchanged`；处理链版本升级会基于同一原文创建新文档版本并重建索引。内存索引仅
+用于单进程验证，不用于在线检索。
 
 ## WSL 原生 Qdrant（默认开发方案）
 
@@ -118,8 +122,70 @@ Windows 文件系统。
 2. 本地路径必须位于清单目录内；远程地址必须解析到公网 IP。
 3. 重定向不会自动跟随。来源迁移后先更新并复核清单 URL。
 4. 能取得稳定原文时填写 `expected_sha256`，上游正文变化会触发新版本。
-5. PDF、DOCX 和 HTML 需要 Docling；Markdown 与纯文本使用内置解析器。
+5. Markdown、HTML、文本型 PDF 和普通 DOCX 使用轻量解析器。PDF 按页保留溯源，并将
+   连续数值行单独标记为表格；DOCX 保留标题、段落、编号列表和表格。
 6. 导入失败会将新版本和任务标为 `failed`，不会替换已有活跃版本。
+7. 扫描 PDF 不自动运行 OCR；无文本层时返回 `pdf_requires_ocr_error`。图片、文本框、复杂
+   跨页表格等版式需要先人工复核，再使用 Docling 或外部 OCR 生成文本层副本。
+
+## 自动准入与路由
+
+人工确认来源身份后，系统仍会在写入 Qdrant 前执行两次自动判断：
+
+1. 下载前按 `source_type` 路由。地图、评论和招聘明细进入带 TTL 的实时 Tool；新闻只作
+   线索发现；商户经营数据进入项目隔离的私有分析链路；未知类型要求人工补充策略。
+2. 解析后检查正文长度、乱码比例和中文 PDF 文本保真度。空壳页、编码损坏或中文抽取
+   严重丢失会返回 `rejected`，不会暂存向量。
+
+允许写入 Qdrant 的主要路由如下：
+
+| 来源类型 | 路由 | 额外处理 |
+|---|---|---|
+| 政府统计 | `rag_and_structured_fact` | 同时建议抽取带口径的结构化事实 |
+| 法规、标准元数据 | `normative_rag` | 保留生效日期、效力层级和适用范围 |
+| 交易所披露、协会、学术、地产、品牌 | `rag_document` | 保留利益相关性和样本限制 |
+| 地图、评论、招聘平台 | `live_tool` | 不进入静态 RAG，必须设置查询时间和过期时间 |
+| 新闻媒体 | `discovery_only` | 回溯原始统计或披露来源后再形成经营结论 |
+| 商户经营数据 | `private_analytics` | 按项目隔离，不进入公共知识集合 |
+
+常见拒绝码包括 `source_requires_live_tool`、`source_is_discovery_only`、
+`insufficient_indexable_text` 和 `chinese_pdf_text_loss`。调用方应展示具体原因，不能把
+所有拒绝统一降级成“数据不足”。
+
+真实来源样本审计不会写入正式集合，可独立运行：
+
+```powershell
+python scripts/audit_knowledge_sources.py
+```
+
+结果保存在 `outputs/source-sample-audit/`，包括原始样本、逐份决策和渠道对比报告。
+
+## 结构化事实审核
+
+政府统计和商业地产资料通过准入后，会在写入向量索引的同一轮导入中抽取首批指标：
+
+- 餐饮收入金额与同比增速；
+- 社会消费品零售总额；
+- 零售物业空置率与首层平均租金；
+- 住宿、餐饮服务人员工资中位数。
+
+抽取器只处理明确数值和单位，不让 LLM 猜测表格口径。每条事实记录
+`document_version_id`、`source_chunk_id`、数据周期、地域和品类。重复导入同一文档版本时会
+整体替换该版本的候选事实，避免重复记录。
+
+默认导入的事实为 `pending`，在线 `ReviewedKnowledgeFactRepository` 不会返回它们。人工已
+核对清单与候选值后，重新导入时显式批准：
+
+```powershell
+python -m scripts.ingest_knowledge `
+  --manifest data/knowledge/seed-manifest.json `
+  --index qdrant `
+  --approve-deterministic-facts
+```
+
+命令输出的 `facts_extracted` 是本版本抽取数量。`--approve-deterministic-facts` 只适用于本次
+导入选择的来源，不是全局自动放行开关；事实仍需来自 `active` 文档版本，预测数据也继续受
+检索策略限制。
 
 ## 端到端追问验证
 

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AuthGate } from "@/components/AuthGate";
 import { AppNavigation } from "@/components/AppNavigation";
 import "./globals.css";
 
@@ -14,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body><AppNavigation />{children}</body>
+      <body><AuthGate><AppNavigation />{children}</AuthGate></body>
     </html>
   );
 }

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import CurrentUser, auth_is_disabled, get_current_user, require_admin
 from app.db.models import (
     AnalysisResult,
     LocationAnalysis,
@@ -29,31 +30,35 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/overview")
-def overview(db: Session = Depends(get_db)) -> dict[str, object]:
-    stage_counts = dict(
-        db.execute(
-            select(Project.stage, func.count(Project.id)).group_by(Project.stage)
-        ).all()
-    )
-    recent_rows = db.execute(
+def overview(
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict[str, object]:
+    stage_query = select(Project.stage, func.count(Project.id)).group_by(Project.stage)
+    recent_query = (
         select(AnalysisResult, Project.name)
         .join(Project, Project.id == AnalysisResult.project_id)
         .order_by(AnalysisResult.id.desc())
         .limit(5)
-    ).all()
+    )
+    if not auth_is_disabled():
+        stage_query = stage_query.where(Project.owner_user_id == current_user.id)
+        recent_query = recent_query.where(Project.owner_user_id == current_user.id)
+    stage_counts = dict(db.execute(stage_query).all())
+    recent_rows = db.execute(recent_query).all()
     return {
         "workspace": {
-            "name": "Market Pilot 本地工作区",
-            "role": "Owner",
-            "account_mode": "local",
+            "name": current_user.email,
+            "role": "管理员" if current_user.is_admin else "成员",
+            "account_mode": "authenticated",
         },
         "counts": {
-            "projects": _count(db, Project),
+            "projects": _count_projects(db, current_user),
             "pre_open_projects": int(stage_counts.get("pre_open", 0)),
             "operating_projects": int(stage_counts.get("operating", 0)),
-            "analyses": _count(db, AnalysisResult),
-            "uploaded_files": _count(db, UploadedFile),
-            "location_analyses": _count(db, LocationAnalysis),
+            "analyses": _count_for_projects(db, AnalysisResult, current_user),
+            "uploaded_files": _count_for_projects(db, UploadedFile, current_user),
+            "location_analyses": _count_for_projects(db, LocationAnalysis, current_user),
         },
         "integrations": runtime_config.status(),
         "recent_analyses": [
@@ -70,13 +75,21 @@ def overview(db: Session = Depends(get_db)) -> dict[str, object]:
 
 
 @router.put("/integrations/baidu")
-def update_baidu(payload: BaiduIntegrationUpdate) -> dict[str, object]:
+def update_baidu(
+    payload: BaiduIntegrationUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict[str, object]:
+    require_admin(current_user)
     runtime_config.set_baidu_key(payload.api_key)
     return runtime_config.status()["baidu"]
 
 
 @router.put("/integrations/agent")
-def update_agent(payload: AgentIntegrationUpdate) -> dict[str, object]:
+def update_agent(
+    payload: AgentIntegrationUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict[str, object]:
+    require_admin(current_user)
     runtime_config.set_agent(
         api_key=payload.api_key,
         model=payload.model,
@@ -90,7 +103,11 @@ def update_agent(payload: AgentIntegrationUpdate) -> dict[str, object]:
 
 
 @router.delete("/integrations/{integration}")
-def clear_integration(integration: IntegrationName) -> dict[str, object]:
+def clear_integration(
+    integration: IntegrationName,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict[str, object]:
+    require_admin(current_user)
     runtime_config.clear(integration)
     return runtime_config.status()[integration]
 
@@ -100,7 +117,11 @@ class _AgentProbeResponse(BaseModel):
 
 
 @router.post("/integrations/{integration}/test")
-def test_integration(integration: IntegrationName) -> dict[str, object]:
+def test_integration(
+    integration: IntegrationName,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict[str, object]:
+    require_admin(current_user)
     started_at = perf_counter()
     try:
         details = (
@@ -178,5 +199,21 @@ def _baidu_error_message(error: BaiduMapResponseError) -> str:
     return messages.get(error.kind.value, "百度地图请求失败")
 
 
-def _count(db: Session, model: type[object]) -> int:
-    return int(db.scalar(select(func.count()).select_from(model)) or 0)
+def _count_projects(db: Session, current_user: CurrentUser) -> int:
+    query = select(func.count()).select_from(Project)
+    if not auth_is_disabled():
+        query = query.where(Project.owner_user_id == current_user.id)
+    return int(db.scalar(query) or 0)
+
+
+def _count_for_projects(
+    db: Session, model: type[object], current_user: CurrentUser
+) -> int:
+    query = (
+        select(func.count())
+        .select_from(model)
+        .join(Project, Project.id == model.project_id)  # type: ignore[attr-defined]
+    )
+    if not auth_is_disabled():
+        query = query.where(Project.owner_user_id == current_user.id)
+    return int(db.scalar(query) or 0)
