@@ -250,6 +250,8 @@ def _parse_orders(rows: Iterable[dict[str, str]], issues: list[QualityIssue]) ->
 
 def _clean_optional_values(row: dict[str, str]) -> dict[str, Any]:
     values: dict[str, Any] = dict(row)
+    if "order_status" in values and "status" not in values:
+        values["status"] = values.pop("order_status")
     for key, value in tuple(values.items()):
         if value == "":
             values[key] = None

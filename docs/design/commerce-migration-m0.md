@@ -51,9 +51,10 @@ User → Organization → Store → Project → Snapshot → Analysis / Plan
 - M5 增加 Talk 请求/响应策略和确定性问题路由；Talk 可解释结果，但不会隐式升级为长期计划。
 - M6 增加独立的 `POST /commerce/talk` 入口和进程内快照注册表。入口先校验当前用户对 Project 的所有权，再按明确的 `snapshot_id` 读取不可变 Dataset；没有快照时不允许运行。当前只开放 `benchmark` API 路径，`merchant` 会明确返回未就绪，不把缺少 Store 资源模型伪装成商家授权。
 - M7 增加独立的商品经营 Plan 草案和审批链路：`POST /commerce/plans`、`GET /commerce/plans/{id}`、`POST /commerce/plans/{id}/approve`。当前复用已有 `is_admin` 作为 Plan 权限门禁；普通用户即使拥有自己的 Project 也只能使用 Talk。Plan 固定引用 Snapshot 和证据，不会自动改价、采购、投放或写入外部平台。
+- M8 将公开 Benchmark Snapshot 从进程内 Registry 迁移到 SQLite 持久化。只允许本地 `backend/scripts/import_commerce_benchmark.py` 导入已校验的标准四表 CSV，API 只读数据库快照；同一 `snapshot_id` 的重复导入必须内容一致，内容冲突直接拒绝。
 - 旧餐饮页面、API、认证隔离和知识审计不因 `commerce` 包的加入而改变。
-- 已完成的顺序为：标准数据契约与快照 → 文件级导入与质量报告 → 确定性商品指标 → Talk 工具与策略层。后续实现顺序为：Plan → 电商工作台；数据源适配器最后按需要接入。
+- 已完成的顺序为：标准数据契约与快照 → 文件级导入与质量报告 → 确定性商品指标 → Talk 工具与策略层 → Plan → Benchmark Snapshot 持久化。后续实现顺序为：真实公开数据集的字段映射 → 电商工作台 → Organization/Store 授权；平台适配器按需要接入。
 
 ## 明确不做
 
-当前不实现 Olist 适配、平台连接器、自然语言 SQL、图记忆、Temporal、OIDC、自动采购/改价/投放，也不把现有餐饮模型改名为电商模型。M6 也不提供公开 Dataset 注册接口；测试或本地启动流程必须显式调用 `CommerceDatasetRegistry.register()`，避免任意请求把数据注入服务进程。M7 暂不实现多角色 RBAC、计划执行器、计划自动复盘和商家 Store 授权；`is_admin` 只是当前原型阶段的最小权限门禁，不是最终 ToB 权限模型。
+当前不实现 Olist 适配、平台连接器、自然语言 SQL、图记忆、Temporal、OIDC、自动采购/改价/投放，也不把现有餐饮模型改名为电商模型。M6/M8 不提供公开 Dataset 上传或注册接口；Benchmark 数据必须通过本地导入脚本进入数据库，避免任意请求把数据注入服务进程。M7 暂不实现多角色 RBAC、计划执行器、计划自动复盘和商家 Store 授权；`is_admin` 只是当前原型阶段的最小权限门禁，不是最终 ToB 权限模型。

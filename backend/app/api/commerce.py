@@ -19,7 +19,7 @@ from app.commerce.plan import (
     CommercePlanService,
     CommercePlanStatus,
 )
-from app.commerce.registry import commerce_dataset_registry
+from app.commerce.repository import CommerceBenchmarkRepository
 from app.commerce.talk import (
     CommerceTalkRequest,
     CommerceTalkResponse,
@@ -40,7 +40,7 @@ def commerce_talk(
     scope = payload.interaction.scope
     require_owned_project(db, current_user, scope.project_id)
 
-    dataset = _resolve_benchmark_dataset(scope.snapshot_id, scope.mode)
+    dataset = _resolve_benchmark_dataset(db, scope.snapshot_id, scope.mode)
 
     return CommerceTalkService().answer(payload, dataset)
 
@@ -58,7 +58,7 @@ def create_commerce_plan(
     project = require_owned_project(db, current_user, payload.interaction.scope.project_id)
     require_admin(current_user)
     scope = payload.interaction.scope
-    dataset = _resolve_benchmark_dataset(scope.snapshot_id, scope.mode)
+    dataset = _resolve_benchmark_dataset(db, scope.snapshot_id, scope.mode)
     draft = CommercePlanService().draft(payload, dataset)
     if draft.status is CommercePlanStatus.INSUFFICIENT_DATA:
         raise HTTPException(
@@ -128,7 +128,9 @@ def approve_commerce_plan(
     return _serialize_plan(plan)
 
 
-def _resolve_benchmark_dataset(snapshot_id: str | None, mode: CommerceAnalysisMode):
+def _resolve_benchmark_dataset(
+    db: Session, snapshot_id: str | None, mode: CommerceAnalysisMode
+):
     if snapshot_id is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -148,7 +150,7 @@ def _resolve_benchmark_dataset(snapshot_id: str | None, mode: CommerceAnalysisMo
                 ),
             },
         )
-    dataset = commerce_dataset_registry.get(snapshot_id)
+    dataset = CommerceBenchmarkRepository(db).get(snapshot_id)
     if dataset is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

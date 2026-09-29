@@ -90,7 +90,7 @@ def create_project(
     project = Project(
         name=payload.name,
         stage=payload.stage,
-        owner_user_id=current_user.id,
+        owner_user_id=None if auth_is_disabled() else current_user.id,
     )
     db.add(project)
     db.commit()

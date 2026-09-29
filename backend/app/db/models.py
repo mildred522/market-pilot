@@ -192,6 +192,17 @@ class CommercePlan(Base):
     )
 
 
+class CommerceBenchmarkSnapshot(Base):
+    __tablename__ = "commerce_benchmark_snapshots"
+
+    snapshot_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    dataset_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+
 class AnalysisInputSnapshot(Base):
     __tablename__ = "analysis_input_snapshots"
 
