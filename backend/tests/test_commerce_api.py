@@ -13,17 +13,10 @@ from sqlalchemy.pool import StaticPool
 from app.auth.dependencies import auth_is_disabled
 from app.commerce.contracts import CommerceAnalysisMode
 from app.commerce.ingestion import import_csv_package
-from app.commerce.registry import commerce_dataset_registry
+from app.commerce.repository import CommerceBenchmarkRepository
 from app.db.models import Base
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db, init_db
 from app.main import app
-
-
-@pytest.fixture(autouse=True)
-def clear_commerce_registry() -> Generator[None]:
-    commerce_dataset_registry.clear()
-    yield
-    commerce_dataset_registry.clear()
 
 
 def _write_package(root: Path) -> None:
@@ -64,7 +57,7 @@ def _talk_payload(
     if store_id is not None:
         scope["store_id"] = store_id
     return {
-        "question": "最近哪些商品销售最好？",
+        "question": "哪些商品销售最好？",
         "interaction": {
             "mode": "talk",
             "scope": scope,
@@ -95,14 +88,21 @@ def _plan_payload(project_id: int, snapshot_id: str) -> dict[str, object]:
     return payload
 
 
+def _persist_benchmark(dataset) -> None:
+    init_db()
+    with SessionLocal() as db:
+        CommerceBenchmarkRepository(db).save(dataset)
+
+
 def test_benchmark_commerce_talk_uses_registered_snapshot(tmp_path: Path) -> None:
     _write_package(tmp_path)
     dataset = import_csv_package(
         tmp_path,
         mode=CommerceAnalysisMode.BENCHMARK,
+        source_type="public_dataset",
         now=datetime(2026, 1, 8, tzinfo=UTC),
     )
-    commerce_dataset_registry.register(dataset)
+    _persist_benchmark(dataset)
 
     with TestClient(app) as client:
         project = client.post(
@@ -164,9 +164,10 @@ def test_admin_can_create_read_and_approve_commerce_plan(tmp_path: Path) -> None
     dataset = import_csv_package(
         tmp_path,
         mode=CommerceAnalysisMode.BENCHMARK,
+        source_type="public_dataset",
         now=datetime(2026, 1, 8, tzinfo=UTC),
     )
-    commerce_dataset_registry.register(dataset)
+    _persist_benchmark(dataset)
 
     with TestClient(app) as client:
         project = client.post(

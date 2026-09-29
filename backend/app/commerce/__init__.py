@@ -6,7 +6,7 @@ from app.commerce.contracts import (
     InteractionMode,
 )
 from app.commerce.snapshot import CommerceSnapshot, SnapshotState
-from app.commerce.registry import CommerceDatasetRegistry, commerce_dataset_registry
+from app.commerce.repository import CommerceBenchmarkRepository
 from app.commerce.plan import (
     CommercePlanDraft,
     CommercePlanRequest,
@@ -44,8 +44,7 @@ __all__ = [
     "InteractionMode",
     "CommerceSnapshot",
     "SnapshotState",
-    "CommerceDatasetRegistry",
-    "commerce_dataset_registry",
+    "CommerceBenchmarkRepository",
     "CommercePlanDraft",
     "CommercePlanRequest",
     "CommercePlanResponse",
