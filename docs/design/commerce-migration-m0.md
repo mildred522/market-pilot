@@ -53,7 +53,7 @@ User → Organization → Store → Project → Snapshot → Analysis / Plan
 - M7 增加独立的商品经营 Plan 草案和审批链路：`POST /commerce/plans`、`GET /commerce/plans/{id}`、`POST /commerce/plans/{id}/approve`。当前复用已有 `is_admin` 作为 Plan 权限门禁；普通用户即使拥有自己的 Project 也只能使用 Talk。Plan 固定引用 Snapshot 和证据，不会自动改价、采购、投放或写入外部平台。
 - M8 将公开 Benchmark Snapshot 从进程内 Registry 迁移到 SQLite 持久化。只允许本地 `backend/scripts/import_commerce_benchmark.py` 导入已校验的标准四表 CSV，API 只读数据库快照；同一 `snapshot_id` 的重复导入必须内容一致，内容冲突直接拒绝。
 - 旧餐饮页面、API、认证隔离和知识审计不因 `commerce` 包的加入而改变。
-- 已完成的顺序为：标准数据契约与快照 → 文件级导入与质量报告 → 确定性商品指标 → Talk 工具与策略层 → Plan → Benchmark Snapshot 持久化 → DuckDB 分析 artifact → Olist staging 与第一阶段字段映射。后续实现顺序为：履约/评价诊断 → 电商工作台 → Organization/Store 授权；平台适配器按需要接入。
+- 已完成的顺序为：标准数据契约与快照 → 文件级导入与质量报告 → 确定性商品指标 → Talk 工具与策略层 → Plan → Benchmark Snapshot 持久化 → DuckDB 分析 artifact → Olist staging 与第一阶段字段映射 → Olist 商品销售事实层。后续实现顺序为：热点/选品/经营建议工作台 → Organization/Store 授权；履约和评价作为可选证据能力接入，平台适配器按需要扩展。
 
 ## 明确不做
 

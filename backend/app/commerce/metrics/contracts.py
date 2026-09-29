@@ -52,6 +52,33 @@ class SalesReport(BaseModel):
     excluded_order_ids: tuple[str, ...] = ()
 
 
+class OlistProductSalesMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    item_level: ItemLevel
+    item_id: str
+    product_id: str
+    category_name: str | None = None
+    units_sold: Decimal
+    order_count: int = Field(ge=0)
+    gross_amount: Decimal
+    average_unit_price: Decimal | None = None
+    seller_count: int = Field(ge=0)
+    freight_amount: Decimal | None = None
+    currency: str | None = None
+
+
+class OlistProductSalesReport(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    snapshot_id: str
+    window: TimeWindow
+    item_level: ItemLevel
+    metrics: tuple[OlistProductSalesMetric, ...]
+    included_order_count: int = Field(ge=0)
+    excluded_order_count: int = Field(ge=0)
+
+
 class TrendComparison(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

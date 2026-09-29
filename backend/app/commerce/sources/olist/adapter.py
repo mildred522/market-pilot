@@ -46,6 +46,7 @@ REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
         "product_id",
         "seller_id",
         "price",
+        "freight_value",
     ),
     "olist_products_dataset.csv": ("product_id",),
     "product_category_name_translation.csv": (

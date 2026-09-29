@@ -1,4 +1,4 @@
-import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, CommerceProductSalesReport, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -127,6 +127,19 @@ export function getCommerceBenchmarks(): Promise<CommerceBenchmarkSnapshotSummar
   return request<CommerceBenchmarkSnapshotSummary[]>("/commerce/benchmarks", {
     cache: "no-store"
   });
+}
+
+export function getCommerceBenchmarkSales(
+  snapshotId: string,
+  start: string,
+  end: string,
+  itemLevel: "product" | "sku" = "product"
+): Promise<CommerceProductSalesReport> {
+  const params = new URLSearchParams({ start, end, item_level: itemLevel });
+  return request<CommerceProductSalesReport>(
+    `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/sales?${params.toString()}`,
+    { cache: "no-store" }
+  );
 }
 
 export function createProject(name: string, stage: Stage): Promise<Project> {

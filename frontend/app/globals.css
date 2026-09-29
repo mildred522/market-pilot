@@ -276,6 +276,17 @@ a {
 .commerce-snapshot-details dt { color: var(--muted); font-size: 11px; font-weight: 700; }
 .commerce-snapshot-details dd { margin: 7px 0 0; overflow-wrap: anywhere; color: var(--ink); font-size: 13px; line-height: 1.5; }
 .commerce-snapshot-details code { color: var(--muted); font: 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.commerce-sales-panel { margin-top: 28px; padding-top: 26px; border-top: 1px solid var(--line); }
+.commerce-sales-panel .section-heading { margin-bottom: 18px; }
+.commerce-sales-table-wrap { overflow-x: auto; border: 1px solid var(--line); }
+.commerce-sales-table { width: 100%; min-width: 650px; border-collapse: collapse; background: var(--panel); font-size: 12px; }
+.commerce-sales-table th { padding: 11px 12px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); color: var(--muted); font-size: 11px; text-align: left; white-space: nowrap; }
+.commerce-sales-table td { padding: 12px; border-bottom: 1px solid var(--line); color: var(--ink-soft); white-space: nowrap; }
+.commerce-sales-table tbody tr:last-child td { border-bottom: 0; }
+.commerce-sales-table td:first-child { color: var(--ink); }
+.commerce-sales-table td strong { display: block; }
+.commerce-sales-table td small { display: block; margin-top: 3px; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.commerce-sales-note { margin: 10px 12px; color: var(--muted); font-size: 11px; }
 
 h1 {
   max-width: 760px;
