@@ -4,6 +4,8 @@ import json
 import os
 import re
 import tempfile
+from dataclasses import dataclass
+from collections.abc import Iterable
 from pathlib import Path
 
 import duckdb
@@ -14,6 +16,16 @@ from app.commerce.snapshot import CommerceSnapshot, SnapshotState
 
 
 _SAFE_SNAPSHOT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+
+
+@dataclass(frozen=True)
+class DuckDBStagingTable:
+    table_name: str
+    source_file: str
+    content_hash: str
+    columns: tuple[str, ...]
+    rows: tuple[tuple[str | None, ...], ...]
 
 
 class CommerceDuckDBArtifactStore:
@@ -28,7 +40,13 @@ class CommerceDuckDBArtifactStore:
             raise ValueError("snapshot id contains unsupported path characters")
         return self._root / f"{snapshot_id}.duckdb"
 
-    def write(self, dataset: CommerceDataset) -> Path:
+    def write(
+        self,
+        dataset: CommerceDataset,
+        *,
+        staging_tables: Iterable[DuckDBStagingTable] = (),
+    ) -> Path:
+        staging_tables = tuple(staging_tables)
         target = self.path_for(dataset.snapshot.snapshot_id)
         if target.exists():
             saved = self.read_snapshot_metadata(dataset.snapshot.snapshot_id)
@@ -47,7 +65,7 @@ class CommerceDuckDBArtifactStore:
         try:
             with duckdb.connect(str(temp_path)) as connection:
                 self._create_schema(connection)
-                self._insert_dataset(connection, dataset)
+                self._insert_dataset(connection, dataset, staging_tables=staging_tables)
                 connection.execute("CHECKPOINT")
             os.replace(temp_path, target)
         except Exception:
@@ -108,6 +126,16 @@ class CommerceDuckDBArtifactStore:
                 timezone VARCHAR,
                 capabilities_json VARCHAR NOT NULL,
                 row_counts_json VARCHAR NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE source_files (
+                source_file VARCHAR PRIMARY KEY,
+                table_name VARCHAR NOT NULL,
+                content_hash VARCHAR NOT NULL,
+                row_count BIGINT NOT NULL
             )
             """
         )
@@ -176,6 +204,8 @@ class CommerceDuckDBArtifactStore:
     def _insert_dataset(
         connection: duckdb.DuckDBPyConnection,
         dataset: CommerceDataset,
+        *,
+        staging_tables: tuple[DuckDBStagingTable, ...],
     ) -> None:
         snapshot = dataset.snapshot
         connection.execute(
@@ -263,3 +293,42 @@ class CommerceDuckDBArtifactStore:
                 for record in dataset.order_items
             ],
         )
+        for table in staging_tables:
+            _validate_staging_table(table)
+            quoted_table = _quote_identifier(table.table_name)
+            quoted_columns = ", ".join(_quote_identifier(column) for column in table.columns)
+            column_definitions = ", ".join(
+                f"{_quote_identifier(column)} VARCHAR" for column in table.columns
+            )
+            connection.execute(
+                f"CREATE TABLE {quoted_table} ({column_definitions})"
+            )
+            if table.rows:
+                placeholders = ", ".join("?" for _ in table.columns)
+                connection.executemany(
+                    f"INSERT INTO {quoted_table} ({quoted_columns}) VALUES ({placeholders})",
+                    table.rows,
+                )
+            connection.execute(
+                "INSERT INTO source_files VALUES (?, ?, ?, ?)",
+                [table.source_file, table.table_name, table.content_hash, len(table.rows)],
+            )
+
+
+def _validate_staging_table(table: DuckDBStagingTable) -> None:
+    if not _SAFE_IDENTIFIER.fullmatch(table.table_name):
+        raise ValueError("staging table name contains unsupported characters")
+    if not table.table_name.startswith("olist_") or not table.table_name.endswith("_staging"):
+        raise ValueError("staging table name must use the olist_*_staging namespace")
+    if not table.columns or len(table.columns) != len(set(table.columns)):
+        raise ValueError("staging table columns must be unique and non-empty")
+    if any(not _SAFE_IDENTIFIER.fullmatch(column) for column in table.columns):
+        raise ValueError("staging column name contains unsupported characters")
+    if any(len(row) != len(table.columns) for row in table.rows):
+        raise ValueError("staging row width does not match its columns")
+
+
+def _quote_identifier(value: str) -> str:
+    if not _SAFE_IDENTIFIER.fullmatch(value):
+        raise ValueError("SQL identifier contains unsupported characters")
+    return f'"{value}"'

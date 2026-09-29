@@ -7,7 +7,7 @@ from app.commerce.contracts import (
 )
 from app.commerce.snapshot import CommerceSnapshot, SnapshotState
 from app.commerce.repository import CommerceBenchmarkRepository
-from app.commerce.warehouse import CommerceDuckDBArtifactStore
+from app.commerce.warehouse import CommerceDuckDBArtifactStore, DuckDBStagingTable
 from app.commerce.plan import (
     CommercePlanDraft,
     CommercePlanRequest,
@@ -47,6 +47,7 @@ __all__ = [
     "SnapshotState",
     "CommerceBenchmarkRepository",
     "CommerceDuckDBArtifactStore",
+    "DuckDBStagingTable",
     "CommercePlanDraft",
     "CommercePlanRequest",
     "CommercePlanResponse",

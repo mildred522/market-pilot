@@ -9,7 +9,7 @@
 - SQLite 继续保存用户、项目、权限、计划、审计和快照元数据。
 - DuckDB 保存可复现的电商分析数据 artifact，包括快照元数据和当前四类 canonical 表。
 
-DuckDB 以单文件、嵌入式、只读分析的方式接入，不部署独立服务，不让前端直接连接，也不允许 Web 请求并发写入。当前本地导入 CLI 负责生成 artifact；后续 Olist adapter 将先写入 source-specific staging，再投影到 canonical 表。
+DuckDB 以单文件、嵌入式、只读分析的方式接入，不部署独立服务，不让前端直接连接，也不允许 Web 请求并发写入。当前本地导入 CLI 负责生成 artifact；Olist adapter 会先写入 source-specific staging，再投影到 canonical 表。
 
 ## Artifact 边界
 
@@ -43,12 +43,12 @@ python -m scripts.import_commerce_benchmark <数据目录>
 
 ## Olist 接入路径
 
-Olist 不直接伪装成标准四表。当前 `OlistSourceAdapter` 已完成第一阶段投影：订单、订单商品行和商品进入 canonical sales 数据，并生成可复现的 Olist Snapshot。适配器显式记录商品标题缺失、数量按源行默认为 1 等口径警告。
+Olist 不直接伪装成标准四表。当前 `OlistSourceAdapter` 已完成第一阶段保真导入：原始支持文件进入 `olist_*_staging` 表，订单、订单商品行和商品再投影到 canonical sales 数据，并生成可复现的 Olist Snapshot。适配器显式记录商品标题缺失、数量按源行默认为 1 等口径警告。
 
 后续完整路径仍按以下顺序扩展：
 
 1. 原始文件进入受忽略的 Raw 区，并生成文件哈希 manifest。
-2. 使用 DuckDB staging 表保留 Olist 原始语义和来源行号。
+2. 使用 DuckDB staging 表保留 Olist 原始语义、来源文件、行数和文件哈希；当前基础 staging 已完成。
 3. 先按订单、订单商品行、支付和评价各自粒度聚合，再进行连接。
 4. 生成平台无关 canonical projection，供现有商品销售能力复用。
 5. 保留卖家、评价、支付和履约数据，支持后续卖家诊断，不把整单金额错误归因给每个卖家。

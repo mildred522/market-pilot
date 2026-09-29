@@ -44,6 +44,15 @@ def test_olist_adapter_inspects_required_and_optional_files(tmp_path: Path) -> N
     assert "olist_sellers_dataset.csv" not in inspection["present_files"]
     assert inspection["content_hash"]
 
+    tables = OlistSourceAdapter().staging_tables(tmp_path)
+    assert {table.table_name for table in tables} == {
+        "olist_orders_staging",
+        "olist_order_items_staging",
+        "olist_products_staging",
+        "olist_product_category_name_translation_staging",
+    }
+    assert tables[0].rows[0][0] == "o-1"
+
 
 def test_olist_adapter_projects_sales_without_inventing_revenue_fields(tmp_path: Path) -> None:
     _write_olist(tmp_path)
@@ -58,7 +67,7 @@ def test_olist_adapter_projects_sales_without_inventing_revenue_fields(tmp_path:
     )
 
     assert dataset.snapshot.snapshot_id == snapshot_id
-    assert dataset.snapshot.schema_version == "olist-canonical-v1"
+    assert dataset.snapshot.schema_version == "olist-canonical-v2"
     assert dataset.snapshot.mode is CommerceAnalysisMode.BENCHMARK
     assert dataset.products[0].category_name == "beauty"
     assert dataset.products[0].source_file == "olist_products_dataset.csv"
