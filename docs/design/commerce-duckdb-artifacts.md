@@ -1,6 +1,6 @@
 # 电商分析快照与 DuckDB Artifact
 
-> 状态：2026-09-29 已完成 M10-A。当前只引入本地 DuckDB 分析快照，不替换 SQLite 控制面，也不代表 Olist 原始数据适配已经完成。
+> 状态：2026-09-29 已完成 M10-A 和 M10-B 的薄适配。当前只引入本地 DuckDB 分析快照，不替换 SQLite 控制面；卖家、评价、支付和履约分析仍未完成。
 
 ## 决策
 
@@ -41,9 +41,11 @@ python -m scripts.import_commerce_benchmark <数据目录>
 
 可以通过 `--artifact-root` 或 `COMMERCE_ARTIFACT_ROOT` 指定输出目录。原始数据、生成的 artifact 和本地数据库均不提交仓库。
 
-## 后续 Olist 路径
+## Olist 接入路径
 
-Olist 不直接伪装成标准四表。后续 adapter 应按以下顺序处理：
+Olist 不直接伪装成标准四表。当前 `OlistSourceAdapter` 已完成第一阶段投影：订单、订单商品行和商品进入 canonical sales 数据，并生成可复现的 Olist Snapshot。适配器显式记录商品标题缺失、数量按源行默认为 1 等口径警告。
+
+后续完整路径仍按以下顺序扩展：
 
 1. 原始文件进入受忽略的 Raw 区，并生成文件哈希 manifest。
 2. 使用 DuckDB staging 表保留 Olist 原始语义和来源行号。

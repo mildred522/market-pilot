@@ -33,7 +33,7 @@ User → Organization → Store → Project → Snapshot → Analysis / Plan
 - `backend/app/commerce/contracts.py` 定义 `merchant` / `benchmark`、`talk` / `plan` 和数据能力枚举。
 - `CommerceScope` 表达项目、店铺、模式和快照边界，并拒绝没有店铺范围的商家分析。
 - `CapabilityAvailability` 表达支持、部分支持和不支持，避免用零值或模型猜测补齐成本、库存、流量等缺失能力。
-- `CommerceSourceAdapter` 定义数据源检查和规范化接口；当前没有实现任何 Olist、Shopify 或其他平台适配器。
+- `CommerceSourceAdapter` 定义数据源检查和规范化接口；当前已实现 Olist 的第一阶段薄适配，只投影订单、订单行和商品到 canonical sales 数据，尚未完成 source-specific staging、卖家/评价/履约实体或其他平台适配器。
 - `backend/app/commerce/canonical/` 定义平台无关的商品、SKU、订单和订单明细记录。
 - `CommerceSnapshot` 保存不可变的数据版本元数据；`check_capability` 为后续指标和工作流提供能力降级入口。
 
@@ -53,8 +53,8 @@ User → Organization → Store → Project → Snapshot → Analysis / Plan
 - M7 增加独立的商品经营 Plan 草案和审批链路：`POST /commerce/plans`、`GET /commerce/plans/{id}`、`POST /commerce/plans/{id}/approve`。当前复用已有 `is_admin` 作为 Plan 权限门禁；普通用户即使拥有自己的 Project 也只能使用 Talk。Plan 固定引用 Snapshot 和证据，不会自动改价、采购、投放或写入外部平台。
 - M8 将公开 Benchmark Snapshot 从进程内 Registry 迁移到 SQLite 持久化。只允许本地 `backend/scripts/import_commerce_benchmark.py` 导入已校验的标准四表 CSV，API 只读数据库快照；同一 `snapshot_id` 的重复导入必须内容一致，内容冲突直接拒绝。
 - 旧餐饮页面、API、认证隔离和知识审计不因 `commerce` 包的加入而改变。
-- 已完成的顺序为：标准数据契约与快照 → 文件级导入与质量报告 → 确定性商品指标 → Talk 工具与策略层 → Plan → Benchmark Snapshot 持久化。后续实现顺序为：真实公开数据集的字段映射 → 电商工作台 → Organization/Store 授权；平台适配器按需要接入。
+- 已完成的顺序为：标准数据契约与快照 → 文件级导入与质量报告 → 确定性商品指标 → Talk 工具与策略层 → Plan → Benchmark Snapshot 持久化 → DuckDB 分析 artifact → Olist 第一阶段字段映射。后续实现顺序为：Olist source-specific staging 与履约/评价诊断 → 电商工作台 → Organization/Store 授权；平台适配器按需要接入。
 
 ## 明确不做
 
-当前不实现 Olist 适配、平台连接器、自然语言 SQL、图记忆、Temporal、OIDC、自动采购/改价/投放，也不把现有餐饮模型改名为电商模型。M6/M8 不提供公开 Dataset 上传或注册接口；Benchmark 数据必须通过本地导入脚本进入数据库，避免任意请求把数据注入服务进程。M7 暂不实现多角色 RBAC、计划执行器、计划自动复盘和商家 Store 授权；`is_admin` 只是当前原型阶段的最小权限门禁，不是最终 ToB 权限模型。
+当前不实现 Olist 完整适配、其他平台连接器、自然语言 SQL、图记忆、Temporal、OIDC、自动采购/改价/投放，也不把现有餐饮模型改名为电商模型。M6/M8 不提供公开 Dataset 上传或注册接口；Benchmark 数据必须通过本地导入脚本进入数据库，避免任意请求把数据注入服务进程。M7 暂不实现多角色 RBAC、计划执行器、计划自动复盘和商家 Store 授权；`is_admin` 只是当前原型阶段的最小权限门禁，不是最终 ToB 权限模型。

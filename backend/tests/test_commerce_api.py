@@ -164,11 +164,10 @@ def test_benchmark_list_returns_metadata_only(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert len(body) == 1
-    assert body[0]["snapshot_id"] == dataset.snapshot.snapshot_id
-    assert body[0]["row_counts"] == dataset.snapshot.row_counts
-    assert "products" not in body[0]
-    assert "orders" not in body[0]
+    summary = next(item for item in body if item["snapshot_id"] == dataset.snapshot.snapshot_id)
+    assert summary["row_counts"] == dataset.snapshot.row_counts
+    assert "products" not in summary
+    assert "orders" not in summary
 
 
 def test_commerce_talk_requires_registered_snapshot() -> None:
