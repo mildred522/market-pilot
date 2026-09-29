@@ -12,7 +12,10 @@ from app.auth.dependencies import (
     require_admin,
     require_owned_project,
 )
-from app.commerce.contracts import CommerceAnalysisMode
+from app.commerce.contracts import (
+    CommerceAnalysisMode,
+    CommerceBenchmarkSnapshotSummary,
+)
 from app.commerce.plan import (
     CommercePlanRequest,
     CommercePlanResponse,
@@ -29,6 +32,17 @@ from app.db.models import CommercePlan
 from app.db.session import get_db
 
 router = APIRouter(prefix="/commerce", tags=["commerce"])
+
+
+@router.get(
+    "/benchmarks",
+    response_model=tuple[CommerceBenchmarkSnapshotSummary, ...],
+)
+def list_commerce_benchmarks(
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(get_current_user),
+) -> tuple[CommerceBenchmarkSnapshotSummary, ...]:
+    return CommerceBenchmarkRepository(db).list()
 
 
 @router.post("/talk", response_model=CommerceTalkResponse)

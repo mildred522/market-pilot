@@ -124,6 +124,53 @@ def test_benchmark_commerce_talk_uses_registered_snapshot(tmp_path: Path) -> Non
     ]
 
 
+def test_benchmark_list_is_empty_when_no_snapshot_is_imported() -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    testing_session = sessionmaker(bind=engine)
+
+    def override_db() -> Generator[Session]:
+        with testing_session() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        with TestClient(app) as client:
+            response = client.get("/commerce/benchmarks")
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_benchmark_list_returns_metadata_only(tmp_path: Path) -> None:
+    _write_package(tmp_path)
+    dataset = import_csv_package(
+        tmp_path,
+        mode=CommerceAnalysisMode.BENCHMARK,
+        source_type="public_dataset",
+        now=datetime(2026, 1, 8, tzinfo=UTC),
+    )
+    _persist_benchmark(dataset)
+
+    with TestClient(app) as client:
+        response = client.get("/commerce/benchmarks")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["snapshot_id"] == dataset.snapshot.snapshot_id
+    assert body[0]["row_counts"] == dataset.snapshot.row_counts
+    assert "products" not in body[0]
+    assert "orders" not in body[0]
+
+
 def test_commerce_talk_requires_registered_snapshot() -> None:
     with TestClient(app) as client:
         project = client.post(

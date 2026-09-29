@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -57,3 +58,18 @@ class CommerceInteraction(BaseModel):
     mode: InteractionMode
     scope: CommerceScope
     requested_capabilities: tuple[CommerceCapability, ...] = ()
+
+
+class CommerceBenchmarkSnapshotSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    snapshot_id: str
+    source_type: str
+    schema_version: str
+    content_hash: str
+    created_at: datetime
+    period_start: datetime | None = None
+    period_end: datetime | None = None
+    timezone: str | None = None
+    capabilities: tuple[CommerceCapability, ...] = ()
+    row_counts: dict[str, int] = Field(default_factory=dict)

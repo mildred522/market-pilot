@@ -113,3 +113,21 @@ def test_benchmark_repository_rejects_merchant_or_private_sources(tmp_path: Path
             repository.save(dataset)
     finally:
         session.close()
+
+
+def test_benchmark_repository_lists_metadata_without_dataset_records(tmp_path: Path) -> None:
+    _write_package(tmp_path)
+    dataset = _dataset(tmp_path)
+    session, repository = _repository()
+    try:
+        repository.save(dataset)
+        summaries = repository.list()
+    finally:
+        session.close()
+
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary.snapshot_id == dataset.snapshot.snapshot_id
+    assert summary.row_counts == dataset.snapshot.row_counts
+    assert "orders" not in summary.model_dump()
+    assert "products" not in summary.model_dump()

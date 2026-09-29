@@ -17,6 +17,7 @@ const links = [
     match: (path: string, hash: string) => path === "/pre-open" && hash === "#location"
   },
   { href: "/operating#diagnosis", label: "经营诊断", match: (path: string) => path === "/operating" },
+  { href: "/commerce", label: "电商分析", match: (path: string) => path === "/commerce" },
   { href: "/history", label: "历史记录", match: (path: string) => path === "/history" },
   { href: "/#integrations", label: "集成配置", match: () => false }
 ];

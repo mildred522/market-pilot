@@ -6,6 +6,19 @@ export type AuthenticatedUser = {
   is_admin: boolean;
 };
 
+export type CommerceBenchmarkSnapshotSummary = {
+  snapshot_id: string;
+  source_type: string;
+  schema_version: string;
+  content_hash: string;
+  created_at: string;
+  period_start: string | null;
+  period_end: string | null;
+  timezone: string | null;
+  capabilities: string[];
+  row_counts: Record<string, number>;
+};
+
 export type IntegrationStatus = {
   configured: boolean;
   source: "saved" | "runtime" | "environment" | null;
