@@ -51,10 +51,13 @@ export default function CommercePage() {
   }, []);
 
   const selected = snapshots.find((snapshot) => snapshot.snapshot_id === selectedId) ?? null;
+  const salesSupported = selected?.schema_version === "olist-canonical-v2";
 
   useEffect(() => {
-    if (!selected) {
+    if (!selected || !salesSupported) {
       setSales(null);
+      setSalesError("");
+      setLoadingSales(false);
       return;
     }
     let active = true;
@@ -77,7 +80,7 @@ export default function CommercePage() {
     return () => {
       active = false;
     };
-  }, [selected, selectedId]);
+  }, [selected, selectedId, salesSupported]);
 
   return (
     <main className="shell commerce-page">
@@ -140,6 +143,9 @@ export default function CommercePage() {
                     </div>
                     <p>当前只展示可由订单商品行直接支持的销量、销售额和卖家覆盖数。</p>
                   </div>
+                  {!salesSupported ? (
+                    <p className="commerce-empty">该快照尚未生成 Olist 商品销售事实层，请选择 `olist-canonical-v2` 快照。</p>
+                  ) : null}
                   {loadingSales ? <p className="commerce-empty">正在计算商品销售事实...</p> : null}
                   {salesError ? <p className="commerce-error" role="alert">{salesError}</p> : null}
                   {!loadingSales && !salesError && sales?.metrics.length ? (
