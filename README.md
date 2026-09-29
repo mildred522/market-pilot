@@ -14,7 +14,7 @@
 [![Agent Eval](https://img.shields.io/badge/Agent%20Eval-53%2F53-7C3AED?style=flat-square)](docs/agent-evaluation.md)
 [![Last Commit](https://img.shields.io/github/last-commit/mildred522/market-pilot?style=flat-square&color=17695B)](https://github.com/mildred522/market-pilot/commits/main)
 
-[快速启动](#快速启动) · [业务能力](#业务能力) · [Agent 工作流](#agent-工作流) · [地图 MCP](#地图-mcp-与外部数据) · [质量证据](#质量证据) · [Roadmap](#roadmap)
+[快速启动](#快速启动) · [提交前安全门禁](docs/commit-gate.md) · [业务能力](#业务能力) · [Agent 工作流](#agent-工作流) · [地图 MCP](#地图-mcp-与外部数据) · [质量证据](#质量证据) · [Roadmap](#roadmap)
 
 <br>
 
