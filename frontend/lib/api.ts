@@ -1,4 +1,4 @@
-import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -121,6 +121,12 @@ export function login(email: string, password: string): Promise<AuthenticatedUse
 
 export function logout(): Promise<void> {
   return request<void>("/auth/logout", { method: "POST" });
+}
+
+export function getCommerceBenchmarks(): Promise<CommerceBenchmarkSnapshotSummary[]> {
+  return request<CommerceBenchmarkSnapshotSummary[]>("/commerce/benchmarks", {
+    cache: "no-store"
+  });
 }
 
 export function createProject(name: string, stage: Stage): Promise<Project> {
