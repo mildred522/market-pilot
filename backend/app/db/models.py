@@ -162,6 +162,36 @@ class AnalysisResult(Base):
     )
 
 
+class CommercePlan(Base):
+    __tablename__ = "commerce_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id"), nullable=False, index=True
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    snapshot_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    scope_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    steps_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    evidence_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    limitations_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class AnalysisInputSnapshot(Base):
     __tablename__ = "analysis_input_snapshots"
 

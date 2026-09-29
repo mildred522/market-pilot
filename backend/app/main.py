@@ -17,6 +17,7 @@ from app.api import (
     analysis,
     auth,
     corrections,
+    commerce,
     dashboard,
     files,
     location,
@@ -90,6 +91,7 @@ app.include_router(files.router)
 app.include_router(operating.router)
 app.include_router(analysis.router)
 app.include_router(corrections.router)
+app.include_router(commerce.router)
 app.include_router(agent_runs.router)
 app.include_router(location.router)
 app.include_router(agent.router)
