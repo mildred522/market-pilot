@@ -44,7 +44,10 @@ def main() -> int:
                 str(Path(__file__).resolve().parents[1] / "storage" / "commerce"),
             )
         )
-        artifact_path = CommerceDuckDBArtifactStore(artifact_root).write(dataset)
+        artifact_path = CommerceDuckDBArtifactStore(artifact_root).write(
+            dataset,
+            staging_tables=adapter.staging_tables(args.directory),
+        )
         init_db()
         with SessionLocal() as db:
             persisted = CommerceBenchmarkRepository(db).save(dataset)

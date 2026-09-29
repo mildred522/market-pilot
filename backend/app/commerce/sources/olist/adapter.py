@@ -17,9 +17,10 @@ from app.commerce.ingestion import (
     import_csv_package,
 )
 from app.commerce.sources.base import CommerceSourceAdapter
+from app.commerce.warehouse import DuckDBStagingTable
 
 
-ADAPTER_VERSION = "olist-canonical-v1"
+ADAPTER_VERSION = "olist-canonical-v2"
 REQUIRED_FILES = (
     "olist_orders_dataset.csv",
     "olist_order_items_dataset.csv",
@@ -285,6 +286,28 @@ class OlistSourceAdapter(CommerceSourceAdapter):
         )
         return dataset
 
+    def staging_tables(self, source: Any) -> tuple[DuckDBStagingTable, ...]:
+        root = self._root(source)
+        tables: list[DuckDBStagingTable] = []
+        for filename in SUPPORTED_FILES:
+            path = root / filename
+            if not path.is_file():
+                continue
+            rows, headers = self._read_csv(path, filename)
+            tables.append(
+                DuckDBStagingTable(
+                    table_name=_staging_table_name(filename),
+                    source_file=filename,
+                    content_hash=hashlib.sha256(path.read_bytes()).hexdigest(),
+                    columns=tuple(headers),
+                    rows=tuple(
+                        tuple(row.get(column) for column in headers)
+                        for row in rows
+                    ),
+                )
+            )
+        return tuple(tables)
+
     @staticmethod
     def _root(source: Any) -> Path:
         root = Path(source).resolve()
@@ -447,3 +470,11 @@ def _map_order_status(value: str) -> str:
     if normalized in {"canceled", "unavailable"}:
         return "cancelled"
     return "unknown"
+
+
+def _staging_table_name(filename: str) -> str:
+    stem = filename.removesuffix(".csv")
+    if stem.startswith("olist_"):
+        stem = stem.removeprefix("olist_")
+    stem = stem.removesuffix("_dataset")
+    return f"olist_{stem}_staging"

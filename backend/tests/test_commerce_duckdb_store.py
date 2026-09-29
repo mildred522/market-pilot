@@ -8,7 +8,7 @@ import pytest
 
 from app.commerce.contracts import CommerceAnalysisMode
 from app.commerce.ingestion import import_csv_package
-from app.commerce.warehouse import CommerceDuckDBArtifactStore
+from app.commerce.warehouse import CommerceDuckDBArtifactStore, DuckDBStagingTable
 
 
 def _write_package(root: Path, *, amount: str = "12.50") -> None:
@@ -62,6 +62,28 @@ def test_duckdb_artifact_round_trips_canonical_tables(tmp_path: Path) -> None:
         assert connection.execute(
             "SELECT SUM(quantity * unit_price) FROM order_items"
         ).fetchone()[0] == 25
+
+
+def test_duckdb_artifact_persists_source_specific_staging_table(tmp_path: Path) -> None:
+    dataset = _dataset(tmp_path / "input")
+    store = CommerceDuckDBArtifactStore(tmp_path / "artifacts")
+    staging = DuckDBStagingTable(
+        table_name="olist_orders_staging",
+        source_file="olist_orders_dataset.csv",
+        content_hash="raw-hash",
+        columns=("order_id", "order_status"),
+        rows=(("o-1", "delivered"),),
+    )
+
+    artifact = store.write(dataset, staging_tables=(staging,))
+
+    with duckdb.connect(str(artifact), read_only=True) as connection:
+        assert connection.execute(
+            "SELECT order_id, order_status FROM olist_orders_staging"
+        ).fetchone() == ("o-1", "delivered")
+        assert connection.execute(
+            "SELECT source_file, table_name, row_count FROM source_files"
+        ).fetchone() == ("olist_orders_dataset.csv", "olist_orders_staging", 1)
 
 
 def test_duckdb_artifact_write_is_idempotent(tmp_path: Path) -> None:
