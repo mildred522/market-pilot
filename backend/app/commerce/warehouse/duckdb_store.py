@@ -19,6 +19,15 @@ _SAFE_SNAPSHOT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 
 
+def default_commerce_artifact_root() -> Path:
+    return Path(
+        os.getenv(
+            "COMMERCE_ARTIFACT_ROOT",
+            str(Path(__file__).resolve().parents[3] / "storage" / "commerce"),
+        )
+    )
+
+
 @dataclass(frozen=True)
 class DuckDBStagingTable:
     table_name: str

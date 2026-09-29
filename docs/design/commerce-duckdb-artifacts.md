@@ -31,6 +31,18 @@ Artifact 生成后只读使用；相同 `snapshot_id` 必须具有相同 `conten
 
 当前 SQLite 中的 JSON Dataset 仍然保留，作为 M8 兼容路径。后续完成 Olist 多表分析和快照 artifact repository 后，再评估是否将 API 指标读取迁移到 DuckDB；不得在没有对账测试的情况下删除兼容路径。
 
+## 销售事实层
+
+Olist v2 artifact 在原始 staging 之上提供只读商品销售事实查询。查询先按订单商品行粒度连接订单和 canonical 金额，再按商品或 SKU 聚合，使用订单状态、购买时间、卖家数和运费字段；取消或未知状态不会进入成交销售额，但会计入窗口的排除订单数。
+
+当前开放的接口为：
+
+```text
+GET /commerce/benchmarks/{snapshot_id}/sales?start=...&end=...&item_level=product|sku
+```
+
+该事实层只表达商品销售额、销量、订单数、平均单价、卖家数和可用运费，不推导净利润、卖家实收或因果效果。热点商品和选品建议应建立在这些可追溯聚合之上。
+
 ## 导入方式
 
 现有标准四表导入命令会额外生成 DuckDB artifact：

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCommerceBenchmarks } from "@/lib/api";
-import type { CommerceBenchmarkSnapshotSummary } from "@/lib/types";
+import { getCommerceBenchmarkSales, getCommerceBenchmarks } from "@/lib/api";
+import type { CommerceBenchmarkSnapshotSummary, CommerceProductSalesReport } from "@/lib/types";
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -16,11 +16,19 @@ function formatPeriod(snapshot: CommerceBenchmarkSnapshotSummary): string {
   return `${formatDate(snapshot.period_start)} — ${formatDate(snapshot.period_end)}`;
 }
 
+function formatAmount(value: number | string | null): string {
+  if (value === null) return "—";
+  return Number(value).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+}
+
 export default function CommercePage() {
   const [snapshots, setSnapshots] = useState<CommerceBenchmarkSnapshotSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sales, setSales] = useState<CommerceProductSalesReport | null>(null);
+  const [loadingSales, setLoadingSales] = useState(false);
+  const [salesError, setSalesError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -43,6 +51,33 @@ export default function CommercePage() {
   }, []);
 
   const selected = snapshots.find((snapshot) => snapshot.snapshot_id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!selected) {
+      setSales(null);
+      return;
+    }
+    let active = true;
+    setLoadingSales(true);
+    setSalesError("");
+    setSales(null);
+    const start = selected.period_start ?? selected.created_at;
+    const periodEnd = selected.period_end ? new Date(selected.period_end) : new Date();
+    periodEnd.setDate(periodEnd.getDate() + 1);
+    void getCommerceBenchmarkSales(selected.snapshot_id, start, periodEnd.toISOString())
+      .then((report) => {
+        if (active) setSales(report);
+      })
+      .catch((caught) => {
+        if (active) setSalesError(caught instanceof Error ? caught.message : "商品销售数据加载失败");
+      })
+      .finally(() => {
+        if (active) setLoadingSales(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected, selectedId]);
 
   return (
     <main className="shell commerce-page">
@@ -88,14 +123,59 @@ export default function CommercePage() {
             </select>
 
             {selected ? (
-              <dl className="commerce-snapshot-details">
+              <>
+                <dl className="commerce-snapshot-details">
                 <div><dt>数据来源</dt><dd>{selected.source_type}</dd></div>
                 <div><dt>覆盖时间</dt><dd>{formatPeriod(selected)}</dd></div>
                 <div><dt>结构版本</dt><dd>{selected.schema_version}</dd></div>
                 <div><dt>能力</dt><dd>{selected.capabilities.join("、") || "未声明"}</dd></div>
                 <div><dt>行数</dt><dd>{Object.entries(selected.row_counts).map(([key, value]) => `${key}: ${value}`).join(" · ")}</dd></div>
                 <div><dt>内容指纹</dt><dd><code>{selected.content_hash}</code></dd></div>
-              </dl>
+                </dl>
+                <section className="commerce-sales-panel" aria-labelledby="commerce-sales-title">
+                  <div className="section-heading">
+                    <div>
+                      <p className="kicker">Product sales</p>
+                      <h2 id="commerce-sales-title">商品销售排行</h2>
+                    </div>
+                    <p>当前只展示可由订单商品行直接支持的销量、销售额和卖家覆盖数。</p>
+                  </div>
+                  {loadingSales ? <p className="commerce-empty">正在计算商品销售事实...</p> : null}
+                  {salesError ? <p className="commerce-error" role="alert">{salesError}</p> : null}
+                  {!loadingSales && !salesError && sales?.metrics.length ? (
+                    <div className="commerce-sales-table-wrap">
+                      <table className="commerce-sales-table">
+                        <thead>
+                          <tr>
+                            <th>商品</th>
+                            <th>品类</th>
+                            <th>销量</th>
+                            <th>订单</th>
+                            <th>销售额</th>
+                            <th>卖家数</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sales.metrics.slice(0, 10).map((metric) => (
+                            <tr key={metric.item_id}>
+                              <td><strong>{metric.product_id}</strong><small>{metric.item_id}</small></td>
+                              <td>{metric.category_name ?? "未分类"}</td>
+                              <td>{formatAmount(metric.units_sold)}</td>
+                              <td>{metric.order_count}</td>
+                              <td>{formatAmount(metric.gross_amount)} {metric.currency ?? ""}</td>
+                              <td>{metric.seller_count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="commerce-sales-note">纳入订单 {sales.included_order_count} 笔；排除订单 {sales.excluded_order_count} 笔。销售额不是利润。</p>
+                    </div>
+                  ) : null}
+                  {!loadingSales && !salesError && !sales?.metrics.length ? (
+                    <p className="commerce-empty">当前窗口没有可用的成交商品销售记录。</p>
+                  ) : null}
+                </section>
+              </>
             ) : null}
           </div>
         ) : null}

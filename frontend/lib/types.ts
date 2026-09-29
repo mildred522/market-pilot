@@ -19,6 +19,29 @@ export type CommerceBenchmarkSnapshotSummary = {
   row_counts: Record<string, number>;
 };
 
+export type CommerceProductSalesMetric = {
+  item_level: "product" | "sku";
+  item_id: string;
+  product_id: string;
+  category_name: string | null;
+  units_sold: number | string;
+  order_count: number;
+  gross_amount: number | string;
+  average_unit_price: number | string | null;
+  seller_count: number;
+  freight_amount: number | string | null;
+  currency: string | null;
+};
+
+export type CommerceProductSalesReport = {
+  snapshot_id: string;
+  window: { start: string; end: string };
+  item_level: "product" | "sku";
+  metrics: CommerceProductSalesMetric[];
+  included_order_count: number;
+  excluded_order_count: number;
+};
+
 export type IntegrationStatus = {
   configured: boolean;
   source: "saved" | "runtime" | "environment" | null;

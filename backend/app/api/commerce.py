@@ -16,6 +16,11 @@ from app.commerce.contracts import (
     CommerceAnalysisMode,
     CommerceBenchmarkSnapshotSummary,
 )
+from app.commerce.metrics import (
+    ItemLevel,
+    OlistProductSalesReport,
+    TimeWindow,
+)
 from app.commerce.plan import (
     CommercePlanRequest,
     CommercePlanResponse,
@@ -23,6 +28,10 @@ from app.commerce.plan import (
     CommercePlanStatus,
 )
 from app.commerce.repository import CommerceBenchmarkRepository
+from app.commerce.sources.olist import (
+    OlistSalesFactRepository,
+    OlistSalesFactUnavailable,
+)
 from app.commerce.talk import (
     CommerceTalkRequest,
     CommerceTalkResponse,
@@ -43,6 +52,59 @@ def list_commerce_benchmarks(
     _: CurrentUser = Depends(get_current_user),
 ) -> tuple[CommerceBenchmarkSnapshotSummary, ...]:
     return CommerceBenchmarkRepository(db).list()
+
+
+@router.get(
+    "/benchmarks/{snapshot_id}/sales",
+    response_model=OlistProductSalesReport,
+)
+def get_olist_product_sales(
+    snapshot_id: str,
+    start: datetime,
+    end: datetime,
+    item_level: ItemLevel = ItemLevel.PRODUCT,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(get_current_user),
+) -> OlistProductSalesReport:
+    if end <= start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_commerce_window",
+                "message": "销售分析窗口的 end 必须晚于 start",
+            },
+        )
+    dataset = CommerceBenchmarkRepository(db).get(snapshot_id)
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "commerce_snapshot_not_found",
+                "message": "commerce snapshot not found",
+            },
+        )
+    if dataset.snapshot.schema_version != "olist-canonical-v2":
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "code": "commerce_sales_fact_not_ready",
+                "message": "当前快照还没有 Olist 销售事实层",
+            },
+        )
+    try:
+        return OlistSalesFactRepository().product_sales(
+            snapshot_id,
+            TimeWindow(start=start, end=end),
+            item_level=item_level,
+        )
+    except OlistSalesFactUnavailable as error:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "code": "commerce_sales_fact_not_ready",
+                "message": str(error),
+            },
+        ) from error
 
 
 @router.post("/talk", response_model=CommerceTalkResponse)
