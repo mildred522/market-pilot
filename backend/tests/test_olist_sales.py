@@ -6,10 +6,18 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.commerce.contracts import CommerceAnalysisMode
+from app.commerce.contracts import (
+    CommerceAnalysisMode,
+    CommerceInteraction,
+    CommerceScope,
+    InteractionMode,
+)
+from app.commerce.providers import OlistDuckDBFactProvider
+from app.commerce.plan import CommercePlanRequest, CommercePlanService
 from app.commerce.sources.olist import OlistSalesFactRepository, OlistSourceAdapter
 from app.commerce.warehouse import CommerceDuckDBArtifactStore
 from app.commerce.metrics import TimeWindow
+from app.commerce.talk import CommerceTalkRequest, CommerceTalkService
 from app.db.session import SessionLocal, init_db
 from app.main import app
 from app.commerce.repository import CommerceBenchmarkRepository
@@ -237,3 +245,90 @@ def test_olist_selection_recommendations_keep_actions_evidence_based(tmp_path: P
     assert "销售额增长率 +100.0%" in report.recommendations[0].evidence
     assert report.recommendations[1].recommendation_type == "validate_new_product"
     assert "缺少历史基线" in report.recommendations[1].risk_flags
+
+
+def test_talk_reads_olist_sales_through_duckdb_fact_provider(tmp_path: Path) -> None:
+    source = tmp_path / "olist"
+    _write_olist(source)
+    dataset, adapter = _import_dataset(source)
+    artifact_root = tmp_path / "artifacts"
+    CommerceDuckDBArtifactStore(artifact_root).write(
+        dataset,
+        staging_tables=adapter.staging_tables(source),
+    )
+
+    request = CommerceTalkRequest(
+        question="这个窗口卖了哪些商品？",
+        interaction=CommerceInteraction(
+            mode=InteractionMode.TALK,
+            scope=CommerceScope(
+                mode=CommerceAnalysisMode.BENCHMARK,
+                project_id=1,
+                snapshot_id=dataset.snapshot.snapshot_id,
+            ),
+        ),
+        previous_window=TimeWindow(
+            start=datetime(2017, 12, 30, tzinfo=UTC),
+            end=datetime(2018, 1, 1, tzinfo=UTC),
+        ),
+        current_window=TimeWindow(
+            start=datetime(2018, 1, 1, tzinfo=UTC),
+            end=datetime(2018, 1, 3, tzinfo=UTC),
+        ),
+    )
+    response = CommerceTalkService().answer(
+        request,
+        dataset,
+        provider=OlistDuckDBFactProvider(
+            snapshot_id=dataset.snapshot.snapshot_id,
+            repository=OlistSalesFactRepository(artifact_root),
+        ),
+    )
+
+    assert response.status == "completed"
+    assert response.executions[0].status == "completed"
+    assert response.executions[0].data is not None
+    assert Decimal(str(response.executions[0].data["metrics"][0]["gross_amount"])) == Decimal("10.0000")
+
+
+def test_plan_reads_olist_selection_recommendations(tmp_path: Path) -> None:
+    source = tmp_path / "olist"
+    _write_olist_hot_fixture(source)
+    dataset, adapter = _import_dataset(source)
+    artifact_root = tmp_path / "artifacts"
+    CommerceDuckDBArtifactStore(artifact_root).write(
+        dataset,
+        staging_tables=adapter.staging_tables(source),
+    )
+
+    request = CommercePlanRequest(
+        question="规划下一窗口的商品经营动作",
+        interaction=CommerceInteraction(
+            mode=InteractionMode.PLAN,
+            scope=CommerceScope(
+                mode=CommerceAnalysisMode.BENCHMARK,
+                project_id=1,
+                snapshot_id=dataset.snapshot.snapshot_id,
+            ),
+        ),
+        previous_window=TimeWindow(
+            start=datetime(2018, 1, 1, tzinfo=UTC),
+            end=datetime(2018, 1, 2, tzinfo=UTC),
+        ),
+        current_window=TimeWindow(
+            start=datetime(2018, 1, 2, tzinfo=UTC),
+            end=datetime(2018, 1, 3, tzinfo=UTC),
+        ),
+    )
+    draft = CommercePlanService().draft(
+        request,
+        dataset,
+        provider=OlistDuckDBFactProvider(
+            snapshot_id=dataset.snapshot.snapshot_id,
+            repository=OlistSalesFactRepository(artifact_root),
+        ),
+    )
+
+    assert draft.status.value == "draft"
+    assert draft.steps
+    assert "扩大投入" in draft.steps[0].success_signal

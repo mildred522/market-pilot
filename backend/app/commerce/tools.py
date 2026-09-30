@@ -17,6 +17,7 @@ from app.commerce.metrics import (
     compute_sales_report,
     discover_hot_products,
 )
+from app.commerce.providers import CommerceFactProvider, DatasetCommerceFactProvider
 
 
 ToolStatus = Literal["completed", "degraded", "failed"]
@@ -47,12 +48,16 @@ class CommerceToolContext:
     previous_window: TimeWindow
     current_window: TimeWindow
     item_level: ItemLevel = ItemLevel.SKU
+    provider: CommerceFactProvider | None = None
 
     def validate(self) -> None:
         if self.dataset.snapshot.mode is not self.interaction.scope.mode:
             raise ValueError("interaction mode does not match snapshot mode")
         if self.interaction.mode is not InteractionMode.TALK:
             raise ValueError("commerce talk tools require talk interaction mode")
+
+    def fact_provider(self) -> CommerceFactProvider:
+        return self.provider or DatasetCommerceFactProvider(self.dataset)
 
 
 @dataclass(frozen=True)
@@ -64,8 +69,7 @@ class CommerceToolSpec:
 
 
 def _sales(context: CommerceToolContext) -> dict[str, Any]:
-    report = compute_sales_report(
-        context.dataset,
+    report = context.fact_provider().sales(
         context.current_window,
         item_level=context.item_level,
     )
@@ -73,29 +77,35 @@ def _sales(context: CommerceToolContext) -> dict[str, Any]:
 
 
 def _trends(context: CommerceToolContext) -> dict[str, Any]:
-    trends = compare_sales_windows(
-        context.dataset,
+    trends = context.fact_provider().trends(
         context.previous_window,
         context.current_window,
         item_level=context.item_level,
     )
+    if isinstance(trends, tuple):
+        items = [item.model_dump(mode="json") for item in trends]
+    else:
+        items = [item.model_dump(mode="json") for item in trends.trends]
     return {
         "previous_window": context.previous_window.model_dump(mode="json"),
         "current_window": context.current_window.model_dump(mode="json"),
-        "items": [item.model_dump(mode="json") for item in trends],
+        "items": items,
     }
 
 
 def _hot_products(context: CommerceToolContext) -> dict[str, Any]:
-    candidates = discover_hot_products(
-        context.dataset,
+    candidates = context.fact_provider().hot_products(
         context.previous_window,
         context.current_window,
         item_level=context.item_level,
     )
+    if isinstance(candidates, tuple):
+        items = [candidate.model_dump(mode="json") for candidate in candidates]
+    else:
+        items = [candidate.model_dump(mode="json") for candidate in candidates.candidates]
     return {
         "mode": context.interaction.scope.mode.value,
-        "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
+        "candidates": items,
     }
 
 
