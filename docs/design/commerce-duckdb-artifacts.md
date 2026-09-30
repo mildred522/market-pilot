@@ -86,6 +86,15 @@ GET /commerce/benchmarks/{snapshot_id}/selection-recommendations
 
 Talk 和 Plan 通过 `CommerceFactProvider` 选择事实来源：标准 CSV 快照继续使用内存 Dataset，`olist-canonical-v2` 快照使用只读 DuckDB artifact。这样 API 工作台、Talk 工具和 Plan 草案不会各自实现一套商品销售口径；artifact 不可用时，调用会显式失败，不回退到不一致的空数据。
 
+导入真实 Olist 数据后，可以执行完整事实链评测：
+
+```bash
+cd backend
+python -m scripts.evaluate_olist_benchmark <Olist数据目录> --currency BRL
+```
+
+该命令不提交原始数据，只输出快照指纹、质量警告、销售汇总、趋势并集、热点标签和选品建议数量，适合保存为本地或 CI 的 benchmark 摘要。
+
 ## 导入方式
 
 现有标准四表导入命令会额外生成 DuckDB artifact：
