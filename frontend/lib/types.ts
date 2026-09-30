@@ -71,6 +71,51 @@ export type CommerceHotProductReport = {
   excluded_order_count: number;
 };
 
+export type CommerceProductTrendReport = {
+  snapshot_id: string;
+  current_window: { start: string; end: string };
+  baseline_window: { start: string; end: string };
+  item_level: "product" | "sku";
+  trends: Array<{
+    item_level: "product" | "sku";
+    item_id: string;
+    product_id: string;
+    category_name: string | null;
+    current: CommerceProductSalesMetric | null;
+    previous: CommerceProductSalesMetric | null;
+    units_growth_rate: number | string | null;
+    gross_amount_growth_rate: number | string | null;
+    order_growth_rate: number | string | null;
+  }>;
+  included_order_count: number;
+  excluded_order_count: number;
+};
+
+export type CommerceSelectionRecommendationReport = {
+  snapshot_id: string;
+  current_window: { start: string; end: string };
+  baseline_window: { start: string; end: string };
+  item_level: "product" | "sku";
+  recommendations: Array<{
+    rank: number;
+    recommendation_type: "scale_test" | "validate_new_product" | "protect_winner" | "review_decline";
+    priority: "high" | "medium" | "low";
+    item_level: "product" | "sku";
+    item_id: string;
+    product_id: string;
+    category_name: string | null;
+    title: string;
+    action: string;
+    rationale: string;
+    evidence: string[];
+    risk_flags: string[];
+    current: CommerceProductSalesMetric | null;
+    trend: CommerceProductTrendReport["trends"][number];
+  }>;
+  included_order_count: number;
+  excluded_order_count: number;
+};
+
 export type IntegrationStatus = {
   configured: boolean;
   source: "saved" | "runtime" | "environment" | null;
