@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.commerce.contracts import CommerceInteraction, InteractionMode
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import ItemLevel, TimeWindow
+from app.commerce.providers import CommerceFactProvider
 from app.commerce.tools import (
     CommerceToolContext,
     CommerceToolResult,
@@ -54,6 +55,7 @@ class CommerceTalkService:
         self,
         request: CommerceTalkRequest,
         dataset: CommerceDataset,
+        provider: CommerceFactProvider | None = None,
     ) -> CommerceTalkResponse:
         tool_names = route_talk_question(request.question)
         context = CommerceToolContext(
@@ -62,6 +64,7 @@ class CommerceTalkService:
             previous_window=request.previous_window,
             current_window=request.current_window,
             item_level=request.item_level,
+            provider=provider,
         )
         batch = execute_commerce_talk_tools(tool_names, context)
         status = "completed"

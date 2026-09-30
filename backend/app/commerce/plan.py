@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.commerce.contracts import CommerceInteraction, InteractionMode
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import ItemLevel, TimeWindow, discover_hot_products
+from app.commerce.providers import CommerceFactProvider
 
 
 class CommercePlanStatus(StrEnum):
@@ -74,15 +75,43 @@ class CommercePlanResponse(BaseModel):
 
 
 class CommercePlanService:
-    def draft(self, request: CommercePlanRequest, dataset: CommerceDataset) -> CommercePlanDraft:
-        candidates = discover_hot_products(
-            dataset,
-            request.previous_window,
-            request.current_window,
-            item_level=request.item_level,
+    def draft(
+        self,
+        request: CommercePlanRequest,
+        dataset: CommerceDataset,
+        provider: CommerceFactProvider | None = None,
+    ) -> CommercePlanDraft:
+        selection_report = (
+            provider.selection_recommendations(
+                request.previous_window,
+                request.current_window,
+                item_level=request.item_level,
+            )
+            if provider is not None
+            else None
+        )
+        candidates = (
+            discover_hot_products(
+                dataset,
+                request.previous_window,
+                request.current_window,
+                item_level=request.item_level,
+            )
+            if selection_report is None
+            else ()
         )
         snapshot_ref = f"snapshot:{dataset.snapshot.snapshot_id}"
-        if not candidates:
+        if selection_report is not None:
+            steps = tuple(
+                _step_for_selection_recommendation(recommendation, snapshot_ref)
+                for recommendation in selection_report.recommendations[:6]
+            )
+        else:
+            steps = tuple(
+                _step_for_candidate(candidate, snapshot_ref)
+                for candidate in candidates[:6]
+            )
+        if not steps:
             return CommercePlanDraft(
                 status=CommercePlanStatus.INSUFFICIENT_DATA,
                 title="暂不生成商品经营计划",
@@ -94,10 +123,6 @@ class CommercePlanService:
                 ),
             )
 
-        steps = tuple(
-            _step_for_candidate(candidate, snapshot_ref)
-            for candidate in candidates[:6]
-        )
         evidence = tuple(
             dict.fromkeys(
                 [
@@ -120,6 +145,27 @@ class CommercePlanService:
         )
 
 
+def _step_for_selection_recommendation(recommendation: object, snapshot_ref: str) -> CommercePlanStep:
+    item_id = str(getattr(recommendation, "item_id"))
+    recommendation_type = getattr(recommendation, "recommendation_type")
+    action = str(getattr(recommendation, "action"))
+    rationale = str(getattr(recommendation, "rationale"))
+    priority = getattr(recommendation, "priority")
+    if recommendation_type == "scale_test":
+        success_signal = "下一等长窗口销售额和订单数继续增长，再决定是否扩大投入。"
+    elif recommendation_type == "validate_new_product":
+        success_signal = "补充连续窗口数据后，商品具备稳定增长或明确淘汰依据。"
+    elif recommendation_type == "protect_winner":
+        success_signal = "商品保持稳定销售，且供给或关联销售承接没有明显中断。"
+    else:
+        success_signal = "定位价格、库存、流量或商品质量原因后完成保留、优化或减少投入决策。"
+    return CommercePlanStep(
+        priority=priority,
+        action=f"商品 {item_id}：{action}",
+        rationale=rationale,
+        success_signal=success_signal,
+        evidence=(snapshot_ref, f"item:{item_id}", *tuple(getattr(recommendation, "evidence", ()))),
+    )
 def _step_for_candidate(candidate: object, snapshot_ref: str) -> CommercePlanStep:
     labels = set(getattr(candidate, "labels", ()))
     item_id = str(getattr(candidate, "item_id"))

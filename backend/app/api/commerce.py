@@ -30,6 +30,7 @@ from app.commerce.plan import (
     CommercePlanService,
     CommercePlanStatus,
 )
+from app.commerce.providers import OlistDuckDBFactProvider
 from app.commerce.repository import CommerceBenchmarkRepository
 from app.commerce.sources.olist import (
     OlistSalesFactRepository,
@@ -282,7 +283,8 @@ def commerce_talk(
 
     dataset = _resolve_benchmark_dataset(db, scope.snapshot_id, scope.mode)
 
-    return CommerceTalkService().answer(payload, dataset)
+    provider = _fact_provider_for_dataset(dataset)
+    return CommerceTalkService().answer(payload, dataset, provider=provider)
 
 
 @router.post(
@@ -299,7 +301,28 @@ def create_commerce_plan(
     require_admin(current_user)
     scope = payload.interaction.scope
     dataset = _resolve_benchmark_dataset(db, scope.snapshot_id, scope.mode)
-    draft = CommercePlanService().draft(payload, dataset)
+    try:
+        draft = CommercePlanService().draft(
+            payload,
+            dataset,
+            provider=_fact_provider_for_dataset(dataset),
+        )
+    except OlistSalesFactUnavailable as error:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "code": "commerce_plan_facts_not_ready",
+                "message": str(error),
+            },
+        ) from error
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_commerce_plan_window",
+                "message": str(error),
+            },
+        ) from error
     if draft.status is CommercePlanStatus.INSUFFICIENT_DATA:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -478,6 +501,15 @@ def _require_olist_sales_snapshot(db: Session, snapshot_id: str):
             },
         )
     return dataset
+
+
+def _fact_provider_for_dataset(dataset):
+    if dataset.snapshot.schema_version == "olist-canonical-v2":
+        return OlistDuckDBFactProvider(
+            snapshot_id=dataset.snapshot.snapshot_id,
+            repository=OlistSalesFactRepository(),
+        )
+    return None
 
 
 def _serialize_plan(plan: CommercePlan) -> CommercePlanResponse:

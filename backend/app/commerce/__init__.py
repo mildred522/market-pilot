@@ -19,6 +19,11 @@ from app.commerce.plan import (
     CommercePlanService,
     CommercePlanStatus,
 )
+from app.commerce.providers import (
+    CommerceFactProvider,
+    DatasetCommerceFactProvider,
+    OlistDuckDBFactProvider,
+)
 from app.commerce.ingestion import (
     CommerceDataset,
     CommerceImportError,
@@ -58,6 +63,9 @@ __all__ = [
     "CommercePlanResponse",
     "CommercePlanService",
     "CommercePlanStatus",
+    "CommerceFactProvider",
+    "DatasetCommerceFactProvider",
+    "OlistDuckDBFactProvider",
     "CommerceDataset",
     "CommerceImportError",
     "QualityReport",
