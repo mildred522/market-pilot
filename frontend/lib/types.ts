@@ -42,6 +42,118 @@ export type CommerceProductSalesReport = {
   excluded_order_count: number;
 };
 
+export type CommerceCategorySalesReport = {
+  snapshot_id: string;
+  window: { start: string; end: string };
+  categories: Array<{
+    category_name: string | null;
+    product_count: number;
+    units_sold: number | string;
+    order_count: number;
+    gross_amount: number | string;
+    seller_count: number;
+    currency: string | null;
+  }>;
+  included_order_count: number;
+  excluded_order_count: number;
+};
+
+export type CommerceComparisonWindows = {
+  snapshot_id: string;
+  baseline_window: { start: string; end: string };
+  current_window: { start: string; end: string };
+  selection_method: "latest_dense_28d" | "split_coverage";
+  baseline_order_count: number;
+  current_order_count: number;
+  warning: string | null;
+};
+
+export type CommerceInteractionRequest = {
+  question: string;
+  interaction: {
+    mode: "talk" | "plan";
+    scope: { mode: "benchmark"; project_id: number; snapshot_id: string };
+  };
+  previous_window: { start: string; end: string };
+  current_window: { start: string; end: string };
+  item_level: "product";
+};
+
+export type CommerceTalkResponse = {
+  status: "completed" | "insufficient_data" | "tool_failure";
+  intent: "unsupported" | "sales" | "trends" | "hot_products" | "mixed";
+  selected_tools: string[];
+  executions: Array<{
+    tool_name: string;
+    status: "completed" | "degraded" | "failed";
+    data: {
+      metrics?: CommerceProductSalesMetric[];
+      included_order_count?: number;
+      excluded_order_count?: number;
+      items?: CommerceProductTrendReport["trends"];
+      candidates?: CommerceHotProductCandidate[];
+    } | null;
+    evidence: string[];
+    warnings: string[];
+    error_code: string | null;
+    duration_ms: number;
+  }>;
+  suggestions: string[];
+  limitations: string[];
+};
+
+export type CommercePlanResponse = {
+  id: number;
+  project_id: number;
+  snapshot_id: string;
+  scope_mode: "benchmark" | "merchant";
+  question: string;
+  status: "draft" | "approved" | "insufficient_data";
+  title: string;
+  objective: string;
+  steps: Array<{
+    priority: "high" | "medium" | "low";
+    action: string;
+    rationale: string;
+    success_signal: string;
+    evidence: string[];
+  }>;
+  evidence: string[];
+  limitations: string[];
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+};
+
+export type CommercePlanSummary = Pick<
+  CommercePlanResponse,
+  "id" | "project_id" | "snapshot_id" | "status" | "title" | "question" | "created_at" | "approved_at"
+>;
+
+export type CommercePlanListResponse = {
+  items: CommercePlanSummary[];
+  next_offset: number | null;
+};
+
+export type CommercePlanPracticeCreate = {
+  step_index: number;
+  kind: "scenario" | "reflection";
+  note: string;
+};
+
+export type CommercePlanPracticeRecord = CommercePlanPracticeCreate & {
+  id: number;
+  plan_id: number;
+  source_type: "benchmark_simulation";
+  recorded_by_user_id: string | null;
+  created_at: string;
+};
+
+export type CommercePlanPracticeListResponse = {
+  items: CommercePlanPracticeRecord[];
+  next_offset: number | null;
+};
+
 export type CommerceHotProductCandidate = {
   rank: number;
   item_level: "product" | "sku";
@@ -98,7 +210,7 @@ export type CommerceSelectionRecommendationReport = {
   item_level: "product" | "sku";
   recommendations: Array<{
     rank: number;
-    recommendation_type: "scale_test" | "validate_new_product" | "protect_winner" | "review_decline";
+    recommendation_type: "verify_growth" | "validate_new_product" | "protect_winner" | "review_decline";
     priority: "high" | "medium" | "low";
     item_level: "product" | "sku";
     item_id: string;

@@ -286,7 +286,54 @@ a {
 .commerce-sales-table td:first-child { color: var(--ink); }
 .commerce-sales-table td strong { display: block; }
 .commerce-sales-table td small { display: block; margin-top: 3px; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.commerce-product-id { margin-top: 4px; color: var(--muted); font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.commerce-product-id summary { width: fit-content; cursor: pointer; }
+.commerce-product-id code { display: block; margin-top: 5px; overflow-wrap: anywhere; white-space: normal; user-select: all; }
+.commerce-history-notice { padding: 12px 14px; border-left: 3px solid var(--warning); background: #fff9ed; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
 .commerce-sales-note { margin: 10px 12px; color: var(--muted); font-size: 11px; }
+.commerce-agent-panel { margin-top: 28px; padding: 24px; border: 1px solid var(--line); background: var(--surface-subtle); }
+.commerce-agent-panel .section-heading { margin-bottom: 20px; }
+.commerce-agent-project { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }
+.commerce-agent-project label { width: 100%; margin: 0; }
+.commerce-agent-project select { flex: 1 1 240px; }
+.commerce-agent-project button, .commerce-agent-prompts button, .commerce-agent-modes button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink-soft); cursor: pointer; font: inherit; font-size: 12px; }
+.commerce-agent-panel button:disabled { cursor: not-allowed; opacity: .55; }
+.commerce-agent-hint { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.commerce-agent-modes { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
+.commerce-agent-modes button.active { border-color: var(--accent); background: var(--panel); color: var(--accent-strong); font-weight: 700; }
+.commerce-agent-history { margin: 14px 0 20px; padding: 14px; border: 1px solid var(--line); background: var(--panel); }
+.commerce-agent-history h3 { margin: 0 0 10px; color: var(--ink); font-size: 14px; }
+.commerce-agent-history p { color: var(--muted); font-size: 12px; }
+.commerce-agent-history ul { margin: 0; padding: 0; list-style: none; }
+.commerce-agent-history li { padding: 10px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.commerce-agent-history li button, .commerce-agent-history > button { padding: 4px 0; border: 0; background: transparent; color: var(--accent-strong); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; text-align: left; }
+.commerce-agent-history li small { display: block; color: var(--muted); font-size: 11px; }
+.commerce-agent-form label { display: block; margin-bottom: 8px; color: var(--ink-soft); font-size: 13px; font-weight: 700; }
+.commerce-agent-form textarea { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; resize: vertical; }
+.commerce-agent-prompts { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 18px; }
+.commerce-agent-submit { min-height: 40px; padding: 8px 16px; border: 1px solid var(--accent-strong); border-radius: 4px; background: var(--accent-strong); color: white; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; }
+.commerce-agent-result { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
+.commerce-agent-result h3 { margin: 0 0 8px; color: var(--ink); font-size: 19px; }
+.commerce-agent-result ol { padding-left: 24px; }
+.commerce-agent-card { margin: 12px 0; padding: 12px; border: 1px solid var(--line); background: var(--panel); overflow-wrap: anywhere; }
+.commerce-agent-card h4 { margin: 0 0 8px; color: var(--ink); font-size: 14px; }
+.commerce-agent-card li { margin: 5px 0; }
+.commerce-agent-card small { color: var(--muted); }
+.commerce-agent-warning { color: var(--warning); }
+.commerce-practice { margin-top: 22px; padding: 18px; border: 1px solid var(--line); background: var(--panel); }
+.commerce-practice h4 { margin: 0; color: var(--ink); font-size: 16px; }
+.commerce-practice h5 { margin: 22px 0 10px; color: var(--ink); font-size: 13px; }
+.commerce-practice > p, .commerce-practice form p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.commerce-practice > .commerce-error { color: var(--danger); }
+.commerce-practice form label { display: block; margin: 12px 0 5px; font-weight: 700; }
+.commerce-practice form select, .commerce-practice form textarea { width: 100%; min-height: 38px; padding: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; }
+.commerce-practice form textarea { resize: vertical; }
+.commerce-practice button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--accent-strong); border-radius: 4px; background: var(--accent-strong); color: white; cursor: pointer; font: inherit; font-weight: 700; }
+.commerce-practice button:disabled { cursor: not-allowed; opacity: .55; }
+.commerce-practice ol { padding-left: 22px; }
+.commerce-practice li { padding: 10px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.commerce-practice li small { display: block; margin-top: 3px; color: var(--muted); }
+.commerce-practice li p { margin: 8px 0 0; white-space: pre-wrap; }
 .commerce-hot-panel { margin-top: 28px; padding-top: 26px; border-top: 1px solid var(--line); }
 .commerce-hot-panel .section-heading { margin-bottom: 18px; }
 .commerce-hot-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }

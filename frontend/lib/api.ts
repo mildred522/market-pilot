@@ -1,4 +1,4 @@
-import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, CommerceHotProductReport, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, CommerceCategorySalesReport, CommerceComparisonWindows, CommerceHotProductReport, CommerceInteractionRequest, CommercePlanListResponse, CommercePlanPracticeCreate, CommercePlanPracticeListResponse, CommercePlanPracticeRecord, CommercePlanResponse, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport, CommerceTalkResponse, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -129,6 +129,13 @@ export function getCommerceBenchmarks(): Promise<CommerceBenchmarkSnapshotSummar
   });
 }
 
+export function getCommerceComparisonWindows(snapshotId: string): Promise<CommerceComparisonWindows> {
+  return request<CommerceComparisonWindows>(
+    `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/comparison-windows`,
+    { cache: "no-store" }
+  );
+}
+
 export function getCommerceBenchmarkSales(
   snapshotId: string,
   start: string,
@@ -138,6 +145,18 @@ export function getCommerceBenchmarkSales(
   const params = new URLSearchParams({ start, end, item_level: itemLevel });
   return request<CommerceProductSalesReport>(
     `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/sales?${params.toString()}`,
+    { cache: "no-store" }
+  );
+}
+
+export function getCommerceBenchmarkCategorySales(
+  snapshotId: string,
+  start: string,
+  end: string
+): Promise<CommerceCategorySalesReport> {
+  const params = new URLSearchParams({ start, end });
+  return request<CommerceCategorySalesReport>(
+    `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/category-sales?${params.toString()}`,
     { cache: "no-store" }
   );
 }
@@ -179,6 +198,60 @@ export function getCommerceSelectionRecommendations(
     `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/selection-recommendations?${params.toString()}`,
     { cache: "no-store" }
   );
+}
+
+export function askCommerceTalk(payload: CommerceInteractionRequest): Promise<CommerceTalkResponse> {
+  return request<CommerceTalkResponse>("/commerce/talk", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function createCommercePlan(payload: CommerceInteractionRequest): Promise<CommercePlanResponse> {
+  return request<CommercePlanResponse>("/commerce/plans", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getCommercePlans(
+  projectId: number,
+  snapshotId: string,
+  offset = 0
+): Promise<CommercePlanListResponse> {
+  const params = new URLSearchParams({
+    project_id: String(projectId), snapshot_id: snapshotId, limit: "20", offset: String(offset)
+  });
+  return request<CommercePlanListResponse>(`/commerce/plans?${params.toString()}`, { cache: "no-store" });
+}
+
+export function getCommercePlan(planId: number): Promise<CommercePlanResponse> {
+  return request<CommercePlanResponse>(`/commerce/plans/${planId}`, { cache: "no-store" });
+}
+
+export function approveCommercePlan(planId: number): Promise<CommercePlanResponse> {
+  return request<CommercePlanResponse>(`/commerce/plans/${planId}/approve`, { method: "POST" });
+}
+
+export function getCommercePlanPractice(
+  planId: number,
+  offset = 0
+): Promise<CommercePlanPracticeListResponse> {
+  const params = new URLSearchParams({ limit: "50", offset: String(offset) });
+  return request<CommercePlanPracticeListResponse>(
+    `/commerce/plans/${planId}/practice?${params.toString()}`,
+    { cache: "no-store" }
+  );
+}
+
+export function createCommercePlanPractice(
+  planId: number,
+  payload: CommercePlanPracticeCreate
+): Promise<CommercePlanPracticeRecord> {
+  return request<CommercePlanPracticeRecord>(`/commerce/plans/${planId}/practice`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export function createProject(name: string, stage: Stage): Promise<Project> {
