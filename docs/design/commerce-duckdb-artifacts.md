@@ -43,6 +43,20 @@ GET /commerce/benchmarks/{snapshot_id}/sales?start=...&end=...&item_level=produc
 
 该事实层只表达商品销售额、销量、订单数、平均单价、卖家数和可用运费，不推导净利润、卖家实收或因果效果。热点商品和选品建议应建立在这些可追溯聚合之上。
 
+当前热点候选接口为：
+
+```text
+GET /commerce/benchmarks/{snapshot_id}/hot-products
+  ?start=...
+  &end=...
+  &baseline_start=...
+  &baseline_end=...
+  &item_level=product|sku
+  &limit=...
+```
+
+未显式提供基线窗口时，服务端自动使用与当前窗口等长的前一窗口。热点不是黑盒综合分数：候选只基于可复核的 `volume_leader`、`revenue_leader`、`momentum` 和 `multi_seller` 标签，并返回对应证据、增长率与置信等级。它不等价于利润、因果关系或确定性选品结论。
+
 ## 导入方式
 
 现有标准四表导入命令会额外生成 DuckDB artifact：

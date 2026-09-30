@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import (
@@ -18,6 +18,7 @@ from app.commerce.contracts import (
 )
 from app.commerce.metrics import (
     ItemLevel,
+    OlistHotProductReport,
     OlistProductSalesReport,
     TimeWindow,
 )
@@ -102,6 +103,85 @@ def get_olist_product_sales(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail={
                 "code": "commerce_sales_fact_not_ready",
+                "message": str(error),
+            },
+        ) from error
+
+
+@router.get(
+    "/benchmarks/{snapshot_id}/hot-products",
+    response_model=OlistHotProductReport,
+)
+def get_olist_hot_products(
+    snapshot_id: str,
+    start: datetime,
+    end: datetime,
+    baseline_start: datetime | None = None,
+    baseline_end: datetime | None = None,
+    item_level: ItemLevel = ItemLevel.PRODUCT,
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(get_current_user),
+) -> OlistHotProductReport:
+    if end <= start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_commerce_window",
+                "message": "热点分析窗口的 end 必须晚于 start",
+            },
+        )
+    if (baseline_start is None) != (baseline_end is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "incomplete_commerce_baseline_window",
+                "message": "baseline_start 和 baseline_end 必须同时提供",
+            },
+        )
+    if baseline_start is not None and baseline_end is not None and baseline_end <= baseline_start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_commerce_baseline_window",
+                "message": "基线窗口的 baseline_end 必须晚于 baseline_start",
+            },
+        )
+    duration = end - start
+    baseline_window = TimeWindow(
+        start=baseline_start or start - duration,
+        end=baseline_end or start,
+    )
+    dataset = CommerceBenchmarkRepository(db).get(snapshot_id)
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "commerce_snapshot_not_found",
+                "message": "commerce snapshot not found",
+            },
+        )
+    if dataset.snapshot.schema_version != "olist-canonical-v2":
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "code": "commerce_hot_products_not_ready",
+                "message": "当前快照还没有 Olist 商品销售事实层",
+            },
+        )
+    try:
+        return OlistSalesFactRepository().hot_products(
+            snapshot_id,
+            TimeWindow(start=start, end=end),
+            baseline_window,
+            item_level=item_level,
+            limit=limit,
+        )
+    except OlistSalesFactUnavailable as error:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "code": "commerce_hot_products_not_ready",
                 "message": str(error),
             },
         ) from error

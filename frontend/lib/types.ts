@@ -42,6 +42,35 @@ export type CommerceProductSalesReport = {
   excluded_order_count: number;
 };
 
+export type CommerceHotProductCandidate = {
+  rank: number;
+  item_level: "product" | "sku";
+  item_id: string;
+  product_id: string;
+  category_name: string | null;
+  labels: string[];
+  confidence: "low" | "medium" | "high";
+  current: CommerceProductSalesMetric;
+  trend: {
+    current: CommerceProductSalesMetric;
+    previous: CommerceProductSalesMetric | null;
+    units_growth_rate: number | string | null;
+    gross_amount_growth_rate: number | string | null;
+    order_growth_rate: number | string | null;
+  };
+  evidence: string[];
+};
+
+export type CommerceHotProductReport = {
+  snapshot_id: string;
+  current_window: { start: string; end: string };
+  baseline_window: { start: string; end: string };
+  item_level: "product" | "sku";
+  candidates: CommerceHotProductCandidate[];
+  included_order_count: number;
+  excluded_order_count: number;
+};
+
 export type IntegrationStatus = {
   configured: boolean;
   source: "saved" | "runtime" | "environment" | null;
