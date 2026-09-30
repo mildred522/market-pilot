@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session
 
 from app.commerce.contracts import CommerceAnalysisMode
 from app.commerce.ingestion import import_csv_package
 from app.commerce.repository import CommerceBenchmarkRepository
 from app.db.models import Base
+from app.db.migrations import apply_compatibility_migrations
 
 
 def _write_package(root: Path, *, amount: str = "12.50") -> None:
@@ -131,3 +133,66 @@ def test_benchmark_repository_lists_metadata_without_dataset_records(tmp_path: P
     assert summary.row_counts == dataset.snapshot.row_counts
     assert "orders" not in summary.model_dump()
     assert "products" not in summary.model_dump()
+
+
+def test_olist_metadata_reads_do_not_select_full_dataset(tmp_path: Path) -> None:
+    _write_package(tmp_path)
+    dataset = _dataset(tmp_path)
+    dataset = dataset.model_copy(
+        update={"snapshot": dataset.snapshot.model_copy(update={"schema_version": "olist-canonical-v2"})}
+    )
+    session, repository = _repository()
+    statements: list[str] = []
+
+    def capture_sql(_connection, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    try:
+        repository.save(dataset)
+        event.listen(session.bind, "before_cursor_execute", capture_sql)
+        snapshot = repository.get_snapshot(dataset.snapshot.snapshot_id)
+        analysis_source = repository.get_for_analysis(dataset.snapshot.snapshot_id)
+        summaries = repository.list()
+    finally:
+        event.remove(session.bind, "before_cursor_execute", capture_sql)
+        session.close()
+
+    assert snapshot == dataset.snapshot
+    assert analysis_source == dataset.snapshot
+    assert summaries[0].snapshot_id == dataset.snapshot.snapshot_id
+    assert statements and all("dataset_json" not in statement for statement in statements)
+
+
+def test_existing_benchmark_database_backfills_snapshot_metadata(tmp_path: Path) -> None:
+    _write_package(tmp_path)
+    dataset = _dataset(tmp_path)
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE commerce_benchmark_snapshots ("
+                "snapshot_id VARCHAR(120) PRIMARY KEY, content_hash VARCHAR(128) NOT NULL, "
+                "dataset_json JSON NOT NULL, created_at DATETIME NOT NULL)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO commerce_benchmark_snapshots "
+                "(snapshot_id, content_hash, dataset_json, created_at) "
+                "VALUES (:snapshot_id, :content_hash, :dataset_json, :created_at)"
+            ),
+            {
+                "snapshot_id": dataset.snapshot.snapshot_id,
+                "content_hash": dataset.snapshot.content_hash,
+                "dataset_json": json.dumps(dataset.model_dump(mode="json")),
+                "created_at": dataset.snapshot.created_at.isoformat(),
+            },
+        )
+    apply_compatibility_migrations(engine)
+    apply_compatibility_migrations(engine)
+    with Session(engine) as session:
+        repository = CommerceBenchmarkRepository(session)
+        assert repository.get_snapshot(dataset.snapshot.snapshot_id) == dataset.snapshot
+        assert repository.list()[0].row_counts == dataset.snapshot.row_counts
+        assert repository.get(dataset.snapshot.snapshot_id) == dataset
+    engine.dispose()

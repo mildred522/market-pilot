@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import (
@@ -18,6 +19,8 @@ from app.commerce.contracts import (
 )
 from app.commerce.metrics import (
     ItemLevel,
+    OlistCategorySalesReport,
+    OlistComparisonWindows,
     OlistHotProductReport,
     OlistProductSalesReport,
     OlistProductTrendReport,
@@ -26,12 +29,18 @@ from app.commerce.metrics import (
 )
 from app.commerce.plan import (
     CommercePlanRequest,
+    CommercePlanListResponse,
+    CommercePlanPracticeCreate,
+    CommercePlanPracticeListResponse,
+    CommercePlanPracticeRecordResponse,
     CommercePlanResponse,
     CommercePlanService,
     CommercePlanStatus,
+    CommercePlanSummary,
 )
 from app.commerce.providers import OlistDuckDBFactProvider
 from app.commerce.repository import CommerceBenchmarkRepository
+from app.commerce.snapshot import CommerceSnapshot
 from app.commerce.sources.olist import (
     OlistSalesFactRepository,
     OlistSalesFactUnavailable,
@@ -41,7 +50,7 @@ from app.commerce.talk import (
     CommerceTalkResponse,
     CommerceTalkService,
 )
-from app.db.models import CommercePlan
+from app.db.models import CommercePlan, CommercePlanPracticeRecord
 from app.db.session import get_db
 
 router = APIRouter(prefix="/commerce", tags=["commerce"])
@@ -56,6 +65,25 @@ def list_commerce_benchmarks(
     _: CurrentUser = Depends(get_current_user),
 ) -> tuple[CommerceBenchmarkSnapshotSummary, ...]:
     return CommerceBenchmarkRepository(db).list()
+
+
+@router.get(
+    "/benchmarks/{snapshot_id}/comparison-windows",
+    response_model=OlistComparisonWindows,
+)
+def get_olist_comparison_windows(
+    snapshot_id: str,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(get_current_user),
+) -> OlistComparisonWindows:
+    _require_olist_sales_snapshot(db, snapshot_id)
+    try:
+        return OlistSalesFactRepository().comparison_windows(snapshot_id)
+    except OlistSalesFactUnavailable as error:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={"code": "commerce_comparison_windows_not_ready", "message": str(error)},
+        ) from error
 
 
 @router.get(
@@ -78,23 +106,7 @@ def get_olist_product_sales(
                 "message": "销售分析窗口的 end 必须晚于 start",
             },
         )
-    dataset = CommerceBenchmarkRepository(db).get(snapshot_id)
-    if dataset is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "commerce_snapshot_not_found",
-                "message": "commerce snapshot not found",
-            },
-        )
-    if dataset.snapshot.schema_version != "olist-canonical-v2":
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail={
-                "code": "commerce_sales_fact_not_ready",
-                "message": "当前快照还没有 Olist 销售事实层",
-            },
-        )
+    _require_olist_sales_snapshot(db, snapshot_id)
     try:
         return OlistSalesFactRepository().product_sales(
             snapshot_id,
@@ -108,6 +120,34 @@ def get_olist_product_sales(
                 "code": "commerce_sales_fact_not_ready",
                 "message": str(error),
             },
+        ) from error
+
+
+@router.get(
+    "/benchmarks/{snapshot_id}/category-sales",
+    response_model=OlistCategorySalesReport,
+)
+def get_olist_category_sales(
+    snapshot_id: str,
+    start: datetime,
+    end: datetime,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(get_current_user),
+) -> OlistCategorySalesReport:
+    if end <= start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "invalid_commerce_window", "message": "品类分析窗口的 end 必须晚于 start"},
+        )
+    _require_olist_sales_snapshot(db, snapshot_id)
+    try:
+        return OlistSalesFactRepository().category_sales(
+            snapshot_id, TimeWindow(start=start, end=end)
+        )
+    except OlistSalesFactUnavailable as error:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={"code": "commerce_sales_fact_not_ready", "message": str(error)},
         ) from error
 
 
@@ -155,23 +195,7 @@ def get_olist_hot_products(
         start=baseline_start or start - duration,
         end=baseline_end or start,
     )
-    dataset = CommerceBenchmarkRepository(db).get(snapshot_id)
-    if dataset is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "commerce_snapshot_not_found",
-                "message": "commerce snapshot not found",
-            },
-        )
-    if dataset.snapshot.schema_version != "olist-canonical-v2":
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail={
-                "code": "commerce_hot_products_not_ready",
-                "message": "当前快照还没有 Olist 商品销售事实层",
-            },
-        )
+    _require_olist_sales_snapshot(db, snapshot_id, error_code="commerce_hot_products_not_ready")
     try:
         return OlistSalesFactRepository().hot_products(
             snapshot_id,
@@ -352,17 +376,49 @@ def create_commerce_plan(
     return _serialize_plan(plan)
 
 
+@router.get("/plans", response_model=CommercePlanListResponse)
+def list_commerce_plans(
+    project_id: int,
+    snapshot_id: str = Query(min_length=1, max_length=120),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> CommercePlanListResponse:
+    require_owned_project(db, current_user, project_id)
+    require_admin(current_user)
+    plans = db.scalars(
+        select(CommercePlan)
+        .where(CommercePlan.project_id == project_id, CommercePlan.snapshot_id == snapshot_id)
+        .order_by(CommercePlan.created_at.desc(), CommercePlan.id.desc())
+        .offset(offset)
+        .limit(limit + 1)
+    ).all()
+    return CommercePlanListResponse(
+        items=tuple(
+            CommercePlanSummary(
+                id=plan.id,
+                project_id=plan.project_id,
+                snapshot_id=plan.snapshot_id,
+                status=plan.status,
+                title=plan.title,
+                question=plan.question,
+                created_at=plan.created_at,
+                approved_at=plan.approved_at,
+            )
+            for plan in plans[:limit]
+        ),
+        next_offset=offset + limit if len(plans) > limit else None,
+    )
+
+
 @router.get("/plans/{plan_id}", response_model=CommercePlanResponse)
 def get_commerce_plan(
     plan_id: int,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CommercePlanResponse:
-    plan = db.get(CommercePlan, plan_id)
-    if plan is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="commerce plan not found")
-    require_owned_project(db, current_user, plan.project_id)
-    return _serialize_plan(plan)
+    return _serialize_plan(_require_owned_admin_plan(db, current_user, plan_id))
 
 
 @router.post("/plans/{plan_id}/approve", response_model=CommercePlanResponse)
@@ -371,11 +427,7 @@ def approve_commerce_plan(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CommercePlanResponse:
-    plan = db.get(CommercePlan, plan_id)
-    if plan is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="commerce plan not found")
-    require_owned_project(db, current_user, plan.project_id)
-    require_admin(current_user)
+    plan = _require_owned_admin_plan(db, current_user, plan_id)
     if plan.status != CommercePlanStatus.DRAFT.value:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -389,6 +441,97 @@ def approve_commerce_plan(
     db.commit()
     db.refresh(plan)
     return _serialize_plan(plan)
+
+
+@router.get("/plans/{plan_id}/practice", response_model=CommercePlanPracticeListResponse)
+def list_commerce_plan_practice(
+    plan_id: int,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> CommercePlanPracticeListResponse:
+    plan = _require_owned_admin_plan(db, current_user, plan_id)
+    _require_benchmark_practice(plan)
+    records = db.scalars(
+        select(CommercePlanPracticeRecord)
+        .where(CommercePlanPracticeRecord.plan_id == plan_id)
+        .order_by(CommercePlanPracticeRecord.created_at.desc(), CommercePlanPracticeRecord.id.desc())
+        .offset(offset)
+        .limit(limit + 1)
+    ).all()
+    return CommercePlanPracticeListResponse(
+        items=tuple(_serialize_practice(record) for record in records[:limit]),
+        next_offset=offset + limit if len(records) > limit else None,
+    )
+
+
+@router.post(
+    "/plans/{plan_id}/practice",
+    response_model=CommercePlanPracticeRecordResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_commerce_plan_practice(
+    plan_id: int,
+    payload: CommercePlanPracticeCreate,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> CommercePlanPracticeRecordResponse:
+    plan = _require_owned_admin_plan(db, current_user, plan_id)
+    _require_benchmark_practice(plan)
+    if plan.status != CommercePlanStatus.APPROVED.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "commerce_plan_not_approved", "message": "approve the plan before recording a practice"},
+        )
+    if payload.step_index >= len(plan.steps_json):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "invalid_commerce_plan_step", "message": "step_index is outside this plan"},
+        )
+    if payload.kind == "reflection":
+        has_scenario = db.scalar(
+            select(CommercePlanPracticeRecord.id)
+            .where(
+                CommercePlanPracticeRecord.plan_id == plan_id,
+                CommercePlanPracticeRecord.step_index == payload.step_index,
+                CommercePlanPracticeRecord.kind == "scenario",
+            )
+            .limit(1)
+        )
+        if has_scenario is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "practice_scenario_required", "message": "record a scenario before its reflection"},
+            )
+    record = CommercePlanPracticeRecord(
+        plan_id=plan_id,
+        step_index=payload.step_index,
+        kind=payload.kind,
+        note=payload.note,
+        recorded_by_user_id=None if auth_is_disabled() else current_user.id,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _serialize_practice(record)
+
+
+def _require_owned_admin_plan(db: Session, user: CurrentUser, plan_id: int) -> CommercePlan:
+    require_admin(user)
+    plan = db.get(CommercePlan, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="commerce plan not found")
+    require_owned_project(db, user, plan.project_id)
+    return plan
+
+
+def _require_benchmark_practice(plan: CommercePlan) -> None:
+    if plan.scope_mode != CommerceAnalysisMode.BENCHMARK.value:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={"code": "merchant_practice_not_ready", "message": "merchant action tracking is not available"},
+        )
 
 
 def _resolve_benchmark_dataset(
@@ -413,8 +556,8 @@ def _resolve_benchmark_dataset(
                 ),
             },
         )
-    dataset = CommerceBenchmarkRepository(db).get(snapshot_id)
-    if dataset is None:
+    analysis_source = CommerceBenchmarkRepository(db).get_for_analysis(snapshot_id)
+    if analysis_source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -422,7 +565,12 @@ def _resolve_benchmark_dataset(
                 "message": "commerce snapshot not found",
             },
         )
-    if dataset.snapshot.mode is not mode:
+    snapshot = (
+        analysis_source
+        if isinstance(analysis_source, CommerceSnapshot)
+        else analysis_source.snapshot
+    )
+    if snapshot.mode is not mode:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -430,7 +578,7 @@ def _resolve_benchmark_dataset(
                 "message": "commerce scope mode does not match snapshot mode",
             },
         )
-    return dataset
+    return analysis_source
 
 
 def _resolve_comparison_windows(
@@ -482,9 +630,11 @@ def _resolve_comparison_windows(
     return current_window, baseline_window
 
 
-def _require_olist_sales_snapshot(db: Session, snapshot_id: str):
-    dataset = CommerceBenchmarkRepository(db).get(snapshot_id)
-    if dataset is None:
+def _require_olist_sales_snapshot(
+    db: Session, snapshot_id: str, *, error_code: str = "commerce_sales_fact_not_ready"
+) -> CommerceSnapshot:
+    snapshot = CommerceBenchmarkRepository(db).get_snapshot(snapshot_id)
+    if snapshot is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
@@ -492,21 +642,22 @@ def _require_olist_sales_snapshot(db: Session, snapshot_id: str):
                 "message": "commerce snapshot not found",
             },
         )
-    if dataset.snapshot.schema_version != "olist-canonical-v2":
+    if snapshot.schema_version != "olist-canonical-v2":
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail={
-                "code": "commerce_sales_fact_not_ready",
+                "code": error_code,
                 "message": "当前快照还没有 Olist 商品销售事实层",
             },
         )
-    return dataset
+    return snapshot
 
 
 def _fact_provider_for_dataset(dataset):
-    if dataset.snapshot.schema_version == "olist-canonical-v2":
+    snapshot = dataset if isinstance(dataset, CommerceSnapshot) else dataset.snapshot
+    if snapshot.schema_version == "olist-canonical-v2":
         return OlistDuckDBFactProvider(
-            snapshot_id=dataset.snapshot.snapshot_id,
+            snapshot_id=snapshot.snapshot_id,
             repository=OlistSalesFactRepository(),
         )
     return None
@@ -528,4 +679,16 @@ def _serialize_plan(plan: CommercePlan) -> CommercePlanResponse:
         created_at=plan.created_at,
         updated_at=plan.updated_at,
         approved_at=plan.approved_at,
+    )
+
+
+def _serialize_practice(record: CommercePlanPracticeRecord) -> CommercePlanPracticeRecordResponse:
+    return CommercePlanPracticeRecordResponse(
+        id=record.id,
+        plan_id=record.plan_id,
+        step_index=record.step_index,
+        kind=record.kind,
+        note=record.note,
+        recorded_by_user_id=record.recorded_by_user_id,
+        created_at=record.created_at,
     )

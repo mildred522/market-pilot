@@ -36,6 +36,7 @@ class CommerceBenchmarkRepository:
                 snapshot_id=snapshot.snapshot_id,
                 content_hash=snapshot.content_hash,
                 dataset_json=dataset.model_dump(mode="json"),
+                snapshot_json=snapshot.model_dump(mode="json"),
             )
         )
         try:
@@ -64,14 +65,40 @@ class CommerceBenchmarkRepository:
             raise ValueError("persisted commerce benchmark snapshot metadata is inconsistent")
         return dataset
 
+    def get_snapshot(self, snapshot_id: str) -> CommerceSnapshot | None:
+        row = self._db.execute(
+            select(
+                CommerceBenchmarkSnapshot.snapshot_id,
+                CommerceBenchmarkSnapshot.content_hash,
+                CommerceBenchmarkSnapshot.snapshot_json,
+            ).where(CommerceBenchmarkSnapshot.snapshot_id == snapshot_id)
+        ).one_or_none()
+        if row is None:
+            return None
+        return self._validated_snapshot(*row)
+
+    def get_for_analysis(
+        self, snapshot_id: str
+    ) -> CommerceDataset | CommerceSnapshot | None:
+        snapshot = self.get_snapshot(snapshot_id)
+        if snapshot is None:
+            return None
+        if snapshot.schema_version == "olist-canonical-v2":
+            return snapshot
+        return self.get(snapshot_id)
+
     def list(self) -> tuple[CommerceBenchmarkSnapshotSummary, ...]:
-        records = self._db.scalars(
-            select(CommerceBenchmarkSnapshot).order_by(
+        records = self._db.execute(
+            select(
+                CommerceBenchmarkSnapshot.snapshot_id,
+                CommerceBenchmarkSnapshot.content_hash,
+                CommerceBenchmarkSnapshot.snapshot_json,
+            ).order_by(
                 CommerceBenchmarkSnapshot.created_at.desc(),
                 CommerceBenchmarkSnapshot.snapshot_id.asc(),
             )
         ).all()
-        summaries = [self._summary(record) for record in records]
+        summaries = [self._summary(self._validated_snapshot(*record)) for record in records]
         return tuple(
             sorted(
                 summaries,
@@ -99,21 +126,24 @@ class CommerceBenchmarkRepository:
         return saved
 
     @staticmethod
-    def _summary(
-        record: CommerceBenchmarkSnapshot,
-    ) -> CommerceBenchmarkSnapshotSummary:
-        snapshot_payload = record.dataset_json.get("snapshot")
+    def _validated_snapshot(
+        snapshot_id: str, content_hash: str, snapshot_payload: dict | None
+    ) -> CommerceSnapshot:
         if not isinstance(snapshot_payload, dict):
             raise ValueError("persisted commerce benchmark snapshot metadata is inconsistent")
         metadata = CommerceSnapshot.model_validate(snapshot_payload)
         if (
-            metadata.snapshot_id != record.snapshot_id
-            or metadata.content_hash != record.content_hash
+            metadata.snapshot_id != snapshot_id
+            or metadata.content_hash != content_hash
             or metadata.mode is not CommerceAnalysisMode.BENCHMARK
             or metadata.source_type != "public_dataset"
             or metadata.state is not SnapshotState.READY
         ):
             raise ValueError("persisted commerce benchmark snapshot metadata is inconsistent")
+        return metadata
+
+    @staticmethod
+    def _summary(metadata: CommerceSnapshot) -> CommerceBenchmarkSnapshotSummary:
         return CommerceBenchmarkSnapshotSummary(
             snapshot_id=metadata.snapshot_id,
             source_type=metadata.source_type,

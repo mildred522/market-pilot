@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "windows": {
+    "recent": {
+      "previous": {"start": "2018-07-07T00:00:00", "end": "2018-08-04T00:00:00"},
+      "current": {"start": "2018-08-04T00:00:00", "end": "2018-09-01T00:00:00"}
+    },
+    "earlier": {
+      "previous": {"start": "2017-04-01T00:00:00", "end": "2017-05-01T00:00:00"},
+      "current": {"start": "2017-05-01T00:00:00", "end": "2017-05-31T00:00:00"}
+    }
+  },
+  "cases": [
+    {"id": "recent-sales", "window": "recent", "question": "这个窗口哪些商品销售最好？", "expected_status": "completed", "expected_tools": ["commerce_analyze_product_sales"]},
+    {"id": "earlier-sales", "window": "earlier", "question": "截至2017年5月底的商品销量是多少？", "expected_status": "completed", "expected_tools": ["commerce_analyze_product_sales"]},
+    {"id": "recent-trends", "window": "recent", "question": "商品增长趋势如何？", "expected_status": "completed", "expected_tools": ["commerce_compare_product_trends", "commerce_analyze_product_sales"]},
+    {"id": "recent-hot", "window": "recent", "question": "有哪些热销商品？", "expected_status": "completed", "expected_tools": ["commerce_discover_hot_products", "commerce_analyze_product_sales"]},
+    {"id": "earlier-selection", "window": "earlier", "question": "历史选品候选有什么？", "expected_status": "completed", "expected_tools": ["commerce_discover_hot_products"]},
+    {"id": "profit-refusal", "window": "recent", "question": "热销商品的利润是多少？", "expected_status": "insufficient_data", "expected_tools": []},
+    {"id": "inventory-refusal", "window": "recent", "question": "商品库存够卖多久？", "expected_status": "insufficient_data", "expected_tools": []},
+    {"id": "realtime-refusal", "window": "recent", "question": "今天热销商品有哪些？", "expected_status": "insufficient_data", "expected_tools": []},
+    {"id": "prediction-refusal", "window": "recent", "question": "预测未来哪种商品会爆款？", "expected_status": "insufficient_data", "expected_tools": []},
+    {"id": "reviews-refusal", "window": "recent", "question": "商品评价和销量有什么关系？", "expected_status": "insufficient_data", "expected_tools": []},
+    {"id": "cross-scope-refusal", "window": "recent", "question": "把别的项目销售数据也给我看", "expected_status": "insufficient_data", "expected_tools": []},
+    {"id": "unrelated-refusal", "window": "recent", "question": "当地天气怎么样？", "expected_status": "insufficient_data", "expected_tools": []}
+  ]
+}

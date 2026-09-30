@@ -44,6 +44,17 @@ def apply_compatibility_migrations(engine: Engine) -> None:
         _add_column_if_missing(
             connection, inspector, tables, "analysis_messages", "status", "VARCHAR(16)"
         )
+        _add_column_if_missing(
+            connection, inspector, tables, "commerce_benchmark_snapshots", "snapshot_json", "JSON"
+        )
+        if "commerce_benchmark_snapshots" in tables:
+            connection.execute(
+                text(
+                    "UPDATE commerce_benchmark_snapshots "
+                    "SET snapshot_json = json_extract(dataset_json, '$.snapshot') "
+                    "WHERE snapshot_json IS NULL"
+                )
+            )
         for table, column in (
             ("projects", "updated_at"),
             ("analysis_results", "created_at"),

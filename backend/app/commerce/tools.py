@@ -18,6 +18,7 @@ from app.commerce.metrics import (
     discover_hot_products,
 )
 from app.commerce.providers import CommerceFactProvider, DatasetCommerceFactProvider
+from app.commerce.snapshot import CommerceSnapshot
 
 
 ToolStatus = Literal["completed", "degraded", "failed"]
@@ -44,20 +45,29 @@ class CommerceToolBatch(BaseModel):
 @dataclass(frozen=True)
 class CommerceToolContext:
     interaction: CommerceInteraction
-    dataset: CommerceDataset
+    dataset: CommerceDataset | CommerceSnapshot
     previous_window: TimeWindow
     current_window: TimeWindow
     item_level: ItemLevel = ItemLevel.SKU
     provider: CommerceFactProvider | None = None
 
     def validate(self) -> None:
-        if self.dataset.snapshot.mode is not self.interaction.scope.mode:
+        snapshot = (
+            self.dataset
+            if isinstance(self.dataset, CommerceSnapshot)
+            else self.dataset.snapshot
+        )
+        if snapshot.mode is not self.interaction.scope.mode:
             raise ValueError("interaction mode does not match snapshot mode")
         if self.interaction.mode is not InteractionMode.TALK:
             raise ValueError("commerce talk tools require talk interaction mode")
 
     def fact_provider(self) -> CommerceFactProvider:
-        return self.provider or DatasetCommerceFactProvider(self.dataset)
+        if self.provider is not None:
+            return self.provider
+        if isinstance(self.dataset, CommerceSnapshot):
+            raise ValueError("Olist analysis requires a DuckDB fact provider")
+        return DatasetCommerceFactProvider(self.dataset)
 
 
 @dataclass(frozen=True)
@@ -150,7 +160,12 @@ def execute_commerce_talk_tools(
     context.validate()
     validate_talk_tool_selection(tool_names)
     executions: list[CommerceToolResult] = []
-    available = context.dataset.snapshot.capabilities
+    snapshot = (
+        context.dataset
+        if isinstance(context.dataset, CommerceSnapshot)
+        else context.dataset.snapshot
+    )
+    available = snapshot.capabilities
     for name in tool_names:
         spec = COMMERCE_TALK_TOOLS[name]
         started = perf_counter()
@@ -192,7 +207,7 @@ def execute_commerce_talk_tools(
                 status="completed",
                 data=data,
                 evidence=(
-                    f"snapshot:{context.dataset.snapshot.snapshot_id}",
+                    f"snapshot:{snapshot.snapshot_id}",
                     f"project:{context.interaction.scope.project_id}",
                 ),
                 duration_ms=_duration_ms(started),

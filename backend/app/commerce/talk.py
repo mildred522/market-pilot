@@ -9,6 +9,7 @@ from app.commerce.contracts import CommerceInteraction, InteractionMode
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import ItemLevel, TimeWindow
 from app.commerce.providers import CommerceFactProvider
+from app.commerce.snapshot import CommerceSnapshot
 from app.commerce.tools import (
     CommerceToolContext,
     CommerceToolResult,
@@ -17,6 +18,7 @@ from app.commerce.tools import (
 
 
 class CommerceTalkIntent(StrEnum):
+    UNSUPPORTED = "unsupported"
     SALES = "sales"
     TRENDS = "trends"
     HOT_PRODUCTS = "hot_products"
@@ -54,10 +56,19 @@ class CommerceTalkService:
     def answer(
         self,
         request: CommerceTalkRequest,
-        dataset: CommerceDataset,
+        dataset: CommerceDataset | CommerceSnapshot,
         provider: CommerceFactProvider | None = None,
     ) -> CommerceTalkResponse:
         tool_names = route_talk_question(request.question)
+        if not tool_names:
+            return CommerceTalkResponse(
+                status="insufficient_data",
+                intent=CommerceTalkIntent.UNSUPPORTED,
+                selected_tools=(),
+                executions=(),
+                suggestions=("当前仅支持商品销售、趋势和热点问题；请缩小问题范围。",),
+                limitations=_limitations_for(request.interaction, dataset),
+            )
         context = CommerceToolContext(
             interaction=request.interaction,
             dataset=dataset,
@@ -85,18 +96,24 @@ class CommerceTalkService:
 QUESTION_TOOL_MARKERS: dict[str, tuple[str, ...]] = {
     "commerce_discover_hot_products": ("热销", "热点", "爆款", "潜力", "选品"),
     "commerce_compare_product_trends": ("趋势", "增长", "下降", "变化", "最近"),
-    "commerce_analyze_product_sales": ("销售", "销量", "成交", "商品", "SKU", "品类"),
+    "commerce_analyze_product_sales": ("销售", "销量", "成交", "商品", "SKU"),
 }
+
+UNSUPPORTED_QUESTION_MARKERS = (
+    "成本", "利润", "毛利", "库存", "实时", "今天", "预测", "未来",
+    "投放", "广告", "退款", "退货", "评价", "履约", "物流",
+    "其他项目", "别的项目", "其他店铺", "别的店铺", "其他商家", "别的商家",
+)
 
 
 def route_talk_question(question: str) -> list[str]:
+    if any(marker in question for marker in UNSUPPORTED_QUESTION_MARKERS):
+        return []
     selected = [
         tool_name
         for tool_name, markers in QUESTION_TOOL_MARKERS.items()
         if any(marker.lower() in question.lower() for marker in markers)
     ]
-    if not selected:
-        selected = ["commerce_analyze_product_sales"]
     return selected[:3]
 
 
@@ -118,11 +135,12 @@ def _suggestions_for(interaction: CommerceInteraction) -> tuple[str, ...]:
 
 def _limitations_for(
     interaction: CommerceInteraction,
-    dataset: CommerceDataset,
+    dataset: CommerceDataset | CommerceSnapshot,
 ) -> tuple[str, ...]:
     limitations = ["Talk 只提供只读分析，不会修改数据或执行外部动作。"]
     if interaction.scope.mode.value == "benchmark":
         limitations.append("公开基准数据不代表当前商家的实时经营事实。")
-    if dataset.snapshot.capabilities:
+    snapshot = dataset if isinstance(dataset, CommerceSnapshot) else dataset.snapshot
+    if snapshot.capabilities:
         limitations.append("未提供的成本、库存、流量等能力不会被模型补齐。")
     return tuple(limitations)

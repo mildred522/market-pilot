@@ -192,12 +192,31 @@ class CommercePlan(Base):
     )
 
 
+class CommercePlanPracticeRecord(Base):
+    __tablename__ = "commerce_plan_practice_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_id: Mapped[int] = mapped_column(
+        ForeignKey("commerce_plans.id"), nullable=False, index=True
+    )
+    step_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_by_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+
 class CommerceBenchmarkSnapshot(Base):
     __tablename__ = "commerce_benchmark_snapshots"
 
     snapshot_id: Mapped[str] = mapped_column(String(120), primary_key=True)
     content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     dataset_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    snapshot_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
