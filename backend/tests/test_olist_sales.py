@@ -178,3 +178,32 @@ def test_olist_hot_products_explain_growth_against_equal_baseline(tmp_path: Path
     assert candidate.trend.previous is not None
     assert candidate.trend.gross_amount_growth_rate == Decimal("1.0000")
     assert "相对等长基线窗口增长至少 20%" in candidate.evidence
+
+
+def test_olist_product_trends_keep_new_products_visible(tmp_path: Path) -> None:
+    source = tmp_path / "olist"
+    _write_olist_hot_fixture(source)
+    dataset, adapter = _import_dataset(source)
+    artifact_root = tmp_path / "artifacts"
+    CommerceDuckDBArtifactStore(artifact_root).write(
+        dataset,
+        staging_tables=adapter.staging_tables(source),
+    )
+
+    report = OlistSalesFactRepository(artifact_root).product_trends(
+        dataset.snapshot.snapshot_id,
+        TimeWindow(
+            start=datetime(2018, 1, 2, tzinfo=UTC),
+            end=datetime(2018, 1, 3, tzinfo=UTC),
+        ),
+        TimeWindow(
+            start=datetime(2018, 1, 1, tzinfo=UTC),
+            end=datetime(2018, 1, 2, tzinfo=UTC),
+        ),
+    )
+
+    by_product = {trend.product_id: trend for trend in report.trends}
+    assert set(by_product) == {"p-1", "p-2"}
+    assert by_product["p-1"].gross_amount_growth_rate == Decimal("1.0000")
+    assert by_product["p-2"].current is not None
+    assert by_product["p-2"].previous is None

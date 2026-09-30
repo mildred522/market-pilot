@@ -89,6 +89,32 @@ class OlistProductTrend(BaseModel):
     order_growth_rate: Decimal | None = None
 
 
+class OlistProductTrendComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    item_level: ItemLevel
+    item_id: str
+    product_id: str
+    category_name: str | None = None
+    current: OlistProductSalesMetric | None = None
+    previous: OlistProductSalesMetric | None = None
+    units_growth_rate: Decimal | None = None
+    gross_amount_growth_rate: Decimal | None = None
+    order_growth_rate: Decimal | None = None
+
+
+class OlistProductTrendReport(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    snapshot_id: str
+    current_window: TimeWindow
+    baseline_window: TimeWindow
+    item_level: ItemLevel
+    trends: tuple[OlistProductTrendComparison, ...]
+    included_order_count: int = Field(ge=0)
+    excluded_order_count: int = Field(ge=0)
+
+
 class OlistHotProductCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
