@@ -13,6 +13,8 @@ from app.commerce.metrics.contracts import (
     OlistProductSalesMetric,
     OlistProductSalesReport,
     OlistProductTrend,
+    OlistProductTrendComparison,
+    OlistProductTrendReport,
     TimeWindow,
 )
 from app.commerce.warehouse import CommerceDuckDBArtifactStore, default_commerce_artifact_root
@@ -89,6 +91,75 @@ class OlistSalesFactRepository:
             candidates=candidates,
             included_order_count=included,
             excluded_order_count=excluded,
+        )
+
+    def product_trends(
+        self,
+        snapshot_id: str,
+        current_window: TimeWindow,
+        baseline_window: TimeWindow,
+        *,
+        item_level: ItemLevel = ItemLevel.PRODUCT,
+    ) -> OlistProductTrendReport:
+        if current_window.end - current_window.start != baseline_window.end - baseline_window.start:
+            raise ValueError("trend comparison windows must have equal duration")
+        artifact = self._store.path_for(snapshot_id)
+        if not artifact.is_file():
+            raise OlistSalesFactUnavailable("Olist sales artifact is not available")
+        try:
+            with duckdb.connect(str(artifact), read_only=True) as connection:
+                self._require_tables(connection)
+                current = self._metrics(connection, snapshot_id, current_window, item_level)
+                previous = self._metrics(connection, snapshot_id, baseline_window, item_level)
+                included, excluded = self._order_counts(connection, current_window)
+        except duckdb.Error as error:
+            raise OlistSalesFactUnavailable("Olist sales artifact cannot be queried") from error
+
+        current_by_id = {metric.item_id: metric for metric in current}
+        previous_by_id = {metric.item_id: metric for metric in previous}
+        trends = tuple(
+            self._trend_comparison(
+                current_by_id.get(item_id),
+                previous_by_id.get(item_id),
+            )
+            for item_id in sorted(set(current_by_id) | set(previous_by_id))
+        )
+        return OlistProductTrendReport(
+            snapshot_id=snapshot_id,
+            current_window=current_window,
+            baseline_window=baseline_window,
+            item_level=item_level,
+            trends=trends,
+            included_order_count=included,
+            excluded_order_count=excluded,
+        )
+
+    @staticmethod
+    def _trend_comparison(
+        current: OlistProductSalesMetric | None,
+        previous: OlistProductSalesMetric | None,
+    ) -> OlistProductTrendComparison:
+        metric = current or previous
+        assert metric is not None
+        return OlistProductTrendComparison(
+            item_level=metric.item_level,
+            item_id=metric.item_id,
+            product_id=metric.product_id,
+            category_name=metric.category_name,
+            current=current,
+            previous=previous,
+            units_growth_rate=_growth_rate(
+                current.units_sold if current else None,
+                previous.units_sold if previous else None,
+            ),
+            gross_amount_growth_rate=_growth_rate(
+                current.gross_amount if current else None,
+                previous.gross_amount if previous else None,
+            ),
+            order_growth_rate=_growth_rate(
+                Decimal(current.order_count) if current else None,
+                Decimal(previous.order_count) if previous else None,
+            ),
         )
 
     @staticmethod
@@ -323,8 +394,8 @@ def _naive_utc(value: datetime) -> datetime:
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
-def _growth_rate(current: Decimal, previous: Decimal | None) -> Decimal | None:
-    if previous is None or previous <= 0:
+def _growth_rate(current: Decimal | None, previous: Decimal | None) -> Decimal | None:
+    if current is None or previous is None or previous <= 0:
         return None
     return (current - previous) / previous
 

@@ -20,6 +20,7 @@ from app.commerce.metrics import (
     ItemLevel,
     OlistHotProductReport,
     OlistProductSalesReport,
+    OlistProductTrendReport,
     TimeWindow,
 )
 from app.commerce.plan import (
@@ -187,6 +188,48 @@ def get_olist_hot_products(
         ) from error
 
 
+@router.get(
+    "/benchmarks/{snapshot_id}/trends",
+    response_model=OlistProductTrendReport,
+)
+def get_olist_product_trends(
+    snapshot_id: str,
+    start: datetime,
+    end: datetime,
+    baseline_start: datetime | None = None,
+    baseline_end: datetime | None = None,
+    item_level: ItemLevel = ItemLevel.PRODUCT,
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(get_current_user),
+) -> OlistProductTrendReport:
+    current_window, baseline_window = _resolve_comparison_windows(
+        start,
+        end,
+        baseline_start,
+        baseline_end,
+    )
+    _require_olist_sales_snapshot(db, snapshot_id)
+    try:
+        return OlistSalesFactRepository().product_trends(
+            snapshot_id,
+            current_window,
+            baseline_window,
+            item_level=item_level,
+        )
+    except (OlistSalesFactUnavailable, ValueError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+            if isinstance(error, ValueError) and not isinstance(error, OlistSalesFactUnavailable)
+            else status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "code": "invalid_commerce_trend_window"
+                if isinstance(error, ValueError) and not isinstance(error, OlistSalesFactUnavailable)
+                else "commerce_trends_not_ready",
+                "message": str(error),
+            },
+        ) from error
+
+
 @router.post("/talk", response_model=CommerceTalkResponse)
 def commerce_talk(
     payload: CommerceTalkRequest,
@@ -321,6 +364,76 @@ def _resolve_benchmark_dataset(
             detail={
                 "code": "commerce_scope_snapshot_mismatch",
                 "message": "commerce scope mode does not match snapshot mode",
+            },
+        )
+    return dataset
+
+
+def _resolve_comparison_windows(
+    start: datetime,
+    end: datetime,
+    baseline_start: datetime | None,
+    baseline_end: datetime | None,
+) -> tuple[TimeWindow, TimeWindow]:
+    if end <= start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_commerce_window",
+                "message": "趋势分析窗口的 end 必须晚于 start",
+            },
+        )
+    if (baseline_start is None) != (baseline_end is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "incomplete_commerce_baseline_window",
+                "message": "baseline_start 和 baseline_end 必须同时提供",
+            },
+        )
+    duration = end - start
+    resolved_baseline_start = baseline_start or start - duration
+    resolved_baseline_end = baseline_end or start
+    if resolved_baseline_end <= resolved_baseline_start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_commerce_baseline_window",
+                "message": "基线窗口的 baseline_end 必须晚于 baseline_start",
+            },
+        )
+    current_window = TimeWindow(start=start, end=end)
+    baseline_window = TimeWindow(
+        start=resolved_baseline_start,
+        end=resolved_baseline_end,
+    )
+    if current_window.end - current_window.start != baseline_window.end - baseline_window.start:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "unequal_commerce_windows",
+                "message": "当前窗口和基线窗口必须等长",
+            },
+        )
+    return current_window, baseline_window
+
+
+def _require_olist_sales_snapshot(db: Session, snapshot_id: str):
+    dataset = CommerceBenchmarkRepository(db).get(snapshot_id)
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "commerce_snapshot_not_found",
+                "message": "commerce snapshot not found",
+            },
+        )
+    if dataset.snapshot.schema_version != "olist-canonical-v2":
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "code": "commerce_sales_fact_not_ready",
+                "message": "当前快照还没有 Olist 商品销售事实层",
             },
         )
     return dataset
