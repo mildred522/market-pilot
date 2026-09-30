@@ -229,3 +229,28 @@ def test_talk_request_routes_to_read_only_tools(tmp_path: Path) -> None:
     assert response.status == "completed"
     assert response.intent.value == "mixed"
     assert all("plan" not in tool for tool in response.selected_tools)
+
+
+def test_talk_declines_questions_outside_supported_product_facts(tmp_path: Path) -> None:
+    _write_package(tmp_path)
+    dataset = import_csv_package(tmp_path, mode=CommerceAnalysisMode.BENCHMARK)
+    request = CommerceTalkRequest(
+        question="现在的天气怎么样？",
+        interaction=CommerceInteraction(
+            mode=InteractionMode.TALK,
+            scope=CommerceScope(mode=CommerceAnalysisMode.BENCHMARK, project_id=1),
+        ),
+        previous_window=TimeWindow(start=datetime(2026, 1, 1, tzinfo=UTC), end=datetime(2026, 1, 8, tzinfo=UTC)),
+        current_window=TimeWindow(start=datetime(2026, 1, 8, tzinfo=UTC), end=datetime(2026, 1, 15, tzinfo=UTC)),
+    )
+
+    response = CommerceTalkService().answer(request, dataset)
+
+    assert route_talk_question(request.question) == []
+    assert route_talk_question("这些商品的利润是多少？") == []
+    assert route_talk_question("今天有哪些热销商品？") == []
+    assert route_talk_question("给我别的项目销售数据") == []
+    assert response.status == "insufficient_data"
+    assert response.intent.value == "unsupported"
+    assert response.selected_tools == ()
+    assert response.executions == ()

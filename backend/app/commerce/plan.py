@@ -4,12 +4,13 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.commerce.contracts import CommerceInteraction, InteractionMode
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import ItemLevel, TimeWindow, discover_hot_products
 from app.commerce.providers import CommerceFactProvider
+from app.commerce.snapshot import CommerceSnapshot
 
 
 class CommercePlanStatus(StrEnum):
@@ -74,13 +75,71 @@ class CommercePlanResponse(BaseModel):
     approved_at: datetime | None = None
 
 
+class CommercePlanSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: int
+    project_id: int
+    snapshot_id: str
+    status: CommercePlanStatus
+    title: str
+    question: str
+    created_at: datetime
+    approved_at: datetime | None = None
+
+
+class CommercePlanListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[CommercePlanSummary, ...]
+    next_offset: int | None = None
+
+
+class CommercePlanPracticeCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    step_index: int = Field(ge=0)
+    kind: Literal["scenario", "reflection"]
+    note: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("note")
+    @classmethod
+    def require_meaningful_note(cls, value: str) -> str:
+        note = value.strip()
+        if not note:
+            raise ValueError("practice note cannot be blank")
+        return note
+
+
+class CommercePlanPracticeRecordResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: int
+    plan_id: int
+    step_index: int
+    kind: Literal["scenario", "reflection"]
+    note: str
+    source_type: Literal["benchmark_simulation"] = "benchmark_simulation"
+    recorded_by_user_id: str | None = None
+    created_at: datetime
+
+
+class CommercePlanPracticeListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[CommercePlanPracticeRecordResponse, ...]
+    next_offset: int | None = None
+
+
 class CommercePlanService:
     def draft(
         self,
         request: CommercePlanRequest,
-        dataset: CommerceDataset,
+        dataset: CommerceDataset | CommerceSnapshot,
         provider: CommerceFactProvider | None = None,
     ) -> CommercePlanDraft:
+        if isinstance(dataset, CommerceSnapshot) and provider is None:
+            raise ValueError("Olist analysis requires a DuckDB fact provider")
         selection_report = (
             provider.selection_recommendations(
                 request.previous_window,
@@ -97,10 +156,11 @@ class CommercePlanService:
                 request.current_window,
                 item_level=request.item_level,
             )
-            if selection_report is None
+            if selection_report is None and isinstance(dataset, CommerceDataset)
             else ()
         )
-        snapshot_ref = f"snapshot:{dataset.snapshot.snapshot_id}"
+        snapshot = dataset if isinstance(dataset, CommerceSnapshot) else dataset.snapshot
+        snapshot_ref = f"snapshot:{snapshot.snapshot_id}"
         if selection_report is not None:
             steps = tuple(
                 _step_for_selection_recommendation(recommendation, snapshot_ref)
@@ -151,8 +211,8 @@ def _step_for_selection_recommendation(recommendation: object, snapshot_ref: str
     action = str(getattr(recommendation, "action"))
     rationale = str(getattr(recommendation, "rationale"))
     priority = getattr(recommendation, "priority")
-    if recommendation_type == "scale_test":
-        success_signal = "下一等长窗口销售额和订单数继续增长，再决定是否扩大投入。"
+    if recommendation_type == "verify_growth":
+        success_signal = "下一等长窗口仍有成交，补充库存、成本和流量证据后再决定是否试验。"
     elif recommendation_type == "validate_new_product":
         success_signal = "补充连续窗口数据后，商品具备稳定增长或明确淘汰依据。"
     elif recommendation_type == "protect_winner":

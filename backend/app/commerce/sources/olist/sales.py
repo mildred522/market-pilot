@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -8,6 +8,9 @@ import duckdb
 
 from app.commerce.metrics.contracts import (
     ItemLevel,
+    OlistCategorySalesMetric,
+    OlistCategorySalesReport,
+    OlistComparisonWindows,
     OlistHotProductCandidate,
     OlistHotProductReport,
     OlistProductSalesMetric,
@@ -26,6 +29,39 @@ class OlistSalesFactUnavailable(ValueError):
     pass
 
 
+SALES_FACT_CTE = """
+    WITH sales_fact AS (
+        SELECT
+            raw.order_id,
+            raw.product_id,
+            NULLIF(raw.seller_id, '') AS seller_id,
+            TRY_CAST(orders.order_purchase_timestamp AS TIMESTAMP) AS ordered_at,
+            CASE LOWER(orders.order_status)
+                WHEN 'delivered' THEN 'fulfilled'
+                WHEN 'shipped' THEN 'fulfilled'
+                WHEN 'approved' THEN 'paid'
+                WHEN 'invoiced' THEN 'paid'
+                WHEN 'created' THEN 'pending'
+                WHEN 'processing' THEN 'pending'
+                WHEN 'canceled' THEN 'cancelled'
+                WHEN 'unavailable' THEN 'cancelled'
+                ELSE 'unknown'
+            END AS canonical_status,
+            canonical.quantity,
+            canonical.unit_price,
+            canonical.currency,
+            TRY_CAST(NULLIF(raw.freight_value, '') AS DECIMAL(18, 4)) AS freight_value
+        FROM olist_order_items_staging AS raw
+        INNER JOIN olist_orders_staging AS orders
+            ON orders.order_id = raw.order_id
+        INNER JOIN order_items AS canonical
+            ON canonical.order_id = raw.order_id
+           AND canonical.order_item_id = raw.order_item_id
+        WHERE TRY_CAST(orders.order_purchase_timestamp AS TIMESTAMP) IS NOT NULL
+    )
+"""
+
+
 class OlistSalesFactRepository:
     """Read deterministic product sales facts from an Olist DuckDB artifact."""
 
@@ -33,6 +69,81 @@ class OlistSalesFactRepository:
         self._store = CommerceDuckDBArtifactStore(
             artifact_root or default_commerce_artifact_root()
         )
+
+    def comparison_windows(self, snapshot_id: str) -> OlistComparisonWindows:
+        artifact = self._store.path_for(snapshot_id)
+        if not artifact.is_file():
+            raise OlistSalesFactUnavailable("Olist sales artifact is not available")
+        try:
+            with duckdb.connect(str(artifact), read_only=True) as connection:
+                self._require_tables(connection)
+                coverage_start, coverage_end = connection.execute(
+                    """
+                    SELECT MIN(TRY_CAST(order_purchase_timestamp AS TIMESTAMP)),
+                           MAX(TRY_CAST(order_purchase_timestamp AS TIMESTAMP))
+                    FROM olist_orders_staging
+                    """
+                ).fetchone()
+                if coverage_start is None or coverage_end is None or coverage_end <= coverage_start:
+                    raise OlistSalesFactUnavailable("Olist snapshot period is too short for comparison")
+                rows = connection.execute(
+                    """
+                    SELECT date_trunc('month', TRY_CAST(order_purchase_timestamp AS TIMESTAMP)) AS month,
+                           COUNT(*) FILTER (WHERE lower(order_status) IN
+                               ('delivered', 'shipped', 'approved', 'invoiced')) AS eligible_orders
+                    FROM olist_orders_staging
+                    WHERE TRY_CAST(order_purchase_timestamp AS TIMESTAMP) IS NOT NULL
+                    GROUP BY 1 ORDER BY 1
+                    """
+                ).fetchall()
+                monthly_counts = {month: count for month, count in rows}
+                complete_months = {
+                    month: count
+                    for month, count in monthly_counts.items()
+                    if month >= coverage_start and _next_month(month) <= coverage_end
+                }
+                threshold = max(20, (max(complete_months.values(), default=0) + 3) // 4)
+                for month in sorted(complete_months, reverse=True):
+                    if complete_months[month] < threshold:
+                        continue
+                    previous_month = _previous_month(month)
+                    if complete_months.get(previous_month, 0) < threshold:
+                        continue
+                    end = _next_month(month)
+                    current = TimeWindow(start=end - timedelta(days=28), end=end)
+                    baseline = TimeWindow(
+                        start=current.start - timedelta(days=28), end=current.start
+                    )
+                    current_count = self._order_counts(connection, current)[0]
+                    baseline_count = self._order_counts(connection, baseline)[0]
+                    if min(current_count, baseline_count) < threshold:
+                        continue
+                    return OlistComparisonWindows(
+                        snapshot_id=snapshot_id,
+                        baseline_window=baseline,
+                        current_window=current,
+                        selection_method="latest_dense_28d",
+                        baseline_order_count=baseline_count,
+                        current_order_count=current_count,
+                    )
+                end = coverage_end + timedelta(microseconds=1)
+                raw_microseconds = (end - coverage_start) // timedelta(microseconds=1)
+                if raw_microseconds % 2:
+                    end += timedelta(microseconds=1)
+                midpoint = coverage_start + (end - coverage_start) / 2
+                baseline = TimeWindow(start=coverage_start, end=midpoint)
+                current = TimeWindow(start=midpoint, end=end)
+                return OlistComparisonWindows(
+                    snapshot_id=snapshot_id,
+                    baseline_window=baseline,
+                    current_window=current,
+                    selection_method="split_coverage",
+                    baseline_order_count=self._order_counts(connection, baseline)[0],
+                    current_order_count=self._order_counts(connection, current)[0],
+                    warning="没有足够密集的连续完整月份；拆分覆盖期仅用于链路验证，不应用于经营趋势判断。",
+                )
+        except duckdb.Error as error:
+            raise OlistSalesFactUnavailable("Olist sales artifact cannot be queried") from error
 
     def product_sales(
         self,
@@ -56,6 +167,60 @@ class OlistSalesFactRepository:
             window=window,
             item_level=item_level,
             metrics=metrics,
+            included_order_count=included,
+            excluded_order_count=excluded,
+        )
+
+    def category_sales(self, snapshot_id: str, window: TimeWindow) -> OlistCategorySalesReport:
+        artifact = self._store.path_for(snapshot_id)
+        if not artifact.is_file():
+            raise OlistSalesFactUnavailable("Olist sales artifact is not available")
+        try:
+            with duckdb.connect(str(artifact), read_only=True) as connection:
+                self._require_tables(connection)
+                rows = connection.execute(
+                    SALES_FACT_CTE
+                    + """
+                    SELECT
+                        NULLIF(TRIM(products.category_name), '') AS category_name,
+                        COUNT(DISTINCT fact.product_id) AS product_count,
+                        SUM(fact.quantity) AS units_sold,
+                        COUNT(DISTINCT fact.order_id) AS order_count,
+                        SUM(fact.quantity * fact.unit_price) AS gross_amount,
+                        COUNT(DISTINCT fact.seller_id) AS seller_count,
+                        CASE
+                            WHEN COUNT(DISTINCT NULLIF(fact.currency, '')) = 1
+                            THEN MIN(NULLIF(fact.currency, ''))
+                            ELSE NULL
+                        END AS currency
+                    FROM sales_fact AS fact
+                    LEFT JOIN products ON products.product_id = fact.product_id
+                    WHERE fact.canonical_status IN ('paid', 'fulfilled')
+                      AND fact.ordered_at >= ?
+                      AND fact.ordered_at < ?
+                    GROUP BY 1
+                    ORDER BY gross_amount DESC, category_name ASC NULLS LAST
+                    """,
+                    [_naive_utc(window.start), _naive_utc(window.end)],
+                ).fetchall()
+                included, excluded = self._order_counts(connection, window)
+        except duckdb.Error as error:
+            raise OlistSalesFactUnavailable("Olist sales artifact cannot be queried") from error
+        return OlistCategorySalesReport(
+            snapshot_id=snapshot_id,
+            window=window,
+            categories=tuple(
+                OlistCategorySalesMetric(
+                    category_name=row[0],
+                    product_count=row[1],
+                    units_sold=row[2],
+                    order_count=row[3],
+                    gross_amount=row[4],
+                    seller_count=row[5],
+                    currency=row[6],
+                )
+                for row in rows
+            ),
             included_order_count=included,
             excluded_order_count=excluded,
         )
@@ -177,7 +342,13 @@ class OlistSalesFactRepository:
         recommendations.sort(
             key=lambda recommendation: (
                 {"high": 0, "medium": 1, "low": 2}[recommendation.priority],
-                current_rank.get(recommendation.item_id, 10**9),
+                -abs(
+                    (recommendation.current.gross_amount if recommendation.current else Decimal(0))
+                    - (
+                        recommendation.trend.previous.gross_amount
+                        if recommendation.trend.previous else Decimal(0)
+                    )
+                ),
                 recommendation.item_id,
             )
         )
@@ -202,11 +373,11 @@ class OlistSalesFactRepository:
     ) -> OlistSelectionRecommendation | None:
         current = trend.current
         previous = trend.previous
-        if current is None and previous is not None:
+        if current is None and previous is not None and previous.order_count >= 3:
             return OlistSelectionRecommendation(
                 rank=1,
                 recommendation_type="review_decline",
-                priority="high",
+                priority="medium",
                 item_level=trend.item_level,
                 item_id=trend.item_id,
                 product_id=trend.product_id,
@@ -222,6 +393,8 @@ class OlistSalesFactRepository:
         if current is None:
             return None
         if previous is None:
+            if current.order_count < 3:
+                return None
             return OlistSelectionRecommendation(
                 rank=1,
                 recommendation_type="validate_new_product",
@@ -238,42 +411,57 @@ class OlistSalesFactRepository:
                 current=current,
                 trend=trend,
             )
-        if _at_least_growth(trend.gross_amount_growth_rate, Decimal("0.20")):
-            priority = "high" if current.order_count >= 3 else "medium"
+        comparable_sample = min(current.order_count, previous.order_count) >= 3
+        if (
+            comparable_sample
+            and _at_least_growth(trend.units_growth_rate, Decimal("0.20"))
+            and _at_least_growth(trend.gross_amount_growth_rate, Decimal("0.20"))
+        ):
             return OlistSelectionRecommendation(
                 rank=1,
-                recommendation_type="scale_test",
-                priority=priority,
+                recommendation_type="verify_growth",
+                priority="medium",
                 item_level=trend.item_level,
                 item_id=trend.item_id,
                 product_id=trend.product_id,
                 category_name=trend.category_name,
-                title=f"扩大验证商品 {trend.item_id}",
-                action="增加有限的供给或曝光测试，并观察下一等长窗口是否延续增长。",
-                rationale="商品销售额相对基线窗口增长至少 20%，但仍需控制扩张风险。",
-                evidence=(f"销售额增长率 {trend.gross_amount_growth_rate:+.1%}",),
-                risk_flags=("销售额不是利润", "缺少成本、库存和流量证据"),
+                title=f"核验商品 {trend.item_id} 的增长信号",
+                action="先核实库存、价格和流量变化，观察下一等长窗口；未确认持续性前不扩大备货或投放。",
+                rationale="两侧窗口各至少 3 笔订单，销量和销售额均增长至少 20%；这是历史信号，不预测下一窗口。",
+                evidence=(
+                    f"销量增长率 {trend.units_growth_rate:+.1%}",
+                    f"销售额增长率 {trend.gross_amount_growth_rate:+.1%}",
+                    f"基线订单 {previous.order_count}，当前订单 {current.order_count}",
+                ),
+                risk_flags=("销售额不是利润", "增长未必延续", "缺少成本、库存和流量证据"),
                 current=current,
                 trend=trend,
             )
-        if _at_most_growth(trend.gross_amount_growth_rate, Decimal("-0.20")):
+        if (
+            comparable_sample
+            and _at_most_growth(trend.units_growth_rate, Decimal("-0.20"))
+            and _at_most_growth(trend.gross_amount_growth_rate, Decimal("-0.20"))
+        ):
             return OlistSelectionRecommendation(
                 rank=1,
                 recommendation_type="review_decline",
-                priority="high",
+                priority="medium",
                 item_level=trend.item_level,
                 item_id=trend.item_id,
                 product_id=trend.product_id,
                 category_name=trend.category_name,
                 title=f"复核商品 {trend.item_id} 的下降原因",
                 action="对比价格、详情页、库存和流量变化，再决定优化或减少投入。",
-                rationale="商品销售额相对基线窗口下降至少 20%，但销售事实本身不能解释原因。",
-                evidence=(f"销售额增长率 {trend.gross_amount_growth_rate:+.1%}",),
+                rationale="两侧窗口各至少 3 笔订单，销量和销售额均下降至少 20%，但销售事实不能解释原因。",
+                evidence=(
+                    f"销量增长率 {trend.units_growth_rate:+.1%}",
+                    f"销售额增长率 {trend.gross_amount_growth_rate:+.1%}",
+                ),
                 risk_flags=("无法仅凭销售事实判断下降原因",),
                 current=current,
                 trend=trend,
             )
-        if current_rank is not None and current_rank <= 3 and current.order_count >= 3:
+        if current_rank is not None and current_rank <= 3 and comparable_sample and current.order_count >= 5:
             return OlistSelectionRecommendation(
                 rank=1,
                 recommendation_type="protect_winner",
@@ -326,21 +514,22 @@ class OlistSalesFactRepository:
         previous_by_item: dict[str, OlistProductSalesMetric],
         limit: int,
     ) -> tuple[OlistHotProductCandidate, ...]:
-        if not current:
+        qualified = tuple(metric for metric in current if metric.order_count >= 3)
+        if not qualified:
             return ()
         ranked_by_units = sorted(
-            current,
+            qualified,
             key=lambda metric: (-metric.units_sold, metric.item_id),
         )
         ranked_by_gross = sorted(
-            current,
+            qualified,
             key=lambda metric: (-metric.gross_amount, metric.item_id),
         )
-        leader_count = max(1, (len(current) + 3) // 4)
+        leader_count = max(1, (len(qualified) + 3) // 4)
         unit_leaders = {metric.item_id for metric in ranked_by_units[:leader_count]}
         gross_leaders = {metric.item_id for metric in ranked_by_gross[:leader_count]}
         candidates: list[OlistHotProductCandidate] = []
-        for metric in current:
+        for metric in qualified:
             previous = previous_by_item.get(metric.item_id)
             trend = OlistProductTrend(
                 current=metric,
@@ -366,9 +555,9 @@ class OlistSalesFactRepository:
             if metric.item_id in gross_leaders:
                 labels.append("revenue_leader")
                 evidence.append("当前窗口销售额位于商品前 25%")
-            if _is_momentum(trend):
+            if previous is not None and previous.order_count >= 3 and _is_momentum(trend):
                 labels.append("momentum")
-                evidence.append("相对等长基线窗口增长至少 20%")
+                evidence.append("两侧各至少 3 笔订单，销量和销售额均增长至少 20%")
             if metric.seller_count >= 2:
                 labels.append("multi_seller")
                 evidence.append("当前窗口有至少 2 个卖家销售")
@@ -430,35 +619,7 @@ class OlistSalesFactRepository:
         )
         rows = connection.execute(
             f"""
-            WITH sales_fact AS (
-                SELECT
-                    raw.order_id,
-                    raw.product_id,
-                    NULLIF(raw.seller_id, '') AS seller_id,
-                    TRY_CAST(orders.order_purchase_timestamp AS TIMESTAMP) AS ordered_at,
-                    CASE LOWER(orders.order_status)
-                        WHEN 'delivered' THEN 'fulfilled'
-                        WHEN 'shipped' THEN 'fulfilled'
-                        WHEN 'approved' THEN 'paid'
-                        WHEN 'invoiced' THEN 'paid'
-                        WHEN 'created' THEN 'pending'
-                        WHEN 'processing' THEN 'pending'
-                        WHEN 'canceled' THEN 'cancelled'
-                        WHEN 'unavailable' THEN 'cancelled'
-                        ELSE 'unknown'
-                    END AS canonical_status,
-                    canonical.quantity,
-                    canonical.unit_price,
-                    canonical.currency,
-                    TRY_CAST(NULLIF(raw.freight_value, '') AS DECIMAL(18, 4)) AS freight_value
-                FROM olist_order_items_staging AS raw
-                INNER JOIN olist_orders_staging AS orders
-                    ON orders.order_id = raw.order_id
-                INNER JOIN order_items AS canonical
-                    ON canonical.order_id = raw.order_id
-                   AND canonical.order_item_id = raw.order_item_id
-                WHERE TRY_CAST(orders.order_purchase_timestamp AS TIMESTAMP) IS NOT NULL
-            )
+            {SALES_FACT_CTE}
             SELECT
                 {item_expression} AS item_id,
                 fact.product_id,
@@ -552,6 +713,18 @@ def _naive_utc(value: datetime) -> datetime:
     return value.astimezone(UTC).replace(tzinfo=None)
 
 
+def _next_month(value: datetime) -> datetime:
+    if value.month == 12:
+        return value.replace(year=value.year + 1, month=1)
+    return value.replace(month=value.month + 1)
+
+
+def _previous_month(value: datetime) -> datetime:
+    if value.month == 1:
+        return value.replace(year=value.year - 1, month=12)
+    return value.replace(month=value.month - 1)
+
+
 def _growth_rate(current: Decimal | None, previous: Decimal | None) -> Decimal | None:
     if current is None or previous is None or previous <= 0:
         return None
@@ -559,13 +732,9 @@ def _growth_rate(current: Decimal | None, previous: Decimal | None) -> Decimal |
 
 
 def _is_momentum(trend: OlistProductTrend) -> bool:
-    return any(
-        growth is not None and growth >= Decimal("0.20")
-        for growth in (
-            trend.units_growth_rate,
-            trend.gross_amount_growth_rate,
-            trend.order_growth_rate,
-        )
+    return (
+        _at_least_growth(trend.units_growth_rate, Decimal("0.20"))
+        and _at_least_growth(trend.gross_amount_growth_rate, Decimal("0.20"))
     )
 
 
