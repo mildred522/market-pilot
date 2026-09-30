@@ -7,6 +7,7 @@
 
 - [电商迁移 M0：领域边界与平台层基线](commerce-migration-m0.md)：平台无关的电商域、Talk/Plan 模式和 M0 接口边界。
 - [电商经营 Agent 转型规划](ecommerce-agent-transformation.md)：产品转型、Olist 数据、指标代号层与门禁、ToB 图记忆及验收路径；按阶段实施。
+- [电商预期开发报告](commerce-expected-development-report.md)：基于当前商品经营链路，安排可信度、语义层、展示与有条件的 ToB 验证。
 - [电商分析快照与 DuckDB Artifact](commerce-duckdb-artifacts.md)：SQLite 控制面、DuckDB 分析快照和 Olist 后续接入边界。
 - [系统架构](../restaurant-agent-architecture.md)：业务模块、服务边界、数据流和部署结构。
 - [MVP 架构](../restaurant-agent-mvp-architecture-plan.md)：前后端职责和初始模块划分。
