@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCommerceBenchmarkHotProducts, getCommerceBenchmarkSales, getCommerceBenchmarks } from "@/lib/api";
-import type { CommerceBenchmarkSnapshotSummary, CommerceHotProductReport, CommerceProductSalesReport } from "@/lib/types";
+import { getCommerceBenchmarkHotProducts, getCommerceBenchmarkSales, getCommerceBenchmarkTrends, getCommerceBenchmarks, getCommerceSelectionRecommendations } from "@/lib/api";
+import type { CommerceBenchmarkSnapshotSummary, CommerceHotProductReport, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport } from "@/lib/types";
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -34,6 +34,20 @@ const hotLabelNames: Record<string, string> = {
   multi_seller: "多卖家覆盖"
 };
 
+const recommendationTypeNames: Record<string, string> = {
+  scale_test: "扩大验证",
+  validate_new_product: "新品验证",
+  protect_winner: "保护头部",
+  review_decline: "复核下降"
+};
+
+function selectedWindow(snapshot: CommerceBenchmarkSnapshotSummary): { start: string; end: string } {
+  const start = snapshot.period_start ?? snapshot.created_at;
+  const periodEnd = snapshot.period_end ? new Date(snapshot.period_end) : new Date();
+  periodEnd.setDate(periodEnd.getDate() + 1);
+  return { start, end: periodEnd.toISOString() };
+}
+
 export default function CommercePage() {
   const [snapshots, setSnapshots] = useState<CommerceBenchmarkSnapshotSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -45,6 +59,12 @@ export default function CommercePage() {
   const [hotProducts, setHotProducts] = useState<CommerceHotProductReport | null>(null);
   const [loadingHotProducts, setLoadingHotProducts] = useState(false);
   const [hotProductsError, setHotProductsError] = useState("");
+  const [trends, setTrends] = useState<CommerceProductTrendReport | null>(null);
+  const [loadingTrends, setLoadingTrends] = useState(false);
+  const [trendsError, setTrendsError] = useState("");
+  const [recommendations, setRecommendations] = useState<CommerceSelectionRecommendationReport | null>(null);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -80,10 +100,8 @@ export default function CommercePage() {
     setLoadingSales(true);
     setSalesError("");
     setSales(null);
-    const start = selected.period_start ?? selected.created_at;
-    const periodEnd = selected.period_end ? new Date(selected.period_end) : new Date();
-    periodEnd.setDate(periodEnd.getDate() + 1);
-    void getCommerceBenchmarkSales(selected.snapshot_id, start, periodEnd.toISOString())
+    const window = selectedWindow(selected);
+    void getCommerceBenchmarkSales(selected.snapshot_id, window.start, window.end)
       .then((report) => {
         if (active) setSales(report);
       })
@@ -109,10 +127,8 @@ export default function CommercePage() {
     setLoadingHotProducts(true);
     setHotProductsError("");
     setHotProducts(null);
-    const start = selected.period_start ?? selected.created_at;
-    const periodEnd = selected.period_end ? new Date(selected.period_end) : new Date();
-    periodEnd.setDate(periodEnd.getDate() + 1);
-    void getCommerceBenchmarkHotProducts(selected.snapshot_id, start, periodEnd.toISOString())
+    const window = selectedWindow(selected);
+    void getCommerceBenchmarkHotProducts(selected.snapshot_id, window.start, window.end)
       .then((report) => {
         if (active) setHotProducts(report);
       })
@@ -121,6 +137,47 @@ export default function CommercePage() {
       })
       .finally(() => {
         if (active) setLoadingHotProducts(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected, selectedId, salesSupported]);
+
+  useEffect(() => {
+    if (!selected || !salesSupported) {
+      setTrends(null);
+      setTrendsError("");
+      setLoadingTrends(false);
+      setRecommendations(null);
+      setRecommendationsError("");
+      setLoadingRecommendations(false);
+      return;
+    }
+    let active = true;
+    const window = selectedWindow(selected);
+    setLoadingTrends(true);
+    setTrendsError("");
+    setLoadingRecommendations(true);
+    setRecommendationsError("");
+    void getCommerceBenchmarkTrends(selected.snapshot_id, window.start, window.end)
+      .then((report) => {
+        if (active) setTrends(report);
+      })
+      .catch((caught) => {
+        if (active) setTrendsError(caught instanceof Error ? caught.message : "商品趋势数据加载失败");
+      })
+      .finally(() => {
+        if (active) setLoadingTrends(false);
+      });
+    void getCommerceSelectionRecommendations(selected.snapshot_id, window.start, window.end)
+      .then((report) => {
+        if (active) setRecommendations(report);
+      })
+      .catch((caught) => {
+        if (active) setRecommendationsError(caught instanceof Error ? caught.message : "选品建议加载失败");
+      })
+      .finally(() => {
+        if (active) setLoadingRecommendations(false);
       });
     return () => {
       active = false;
@@ -266,6 +323,63 @@ export default function CommercePage() {
                   {salesSupported && !loadingHotProducts && !hotProductsError && !hotProducts?.candidates.length ? (
                     <p className="commerce-empty">当前窗口没有满足可解释热点规则的商品。</p>
                   ) : null}
+                </section>
+                <section className="commerce-trend-panel" aria-labelledby="commerce-trend-title">
+                  <div className="section-heading">
+                    <div>
+                      <p className="kicker">Window comparison</p>
+                      <h2 id="commerce-trend-title">商品趋势</h2>
+                    </div>
+                    <p>当前窗口默认与前一个等长窗口比较；单侧出现的商品保留在结果中。</p>
+                  </div>
+                  {loadingTrends ? <p className="commerce-empty">正在计算商品趋势...</p> : null}
+                  {trendsError ? <p className="commerce-error" role="alert">{trendsError}</p> : null}
+                  {!loadingTrends && !trendsError && trends?.trends.length ? (
+                    <div className="commerce-sales-table-wrap">
+                      <table className="commerce-sales-table">
+                        <thead><tr><th>商品</th><th>当前销售额</th><th>基线销售额</th><th>销售额变化</th><th>销量变化</th></tr></thead>
+                        <tbody>
+                          {trends.trends.slice(0, 10).map((trend) => (
+                            <tr key={trend.item_id}>
+                              <td><strong>{trend.product_id}</strong><small>{trend.category_name ?? "未分类"}</small></td>
+                              <td>{formatAmount(trend.current?.gross_amount ?? null)}</td>
+                              <td>{formatAmount(trend.previous?.gross_amount ?? null)}</td>
+                              <td>{formatGrowth(trend.gross_amount_growth_rate)}</td>
+                              <td>{formatGrowth(trend.units_growth_rate)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                  {!loadingTrends && !trendsError && !trends?.trends.length ? <p className="commerce-empty">当前没有可比较的商品趋势。</p> : null}
+                </section>
+                <section className="commerce-recommendation-panel" aria-labelledby="commerce-recommendation-title">
+                  <div className="section-heading">
+                    <div>
+                      <p className="kicker">Evidence-based actions</p>
+                      <h2 id="commerce-recommendation-title">选品与经营动作</h2>
+                    </div>
+                    <p>这些是待验证动作，不是利润结论，也不会自动执行。</p>
+                  </div>
+                  {loadingRecommendations ? <p className="commerce-empty">正在生成选品建议...</p> : null}
+                  {recommendationsError ? <p className="commerce-error" role="alert">{recommendationsError}</p> : null}
+                  {!loadingRecommendations && !recommendationsError && recommendations?.recommendations.length ? (
+                    <div className="commerce-recommendation-list">
+                      {recommendations.recommendations.map((recommendation) => (
+                        <article className="commerce-recommendation-card" key={`${recommendation.item_id}-${recommendation.recommendation_type}`}>
+                          <div className="commerce-hot-card-heading">
+                            <div><span className="commerce-hot-rank">#{recommendation.rank}</span><strong>{recommendation.title}</strong><small>{recommendation.category_name ?? "未分类"}</small></div>
+                            <span className={`commerce-confidence commerce-confidence-${recommendation.priority}`}>{recommendationTypeNames[recommendation.recommendation_type] ?? recommendation.recommendation_type}</span>
+                          </div>
+                          <p>{recommendation.action}</p>
+                          <p className="commerce-recommendation-rationale">{recommendation.rationale}</p>
+                          <div className="commerce-hot-labels">{recommendation.risk_flags.map((risk) => <span key={risk}>{risk}</span>)}</div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                  {!loadingRecommendations && !recommendationsError && !recommendations?.recommendations.length ? <p className="commerce-empty">当前窗口没有足够证据生成选品动作。</p> : null}
                 </section>
               </>
             ) : null}

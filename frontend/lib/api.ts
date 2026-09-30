@@ -1,4 +1,4 @@
-import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, CommerceHotProductReport, CommerceProductSalesReport, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, CommerceHotProductReport, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -151,6 +151,32 @@ export function getCommerceBenchmarkHotProducts(
   const params = new URLSearchParams({ start, end, item_level: itemLevel, limit: "10" });
   return request<CommerceHotProductReport>(
     `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/hot-products?${params.toString()}`,
+    { cache: "no-store" }
+  );
+}
+
+export function getCommerceBenchmarkTrends(
+  snapshotId: string,
+  start: string,
+  end: string,
+  itemLevel: "product" | "sku" = "product"
+): Promise<CommerceProductTrendReport> {
+  const params = new URLSearchParams({ start, end, item_level: itemLevel });
+  return request<CommerceProductTrendReport>(
+    `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/trends?${params.toString()}`,
+    { cache: "no-store" }
+  );
+}
+
+export function getCommerceSelectionRecommendations(
+  snapshotId: string,
+  start: string,
+  end: string,
+  itemLevel: "product" | "sku" = "product"
+): Promise<CommerceSelectionRecommendationReport> {
+  const params = new URLSearchParams({ start, end, item_level: itemLevel, limit: "10" });
+  return request<CommerceSelectionRecommendationReport>(
+    `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/selection-recommendations?${params.toString()}`,
     { cache: "no-store" }
   );
 }

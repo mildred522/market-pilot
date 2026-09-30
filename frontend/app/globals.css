@@ -302,6 +302,14 @@ a {
 .commerce-hot-labels span { padding: 4px 7px; background: var(--surface-subtle); color: var(--ink-soft); font-size: 10px; }
 .commerce-hot-card p { margin: 12px 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .commerce-hot-metrics { display: flex; flex-wrap: wrap; gap: 7px 12px; color: var(--ink-soft); font-size: 11px; }
+.commerce-trend-panel, .commerce-recommendation-panel { margin-top: 28px; padding-top: 26px; border-top: 1px solid var(--line); }
+.commerce-trend-panel .section-heading, .commerce-recommendation-panel .section-heading { margin-bottom: 18px; }
+.commerce-recommendation-list { display: grid; gap: 12px; }
+.commerce-recommendation-card { padding: 16px; border: 1px solid var(--line); background: var(--panel); }
+.commerce-recommendation-card strong { display: block; color: var(--ink); font-size: 14px; }
+.commerce-recommendation-card small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+.commerce-recommendation-card p { margin: 12px 0 0; color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
+.commerce-recommendation-card .commerce-recommendation-rationale { color: var(--muted); font-size: 11px; }
 
 h1 {
   max-width: 760px;
