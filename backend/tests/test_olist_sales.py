@@ -207,3 +207,33 @@ def test_olist_product_trends_keep_new_products_visible(tmp_path: Path) -> None:
     assert by_product["p-1"].gross_amount_growth_rate == Decimal("1.0000")
     assert by_product["p-2"].current is not None
     assert by_product["p-2"].previous is None
+
+
+def test_olist_selection_recommendations_keep_actions_evidence_based(tmp_path: Path) -> None:
+    source = tmp_path / "olist"
+    _write_olist_hot_fixture(source)
+    dataset, adapter = _import_dataset(source)
+    artifact_root = tmp_path / "artifacts"
+    CommerceDuckDBArtifactStore(artifact_root).write(
+        dataset,
+        staging_tables=adapter.staging_tables(source),
+    )
+
+    report = OlistSalesFactRepository(artifact_root).selection_recommendations(
+        dataset.snapshot.snapshot_id,
+        TimeWindow(
+            start=datetime(2018, 1, 2, tzinfo=UTC),
+            end=datetime(2018, 1, 3, tzinfo=UTC),
+        ),
+        TimeWindow(
+            start=datetime(2018, 1, 1, tzinfo=UTC),
+            end=datetime(2018, 1, 2, tzinfo=UTC),
+        ),
+    )
+
+    assert [item.product_id for item in report.recommendations] == ["p-1", "p-2"]
+    assert report.recommendations[0].recommendation_type == "scale_test"
+    assert report.recommendations[0].priority == "medium"
+    assert "销售额增长率 +100.0%" in report.recommendations[0].evidence
+    assert report.recommendations[1].recommendation_type == "validate_new_product"
+    assert "缺少历史基线" in report.recommendations[1].risk_flags

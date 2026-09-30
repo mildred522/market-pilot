@@ -57,6 +57,33 @@ GET /commerce/benchmarks/{snapshot_id}/hot-products
 
 未显式提供基线窗口时，服务端自动使用与当前窗口等长的前一窗口。热点不是黑盒综合分数：候选只基于可复核的 `volume_leader`、`revenue_leader`、`momentum` 和 `multi_seller` 标签，并返回对应证据、增长率与置信等级。它不等价于利润、因果关系或确定性选品结论。
 
+商品趋势接口为：
+
+```text
+GET /commerce/benchmarks/{snapshot_id}/trends
+  ?start=...
+  &end=...
+  &baseline_start=...
+  &baseline_end=...
+  &item_level=product|sku
+```
+
+趋势结果保留当前窗口和基线窗口的商品并集，因此新出现或当前窗口未成交的商品不会被静默丢弃；窗口必须等长，增长率在基线值为 0 或商品只存在于单侧窗口时返回 `null`。
+
+选品建议接口为：
+
+```text
+GET /commerce/benchmarks/{snapshot_id}/selection-recommendations
+  ?start=...
+  &end=...
+  &baseline_start=...
+  &baseline_end=...
+  &item_level=product|sku
+  &limit=...
+```
+
+建议只把销售证据转成待验证动作：`scale_test`、`validate_new_product`、`protect_winner` 和 `review_decline`。结果会同时返回证据和风险提示，不把销售额当作利润，也不替代库存、成本、流量和商品质量判断。
+
 ## 导入方式
 
 现有标准四表导入命令会额外生成 DuckDB artifact：

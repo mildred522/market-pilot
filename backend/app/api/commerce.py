@@ -21,6 +21,7 @@ from app.commerce.metrics import (
     OlistHotProductReport,
     OlistProductSalesReport,
     OlistProductTrendReport,
+    OlistSelectionRecommendationReport,
     TimeWindow,
 )
 from app.commerce.plan import (
@@ -225,6 +226,46 @@ def get_olist_product_trends(
                 "code": "invalid_commerce_trend_window"
                 if isinstance(error, ValueError) and not isinstance(error, OlistSalesFactUnavailable)
                 else "commerce_trends_not_ready",
+                "message": str(error),
+            },
+        ) from error
+
+
+@router.get(
+    "/benchmarks/{snapshot_id}/selection-recommendations",
+    response_model=OlistSelectionRecommendationReport,
+)
+def get_olist_selection_recommendations(
+    snapshot_id: str,
+    start: datetime,
+    end: datetime,
+    baseline_start: datetime | None = None,
+    baseline_end: datetime | None = None,
+    item_level: ItemLevel = ItemLevel.PRODUCT,
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    _: CurrentUser = Depends(get_current_user),
+) -> OlistSelectionRecommendationReport:
+    current_window, baseline_window = _resolve_comparison_windows(
+        start,
+        end,
+        baseline_start,
+        baseline_end,
+    )
+    _require_olist_sales_snapshot(db, snapshot_id)
+    try:
+        return OlistSalesFactRepository().selection_recommendations(
+            snapshot_id,
+            current_window,
+            baseline_window,
+            item_level=item_level,
+            limit=limit,
+        )
+    except OlistSalesFactUnavailable as error:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail={
+                "code": "commerce_selection_recommendations_not_ready",
                 "message": str(error),
             },
         ) from error

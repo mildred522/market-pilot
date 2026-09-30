@@ -115,6 +115,42 @@ class OlistProductTrendReport(BaseModel):
     excluded_order_count: int = Field(ge=0)
 
 
+class OlistSelectionRecommendation(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rank: int = Field(ge=1)
+    recommendation_type: Literal[
+        "scale_test",
+        "validate_new_product",
+        "protect_winner",
+        "review_decline",
+    ]
+    priority: Literal["high", "medium", "low"]
+    item_level: ItemLevel
+    item_id: str
+    product_id: str
+    category_name: str | None = None
+    title: str
+    action: str
+    rationale: str
+    evidence: tuple[str, ...]
+    risk_flags: tuple[str, ...] = ()
+    current: OlistProductSalesMetric | None = None
+    trend: OlistProductTrendComparison
+
+
+class OlistSelectionRecommendationReport(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    snapshot_id: str
+    current_window: TimeWindow
+    baseline_window: TimeWindow
+    item_level: ItemLevel
+    recommendations: tuple[OlistSelectionRecommendation, ...]
+    included_order_count: int = Field(ge=0)
+    excluded_order_count: int = Field(ge=0)
+
+
 class OlistHotProductCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
