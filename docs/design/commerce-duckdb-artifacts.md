@@ -84,6 +84,8 @@ GET /commerce/benchmarks/{snapshot_id}/selection-recommendations
 
 建议只把销售证据转成待验证动作：`scale_test`、`validate_new_product`、`protect_winner` 和 `review_decline`。结果会同时返回证据和风险提示，不把销售额当作利润，也不替代库存、成本、流量和商品质量判断。
 
+Talk 和 Plan 通过 `CommerceFactProvider` 选择事实来源：标准 CSV 快照继续使用内存 Dataset，`olist-canonical-v2` 快照使用只读 DuckDB artifact。这样 API 工作台、Talk 工具和 Plan 草案不会各自实现一套商品销售口径；artifact 不可用时，调用会显式失败，不回退到不一致的空数据。
+
 ## 导入方式
 
 现有标准四表导入命令会额外生成 DuckDB artifact：
