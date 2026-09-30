@@ -15,6 +15,8 @@ from app.commerce.metrics.contracts import (
     OlistProductTrend,
     OlistProductTrendComparison,
     OlistProductTrendReport,
+    OlistSelectionRecommendation,
+    OlistSelectionRecommendationReport,
     TimeWindow,
 )
 from app.commerce.warehouse import CommerceDuckDBArtifactStore, default_commerce_artifact_root
@@ -133,6 +135,162 @@ class OlistSalesFactRepository:
             included_order_count=included,
             excluded_order_count=excluded,
         )
+
+    def selection_recommendations(
+        self,
+        snapshot_id: str,
+        current_window: TimeWindow,
+        baseline_window: TimeWindow,
+        *,
+        item_level: ItemLevel = ItemLevel.PRODUCT,
+        limit: int = 10,
+    ) -> OlistSelectionRecommendationReport:
+        if limit < 1:
+            raise ValueError("selection recommendation limit must be positive")
+        trend_report = self.product_trends(
+            snapshot_id,
+            current_window,
+            baseline_window,
+            item_level=item_level,
+        )
+        current_rank = {
+            metric.item_id: index
+            for index, metric in enumerate(
+                sorted(
+                    (trend.current for trend in trend_report.trends if trend.current),
+                    key=lambda metric: (-metric.gross_amount, metric.item_id),
+                ),
+                1,
+            )
+        }
+        recommendations = [
+            recommendation
+            for trend in trend_report.trends
+            if (
+                recommendation := self._recommendation_for_trend(
+                    trend,
+                    current_rank.get(trend.item_id),
+                )
+            )
+            is not None
+        ]
+        recommendations.sort(
+            key=lambda recommendation: (
+                {"high": 0, "medium": 1, "low": 2}[recommendation.priority],
+                current_rank.get(recommendation.item_id, 10**9),
+                recommendation.item_id,
+            )
+        )
+        ranked = tuple(
+            recommendation.model_copy(update={"rank": index})
+            for index, recommendation in enumerate(recommendations[:limit], 1)
+        )
+        return OlistSelectionRecommendationReport(
+            snapshot_id=snapshot_id,
+            current_window=current_window,
+            baseline_window=baseline_window,
+            item_level=item_level,
+            recommendations=ranked,
+            included_order_count=trend_report.included_order_count,
+            excluded_order_count=trend_report.excluded_order_count,
+        )
+
+    @staticmethod
+    def _recommendation_for_trend(
+        trend: OlistProductTrendComparison,
+        current_rank: int | None,
+    ) -> OlistSelectionRecommendation | None:
+        current = trend.current
+        previous = trend.previous
+        if current is None and previous is not None:
+            return OlistSelectionRecommendation(
+                rank=1,
+                recommendation_type="review_decline",
+                priority="high",
+                item_level=trend.item_level,
+                item_id=trend.item_id,
+                product_id=trend.product_id,
+                category_name=trend.category_name,
+                title=f"复核商品 {trend.item_id} 是否继续经营",
+                action="检查库存、价格和商品状态，再决定补货、优化或暂缓投入。",
+                rationale="商品只在基线窗口成交，当前窗口没有可确认的成交记录。",
+                evidence=("当前窗口无成交记录", "基线窗口存在成交记录"),
+                risk_flags=("无法仅凭销售事实判断下架原因",),
+                current=None,
+                trend=trend,
+            )
+        if current is None:
+            return None
+        if previous is None:
+            return OlistSelectionRecommendation(
+                rank=1,
+                recommendation_type="validate_new_product",
+                priority="medium",
+                item_level=trend.item_level,
+                item_id=trend.item_id,
+                product_id=trend.product_id,
+                category_name=trend.category_name,
+                title=f"小规模验证商品 {trend.item_id}",
+                action="先做受控的小规模测试，补充连续窗口数据后再扩大投入。",
+                rationale="商品在当前窗口出现成交，但没有可比的基线表现。",
+                evidence=("当前窗口有成交记录", "基线窗口无成交记录"),
+                risk_flags=("缺少历史基线", "销售额不是利润"),
+                current=current,
+                trend=trend,
+            )
+        if _at_least_growth(trend.gross_amount_growth_rate, Decimal("0.20")):
+            priority = "high" if current.order_count >= 3 else "medium"
+            return OlistSelectionRecommendation(
+                rank=1,
+                recommendation_type="scale_test",
+                priority=priority,
+                item_level=trend.item_level,
+                item_id=trend.item_id,
+                product_id=trend.product_id,
+                category_name=trend.category_name,
+                title=f"扩大验证商品 {trend.item_id}",
+                action="增加有限的供给或曝光测试，并观察下一等长窗口是否延续增长。",
+                rationale="商品销售额相对基线窗口增长至少 20%，但仍需控制扩张风险。",
+                evidence=(f"销售额增长率 {trend.gross_amount_growth_rate:+.1%}",),
+                risk_flags=("销售额不是利润", "缺少成本、库存和流量证据"),
+                current=current,
+                trend=trend,
+            )
+        if _at_most_growth(trend.gross_amount_growth_rate, Decimal("-0.20")):
+            return OlistSelectionRecommendation(
+                rank=1,
+                recommendation_type="review_decline",
+                priority="high",
+                item_level=trend.item_level,
+                item_id=trend.item_id,
+                product_id=trend.product_id,
+                category_name=trend.category_name,
+                title=f"复核商品 {trend.item_id} 的下降原因",
+                action="对比价格、详情页、库存和流量变化，再决定优化或减少投入。",
+                rationale="商品销售额相对基线窗口下降至少 20%，但销售事实本身不能解释原因。",
+                evidence=(f"销售额增长率 {trend.gross_amount_growth_rate:+.1%}",),
+                risk_flags=("无法仅凭销售事实判断下降原因",),
+                current=current,
+                trend=trend,
+            )
+        if current_rank is not None and current_rank <= 3 and current.order_count >= 3:
+            return OlistSelectionRecommendation(
+                rank=1,
+                recommendation_type="protect_winner",
+                priority="medium",
+                item_level=trend.item_level,
+                item_id=trend.item_id,
+                product_id=trend.product_id,
+                category_name=trend.category_name,
+                title=f"保护商品 {trend.item_id} 的稳定销售",
+                action="优先检查供给、价格和关联销售承接，避免稳定商品断供。",
+                rationale="商品当前销售额排名靠前且有多笔订单，但没有足够增长证据支持激进扩张。",
+                evidence=(f"当前销售额排名第 {current_rank}", f"当前订单数 {current.order_count}"),
+                risk_flags=("缺少利润和库存证据",),
+                current=current,
+                trend=trend,
+            )
+        return None
 
     @staticmethod
     def _trend_comparison(
@@ -409,3 +567,11 @@ def _is_momentum(trend: OlistProductTrend) -> bool:
             trend.order_growth_rate,
         )
     )
+
+
+def _at_least_growth(value: Decimal | None, threshold: Decimal) -> bool:
+    return value is not None and value >= threshold
+
+
+def _at_most_growth(value: Decimal | None, threshold: Decimal) -> bool:
+    return value is not None and value <= threshold
