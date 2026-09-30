@@ -18,6 +18,7 @@ from app.commerce.sources.olist import OlistSalesFactRepository, OlistSourceAdap
 from app.commerce.warehouse import CommerceDuckDBArtifactStore
 from app.commerce.metrics import TimeWindow
 from app.commerce.talk import CommerceTalkRequest, CommerceTalkService
+from scripts.evaluate_olist_benchmark import evaluate_olist_benchmark
 from app.db.session import SessionLocal, init_db
 from app.main import app
 from app.commerce.repository import CommerceBenchmarkRepository
@@ -332,3 +333,21 @@ def test_plan_reads_olist_selection_recommendations(tmp_path: Path) -> None:
     assert draft.status.value == "draft"
     assert draft.steps
     assert "扩大投入" in draft.steps[0].success_signal
+
+
+def test_olist_benchmark_evaluation_reports_full_fact_chain(tmp_path: Path) -> None:
+    source = tmp_path / "olist"
+    _write_olist_hot_fixture(source)
+
+    result = evaluate_olist_benchmark(
+        source,
+        artifact_root=tmp_path / "artifacts",
+        currency="BRL",
+    )
+
+    assert result["ready"] is True
+    assert result["snapshot"]["schema_version"] == "olist-canonical-v2"
+    assert result["sales"]["product_count"] == 2
+    assert result["trends"]["new_item_count"] == 1
+    assert result["hot_products"]["candidate_count"] == 1
+    assert result["selection"]["type_counts"]["scale_test"] == 1

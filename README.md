@@ -115,7 +115,7 @@ npm run dev
 
 下一阶段拟从餐饮经营诊断转向真实数据驱动的电商卖家 Agent。业务范围、Olist 数据集下载与验证、指标代号层和 SQL 门禁、Hermes 式记忆沉淀与 Graphiti 式时序图，以及分阶段验收，统一记录在 [电商经营 Agent 转型规划](docs/design/ecommerce-agent-transformation.md)。
 
-**目前仅为规划，尚未实现 Olist 导入或电商经营分析。** 原始 Olist CSV 不能直接上传到当前餐饮经营页面；数据集没有可用的采购成本，不能据此计算毛利。原始数据不纳入仓库。
+**当前电商能力处于 Benchmark 验证阶段，不是商家 SaaS。** Olist CSV 通过后端本地导入脚本生成不可变 Snapshot 和 DuckDB artifact，再用于商品销售、趋势、热点、选品、Talk 与 Plan 验证；原始数据不纳入仓库。Olist 没有采购成本，销售额不能据此计算毛利。
 
 ## 为什么必须是 Agent
 
