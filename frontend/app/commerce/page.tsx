@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCommerceBenchmarkSales, getCommerceBenchmarks } from "@/lib/api";
-import type { CommerceBenchmarkSnapshotSummary, CommerceProductSalesReport } from "@/lib/types";
+import { getCommerceBenchmarkHotProducts, getCommerceBenchmarkSales, getCommerceBenchmarks } from "@/lib/api";
+import type { CommerceBenchmarkSnapshotSummary, CommerceHotProductReport, CommerceProductSalesReport } from "@/lib/types";
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -21,6 +21,19 @@ function formatAmount(value: number | string | null): string {
   return Number(value).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
 }
 
+function formatGrowth(value: number | string | null): string {
+  if (value === null) return "—";
+  const percentage = Number(value) * 100;
+  return `${percentage >= 0 ? "+" : ""}${percentage.toFixed(1)}%`;
+}
+
+const hotLabelNames: Record<string, string> = {
+  volume_leader: "销量领先",
+  revenue_leader: "销售额领先",
+  momentum: "增长动量",
+  multi_seller: "多卖家覆盖"
+};
+
 export default function CommercePage() {
   const [snapshots, setSnapshots] = useState<CommerceBenchmarkSnapshotSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -29,6 +42,9 @@ export default function CommercePage() {
   const [sales, setSales] = useState<CommerceProductSalesReport | null>(null);
   const [loadingSales, setLoadingSales] = useState(false);
   const [salesError, setSalesError] = useState("");
+  const [hotProducts, setHotProducts] = useState<CommerceHotProductReport | null>(null);
+  const [loadingHotProducts, setLoadingHotProducts] = useState(false);
+  const [hotProductsError, setHotProductsError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -76,6 +92,35 @@ export default function CommercePage() {
       })
       .finally(() => {
         if (active) setLoadingSales(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected, selectedId, salesSupported]);
+
+  useEffect(() => {
+    if (!selected || !salesSupported) {
+      setHotProducts(null);
+      setHotProductsError("");
+      setLoadingHotProducts(false);
+      return;
+    }
+    let active = true;
+    setLoadingHotProducts(true);
+    setHotProductsError("");
+    setHotProducts(null);
+    const start = selected.period_start ?? selected.created_at;
+    const periodEnd = selected.period_end ? new Date(selected.period_end) : new Date();
+    periodEnd.setDate(periodEnd.getDate() + 1);
+    void getCommerceBenchmarkHotProducts(selected.snapshot_id, start, periodEnd.toISOString())
+      .then((report) => {
+        if (active) setHotProducts(report);
+      })
+      .catch((caught) => {
+        if (active) setHotProductsError(caught instanceof Error ? caught.message : "热点商品数据加载失败");
+      })
+      .finally(() => {
+        if (active) setLoadingHotProducts(false);
       });
     return () => {
       active = false;
@@ -146,9 +191,9 @@ export default function CommercePage() {
                   {!salesSupported ? (
                     <p className="commerce-empty">该快照尚未生成 Olist 商品销售事实层，请选择 `olist-canonical-v2` 快照。</p>
                   ) : null}
-                  {loadingSales ? <p className="commerce-empty">正在计算商品销售事实...</p> : null}
-                  {salesError ? <p className="commerce-error" role="alert">{salesError}</p> : null}
-                  {!loadingSales && !salesError && sales?.metrics.length ? (
+                  {salesSupported && loadingSales ? <p className="commerce-empty">正在计算商品销售事实...</p> : null}
+                  {salesSupported && salesError ? <p className="commerce-error" role="alert">{salesError}</p> : null}
+                  {salesSupported && !loadingSales && !salesError && sales?.metrics.length ? (
                     <div className="commerce-sales-table-wrap">
                       <table className="commerce-sales-table">
                         <thead>
@@ -177,8 +222,49 @@ export default function CommercePage() {
                       <p className="commerce-sales-note">纳入订单 {sales.included_order_count} 笔；排除订单 {sales.excluded_order_count} 笔。销售额不是利润。</p>
                     </div>
                   ) : null}
-                  {!loadingSales && !salesError && !sales?.metrics.length ? (
+                  {salesSupported && !loadingSales && !salesError && !sales?.metrics.length ? (
                     <p className="commerce-empty">当前窗口没有可用的成交商品销售记录。</p>
+                  ) : null}
+                </section>
+                <section className="commerce-hot-panel" aria-labelledby="commerce-hot-title">
+                  <div className="section-heading">
+                    <div>
+                      <p className="kicker">Explainable signals</p>
+                      <h2 id="commerce-hot-title">热点商品候选</h2>
+                    </div>
+                    <p>热点是可解释候选，不代表利润、因果关系或确定性选品结论。</p>
+                  </div>
+                  {salesSupported && loadingHotProducts ? <p className="commerce-empty">正在识别热点商品...</p> : null}
+                  {salesSupported && hotProductsError ? <p className="commerce-error" role="alert">{hotProductsError}</p> : null}
+                  {salesSupported && !loadingHotProducts && !hotProductsError && hotProducts?.candidates.length ? (
+                    <div className="commerce-hot-list">
+                      {hotProducts.candidates.map((candidate) => (
+                        <article className="commerce-hot-card" key={candidate.item_id}>
+                          <div className="commerce-hot-card-heading">
+                            <div>
+                              <span className="commerce-hot-rank">#{candidate.rank}</span>
+                              <strong>{candidate.product_id}</strong>
+                              <small>{candidate.category_name ?? "未分类"}</small>
+                            </div>
+                            <span className={`commerce-confidence commerce-confidence-${candidate.confidence}`}>
+                              {candidate.confidence === "high" ? "高" : candidate.confidence === "medium" ? "中" : "低"}置信
+                            </span>
+                          </div>
+                          <div className="commerce-hot-labels">
+                            {candidate.labels.map((label) => <span key={label}>{hotLabelNames[label] ?? label}</span>)}
+                          </div>
+                          <p>{candidate.evidence.join("；")}</p>
+                          <div className="commerce-hot-metrics">
+                            <span>销量 {formatAmount(candidate.current.units_sold)}</span>
+                            <span>销售额 {formatAmount(candidate.current.gross_amount)} {candidate.current.currency ?? ""}</span>
+                            <span>基线增长 {formatGrowth(candidate.trend.gross_amount_growth_rate)}</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                  {salesSupported && !loadingHotProducts && !hotProductsError && !hotProducts?.candidates.length ? (
+                    <p className="commerce-empty">当前窗口没有满足可解释热点规则的商品。</p>
                   ) : null}
                 </section>
               </>

@@ -41,6 +41,36 @@ def _write_olist(root: Path) -> None:
     )
 
 
+def _write_olist_hot_fixture(root: Path) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "olist_orders_dataset.csv").write_text(
+        "order_id,customer_id,order_status,order_purchase_timestamp,order_approved_at\n"
+        "o-prev,c-1,delivered,2018-01-01 12:00:00,2018-01-01 12:10:00\n"
+        "o-current,c-2,delivered,2018-01-02 12:00:00,2018-01-02 12:10:00\n"
+        "o-current-2,c-3,delivered,2018-01-02 13:00:00,2018-01-02 13:10:00\n",
+        encoding="utf-8",
+    )
+    (root / "olist_order_items_dataset.csv").write_text(
+        "order_id,order_item_id,product_id,seller_id,shipping_limit_date,price,freight_value\n"
+        "o-prev,1,p-1,s-1,2018-01-02 12:00:00,10.00,2.00\n"
+        "o-current,1,p-1,s-1,2018-01-03 12:00:00,20.00,2.00\n"
+        "o-current-2,1,p-2,s-2,2018-01-03 13:00:00,5.00,1.00\n",
+        encoding="utf-8",
+    )
+    (root / "olist_products_dataset.csv").write_text(
+        "product_id,product_category_name\n"
+        "p-1,beleza\n"
+        "p-2,cama_mesa_banho\n",
+        encoding="utf-8",
+    )
+    (root / "product_category_name_translation.csv").write_text(
+        "product_category_name,product_category_name_english\n"
+        "beleza,beauty\n"
+        "cama_mesa_banho,bed_bath_table\n",
+        encoding="utf-8",
+    )
+
+
 def _import_dataset(root: Path):
     adapter = OlistSourceAdapter()
     snapshot_id = adapter.snapshot_id(root, currency="BRL")
@@ -115,3 +145,36 @@ def test_olist_sales_endpoint_reads_shared_benchmark_fact(tmp_path: Path, monkey
     assert body["excluded_order_count"] == 1
     assert body["metrics"][0]["product_id"] == "p-1"
     assert Decimal(str(body["metrics"][0]["gross_amount"])) == Decimal("10.0000")
+
+
+def test_olist_hot_products_explain_growth_against_equal_baseline(tmp_path: Path) -> None:
+    source = tmp_path / "olist"
+    _write_olist_hot_fixture(source)
+    dataset, adapter = _import_dataset(source)
+    artifact_root = tmp_path / "artifacts"
+    CommerceDuckDBArtifactStore(artifact_root).write(
+        dataset,
+        staging_tables=adapter.staging_tables(source),
+    )
+
+    report = OlistSalesFactRepository(artifact_root).hot_products(
+        dataset.snapshot.snapshot_id,
+        TimeWindow(
+            start=datetime(2018, 1, 2, tzinfo=UTC),
+            end=datetime(2018, 1, 3, tzinfo=UTC),
+        ),
+        TimeWindow(
+            start=datetime(2018, 1, 1, tzinfo=UTC),
+            end=datetime(2018, 1, 2, tzinfo=UTC),
+        ),
+    )
+
+    assert len(report.candidates) == 1
+    candidate = report.candidates[0]
+    assert candidate.rank == 1
+    assert candidate.product_id == "p-1"
+    assert candidate.labels == ("volume_leader", "revenue_leader", "momentum")
+    assert candidate.confidence == "high"
+    assert candidate.trend.previous is not None
+    assert candidate.trend.gross_amount_growth_rate == Decimal("1.0000")
+    assert "相对等长基线窗口增长至少 20%" in candidate.evidence

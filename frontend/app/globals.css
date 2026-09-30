@@ -287,6 +287,21 @@ a {
 .commerce-sales-table td strong { display: block; }
 .commerce-sales-table td small { display: block; margin-top: 3px; color: var(--muted); font: 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .commerce-sales-note { margin: 10px 12px; color: var(--muted); font-size: 11px; }
+.commerce-hot-panel { margin-top: 28px; padding-top: 26px; border-top: 1px solid var(--line); }
+.commerce-hot-panel .section-heading { margin-bottom: 18px; }
+.commerce-hot-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.commerce-hot-card { padding: 16px; border: 1px solid var(--line); background: var(--panel); }
+.commerce-hot-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.commerce-hot-card-heading strong { display: block; color: var(--ink); font-size: 14px; }
+.commerce-hot-card-heading small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+.commerce-hot-rank { float: left; margin-right: 7px; color: var(--accent); font: 700 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.commerce-confidence { padding: 3px 6px; border: 1px solid var(--line); color: var(--muted); font-size: 10px; white-space: nowrap; }
+.commerce-confidence-high { border-color: #8bb99a; color: #2f6a44; }
+.commerce-confidence-medium { border-color: #d2b56f; color: #82641c; }
+.commerce-hot-labels { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 14px; }
+.commerce-hot-labels span { padding: 4px 7px; background: var(--surface-subtle); color: var(--ink-soft); font-size: 10px; }
+.commerce-hot-card p { margin: 12px 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.commerce-hot-metrics { display: flex; flex-wrap: wrap; gap: 7px 12px; color: var(--ink-soft); font-size: 11px; }
 
 h1 {
   max-width: 760px;

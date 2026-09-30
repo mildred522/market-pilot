@@ -8,8 +8,11 @@ import duckdb
 
 from app.commerce.metrics.contracts import (
     ItemLevel,
+    OlistHotProductCandidate,
+    OlistHotProductReport,
     OlistProductSalesMetric,
     OlistProductSalesReport,
+    OlistProductTrend,
     TimeWindow,
 )
 from app.commerce.warehouse import CommerceDuckDBArtifactStore, default_commerce_artifact_root
@@ -52,6 +55,120 @@ class OlistSalesFactRepository:
             included_order_count=included,
             excluded_order_count=excluded,
         )
+
+    def hot_products(
+        self,
+        snapshot_id: str,
+        current_window: TimeWindow,
+        baseline_window: TimeWindow,
+        *,
+        item_level: ItemLevel = ItemLevel.PRODUCT,
+        limit: int = 20,
+    ) -> OlistHotProductReport:
+        if limit < 1:
+            raise ValueError("hot product limit must be positive")
+        artifact = self._store.path_for(snapshot_id)
+        if not artifact.is_file():
+            raise OlistSalesFactUnavailable("Olist sales artifact is not available")
+        try:
+            with duckdb.connect(str(artifact), read_only=True) as connection:
+                self._require_tables(connection)
+                current = self._metrics(connection, snapshot_id, current_window, item_level)
+                previous = self._metrics(connection, snapshot_id, baseline_window, item_level)
+                included, excluded = self._order_counts(connection, current_window)
+        except duckdb.Error as error:
+            raise OlistSalesFactUnavailable("Olist sales artifact cannot be queried") from error
+
+        previous_by_item = {metric.item_id: metric for metric in previous}
+        candidates = self._hot_candidates(current, previous_by_item, limit)
+        return OlistHotProductReport(
+            snapshot_id=snapshot_id,
+            current_window=current_window,
+            baseline_window=baseline_window,
+            item_level=item_level,
+            candidates=candidates,
+            included_order_count=included,
+            excluded_order_count=excluded,
+        )
+
+    @staticmethod
+    def _hot_candidates(
+        current: tuple[OlistProductSalesMetric, ...],
+        previous_by_item: dict[str, OlistProductSalesMetric],
+        limit: int,
+    ) -> tuple[OlistHotProductCandidate, ...]:
+        if not current:
+            return ()
+        ranked_by_units = sorted(
+            current,
+            key=lambda metric: (-metric.units_sold, metric.item_id),
+        )
+        ranked_by_gross = sorted(
+            current,
+            key=lambda metric: (-metric.gross_amount, metric.item_id),
+        )
+        leader_count = max(1, (len(current) + 3) // 4)
+        unit_leaders = {metric.item_id for metric in ranked_by_units[:leader_count]}
+        gross_leaders = {metric.item_id for metric in ranked_by_gross[:leader_count]}
+        candidates: list[OlistHotProductCandidate] = []
+        for metric in current:
+            previous = previous_by_item.get(metric.item_id)
+            trend = OlistProductTrend(
+                current=metric,
+                previous=previous,
+                units_growth_rate=_growth_rate(
+                    metric.units_sold,
+                    previous.units_sold if previous else None,
+                ),
+                gross_amount_growth_rate=_growth_rate(
+                    metric.gross_amount,
+                    previous.gross_amount if previous else None,
+                ),
+                order_growth_rate=_growth_rate(
+                    Decimal(metric.order_count),
+                    Decimal(previous.order_count) if previous else None,
+                ),
+            )
+            labels: list[str] = []
+            evidence: list[str] = []
+            if metric.item_id in unit_leaders:
+                labels.append("volume_leader")
+                evidence.append("当前窗口销量位于商品前 25%")
+            if metric.item_id in gross_leaders:
+                labels.append("revenue_leader")
+                evidence.append("当前窗口销售额位于商品前 25%")
+            if _is_momentum(trend):
+                labels.append("momentum")
+                evidence.append("相对等长基线窗口增长至少 20%")
+            if metric.seller_count >= 2:
+                labels.append("multi_seller")
+                evidence.append("当前窗口有至少 2 个卖家销售")
+            if not labels:
+                continue
+            confidence = "high" if len(labels) >= 3 else "medium" if len(labels) == 2 else "low"
+            candidates.append(
+                OlistHotProductCandidate(
+                    rank=1,
+                    item_level=metric.item_level,
+                    item_id=metric.item_id,
+                    product_id=metric.product_id,
+                    category_name=metric.category_name,
+                    labels=tuple(labels),
+                    confidence=confidence,
+                    current=metric,
+                    trend=trend,
+                    evidence=tuple(evidence),
+                )
+            )
+        candidates.sort(
+            key=lambda candidate: (
+                {"high": 0, "medium": 1, "low": 2}[candidate.confidence],
+                -len(candidate.labels),
+                -candidate.current.gross_amount,
+                candidate.item_id,
+            )
+        )
+        return tuple(candidate.model_copy(update={"rank": index}) for index, candidate in enumerate(candidates[:limit], 1))
 
     @staticmethod
     def _require_tables(connection: duckdb.DuckDBPyConnection) -> None:
@@ -204,3 +321,20 @@ def _naive_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value
     return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def _growth_rate(current: Decimal, previous: Decimal | None) -> Decimal | None:
+    if previous is None or previous <= 0:
+        return None
+    return (current - previous) / previous
+
+
+def _is_momentum(trend: OlistProductTrend) -> bool:
+    return any(
+        growth is not None and growth >= Decimal("0.20")
+        for growth in (
+            trend.units_growth_rate,
+            trend.gross_amount_growth_rate,
+            trend.order_growth_rate,
+        )
+    )
