@@ -14,6 +14,7 @@ from app.commerce.contracts import (
     InteractionMode,
 )
 from app.commerce.snapshot import CommerceSnapshot
+from app.commerce.semantic import CommerceMetricCode, resolve_commerce_query
 from app.commerce.ingestion import CommerceImportError, import_csv_package
 from app.commerce.metrics import (
     TimeWindow,
@@ -229,6 +230,21 @@ def test_talk_request_routes_to_read_only_tools(tmp_path: Path) -> None:
     assert response.status == "completed"
     assert response.intent.value == "mixed"
     assert all("plan" not in tool for tool in response.selected_tools)
+    assert response.query_spec is not None
+    assert response.query_spec.metric_codes == (
+        CommerceMetricCode.PRODUCT_TRENDS,
+        CommerceMetricCode.PRODUCT_SALES,
+    )
+    assert response.query_spec.execution_policy.startswith("only registered metrics")
+
+
+def test_commerce_semantic_query_spec_keeps_sku_scope_and_exclusions() -> None:
+    spec = resolve_commerce_query("哪些SKU销售额领先？", item_level=ItemLevel.SKU)
+
+    assert spec is not None
+    assert spec.metric_codes == (CommerceMetricCode.PRODUCT_SALES,)
+    assert spec.item_level is ItemLevel.SKU
+    assert "成本" in spec.excludes
 
 
 def test_talk_declines_questions_outside_supported_product_facts(tmp_path: Path) -> None:

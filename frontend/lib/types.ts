@@ -83,6 +83,15 @@ export type CommerceTalkResponse = {
   status: "completed" | "insufficient_data" | "tool_failure";
   intent: "unsupported" | "sales" | "trends" | "hot_products" | "mixed";
   selected_tools: string[];
+  query_spec: {
+    metric_codes: string[];
+    item_level: "product" | "sku";
+    matched_aliases: string[];
+    definitions: string[];
+    includes: string[];
+    excludes: string[];
+    execution_policy: string;
+  } | null;
   executions: Array<{
     tool_name: string;
     status: "completed" | "degraded" | "failed";

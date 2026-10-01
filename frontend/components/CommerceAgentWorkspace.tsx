@@ -300,6 +300,14 @@ export function CommerceAgentWorkspace({ snapshotId, comparison }: { snapshotId:
             <div className="commerce-agent-result" aria-live="polite">
               <h3>{talk.status === "completed" ? "查询结果" : "需要收窄问题或补充数据"}</h3>
               <p>快照 {snapshotId} · 当前 {comparison.current_window.start.slice(0, 10)} 至 {comparison.current_window.end.slice(0, 10)}（结束时间不含）</p>
+              {talk.query_spec ? (
+                <details className="commerce-query-spec">
+                  <summary>查看本次查询口径</summary>
+                  <p>指标代号：{talk.query_spec.metric_codes.join(" · ")} · 粒度：{talk.query_spec.item_level}</p>
+                  <p>{talk.query_spec.definitions.join("；")}</p>
+                  <small>不包含：{talk.query_spec.excludes.join("、") || "无"}</small>
+                </details>
+              ) : null}
               {talk.executions.map((execution) => <TalkExecutionCard execution={execution} key={execution.tool_name} />)}
               {talk.suggestions.map((suggestion) => <p key={suggestion}>{suggestion}</p>)}
               {talk.limitations.map((limitation) => <p className="commerce-agent-warning" key={limitation}>{limitation}</p>)}

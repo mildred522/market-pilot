@@ -9,6 +9,7 @@ from app.commerce.contracts import CommerceInteraction, InteractionMode
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import ItemLevel, TimeWindow
 from app.commerce.providers import CommerceFactProvider
+from app.commerce.semantic import CommerceQuerySpec, resolve_commerce_query, tool_names_for_query
 from app.commerce.snapshot import CommerceSnapshot
 from app.commerce.tools import (
     CommerceToolContext,
@@ -47,6 +48,7 @@ class CommerceTalkResponse(BaseModel):
     status: Literal["completed", "insufficient_data", "tool_failure"]
     intent: CommerceTalkIntent
     selected_tools: tuple[str, ...]
+    query_spec: CommerceQuerySpec | None = None
     executions: tuple[CommerceToolResult, ...]
     suggestions: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
@@ -60,11 +62,17 @@ class CommerceTalkService:
         provider: CommerceFactProvider | None = None,
     ) -> CommerceTalkResponse:
         tool_names = route_talk_question(request.question)
+        query_spec = (
+            resolve_commerce_query(request.question, item_level=request.item_level)
+            if tool_names
+            else None
+        )
         if not tool_names:
             return CommerceTalkResponse(
                 status="insufficient_data",
                 intent=CommerceTalkIntent.UNSUPPORTED,
                 selected_tools=(),
+                query_spec=None,
                 executions=(),
                 suggestions=("当前仅支持商品销售、趋势和热点问题；请缩小问题范围。",),
                 limitations=_limitations_for(request.interaction, dataset),
@@ -87,17 +95,12 @@ class CommerceTalkService:
             status=status,
             intent=_intent_for_tools(tool_names),
             selected_tools=tuple(tool_names),
+            query_spec=query_spec,
             executions=batch.executions,
             suggestions=_suggestions_for(request.interaction),
             limitations=_limitations_for(request.interaction, dataset),
         )
 
-
-QUESTION_TOOL_MARKERS: dict[str, tuple[str, ...]] = {
-    "commerce_discover_hot_products": ("热销", "热点", "爆款", "潜力", "选品"),
-    "commerce_compare_product_trends": ("趋势", "增长", "下降", "变化", "最近"),
-    "commerce_analyze_product_sales": ("销售", "销量", "成交", "商品", "SKU"),
-}
 
 UNSUPPORTED_QUESTION_MARKERS = (
     "成本", "利润", "毛利", "库存", "实时", "今天", "预测", "未来",
@@ -110,12 +113,8 @@ UNSUPPORTED_QUESTION_MARKERS = (
 def route_talk_question(question: str) -> list[str]:
     if any(marker in question for marker in UNSUPPORTED_QUESTION_MARKERS):
         return []
-    selected = [
-        tool_name
-        for tool_name, markers in QUESTION_TOOL_MARKERS.items()
-        if any(marker.lower() in question.lower() for marker in markers)
-    ]
-    return selected[:3]
+    spec = resolve_commerce_query(question, item_level=ItemLevel.PRODUCT)
+    return tool_names_for_query(spec) if spec else []
 
 
 def _intent_for_tools(tool_names: list[str]) -> CommerceTalkIntent:
