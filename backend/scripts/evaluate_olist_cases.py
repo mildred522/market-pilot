@@ -84,7 +84,7 @@ def evaluate_olist_cases(
     timezone: str | None = None,
 ) -> dict[str, Any]:
     casebook = json.loads(cases_path.read_text(encoding="utf-8"))
-    if casebook["version"] != 1 or not casebook["cases"]:
+    if casebook["version"] not in {1, 2} or not casebook["cases"]:
         raise ValueError("unsupported or empty Olist casebook")
     adapter = OlistSourceAdapter()
     snapshot_id = adapter.snapshot_id(directory, currency=currency, timezone=timezone)
@@ -126,7 +126,8 @@ def evaluate_olist_cases(
         previous, current = windows[case["window"]]
         request = CommerceTalkRequest(
             question=case["question"], interaction=interaction,
-            previous_window=previous, current_window=current, item_level=ItemLevel.PRODUCT,
+            previous_window=previous, current_window=current,
+            item_level=ItemLevel(case.get("item_level", "product")),
         )
         response = CommerceTalkService().answer(request, snapshot, provider)
         failures: list[str] = []
@@ -155,7 +156,12 @@ def evaluate_olist_cases(
         results.append({
             "id": case["id"], "passed": not failures, "status": response.status,
             "selected_tools": list(response.selected_tools), "failures": failures,
-            "human_review": "pending",
+            "human_review": {
+                "verdict": "pending",
+                "focus": case.get("review_focus", []),
+                "allowed_claims": case.get("allowed_claims", []),
+                "disallowed_claims": case.get("disallowed_claims", []),
+            },
         })
     return {
         "snapshot_id": snapshot_id,

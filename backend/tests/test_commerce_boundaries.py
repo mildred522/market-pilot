@@ -249,6 +249,7 @@ def test_talk_declines_questions_outside_supported_product_facts(tmp_path: Path)
     assert route_talk_question(request.question) == []
     assert route_talk_question("这些商品的利润是多少？") == []
     assert route_talk_question("今天有哪些热销商品？") == []
+    assert route_talk_question("按品类销售额给我排名") == []
     assert route_talk_question("给我别的项目销售数据") == []
     assert response.status == "insufficient_data"
     assert response.intent.value == "unsupported"

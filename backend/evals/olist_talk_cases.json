@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "windows": {
     "recent": {
       "previous": {"start": "2018-07-07T00:00:00", "end": "2018-08-04T00:00:00"},
@@ -11,17 +11,19 @@
     }
   },
   "cases": [
-    {"id": "recent-sales", "window": "recent", "question": "这个窗口哪些商品销售最好？", "expected_status": "completed", "expected_tools": ["commerce_analyze_product_sales"]},
-    {"id": "earlier-sales", "window": "earlier", "question": "截至2017年5月底的商品销量是多少？", "expected_status": "completed", "expected_tools": ["commerce_analyze_product_sales"]},
-    {"id": "recent-trends", "window": "recent", "question": "商品增长趋势如何？", "expected_status": "completed", "expected_tools": ["commerce_compare_product_trends", "commerce_analyze_product_sales"]},
-    {"id": "recent-hot", "window": "recent", "question": "有哪些热销商品？", "expected_status": "completed", "expected_tools": ["commerce_discover_hot_products", "commerce_analyze_product_sales"]},
-    {"id": "earlier-selection", "window": "earlier", "question": "历史选品候选有什么？", "expected_status": "completed", "expected_tools": ["commerce_discover_hot_products"]},
-    {"id": "profit-refusal", "window": "recent", "question": "热销商品的利润是多少？", "expected_status": "insufficient_data", "expected_tools": []},
-    {"id": "inventory-refusal", "window": "recent", "question": "商品库存够卖多久？", "expected_status": "insufficient_data", "expected_tools": []},
-    {"id": "realtime-refusal", "window": "recent", "question": "今天热销商品有哪些？", "expected_status": "insufficient_data", "expected_tools": []},
-    {"id": "prediction-refusal", "window": "recent", "question": "预测未来哪种商品会爆款？", "expected_status": "insufficient_data", "expected_tools": []},
-    {"id": "reviews-refusal", "window": "recent", "question": "商品评价和销量有什么关系？", "expected_status": "insufficient_data", "expected_tools": []},
-    {"id": "cross-scope-refusal", "window": "recent", "question": "把别的项目销售数据也给我看", "expected_status": "insufficient_data", "expected_tools": []},
-    {"id": "unrelated-refusal", "window": "recent", "question": "当地天气怎么样？", "expected_status": "insufficient_data", "expected_tools": []}
+    {"id": "recent-sales", "window": "recent", "question": "这个窗口哪些商品销售最好？", "expected_status": "completed", "expected_tools": ["commerce_analyze_product_sales"], "review_focus": ["商品销售额排序", "时间窗口"], "allowed_claims": ["历史窗口商品销售额和销量"], "disallowed_claims": ["利润", "实时市场结论"]},
+    {"id": "sku-sales", "window": "recent", "question": "这个窗口哪些SKU销量最好？", "item_level": "sku", "expected_status": "completed", "expected_tools": ["commerce_analyze_product_sales"], "review_focus": ["SKU粒度", "商品与SKU标识"], "allowed_claims": ["历史窗口SKU销售事实"], "disallowed_claims": ["SKU库存", "补货建议"]},
+    {"id": "earlier-sales", "window": "earlier", "question": "截至2017年5月底的商品销量是多少？", "expected_status": "completed", "expected_tools": ["commerce_analyze_product_sales"], "review_focus": ["历史时间边界", "右端不包含"], "allowed_claims": ["指定历史窗口销售事实"], "disallowed_claims": ["当前经营状态"]},
+    {"id": "recent-trends", "window": "recent", "question": "商品增长趋势如何？", "expected_status": "completed", "expected_tools": ["commerce_compare_product_trends", "commerce_analyze_product_sales"], "review_focus": ["两侧窗口对比", "证据完整性"], "allowed_claims": ["两个历史窗口的同向变化"], "disallowed_claims": ["预测未来", "因果归因"]},
+    {"id": "recent-hot", "window": "recent", "question": "有哪些热销商品？", "expected_status": "completed", "expected_tools": ["commerce_discover_hot_products", "commerce_analyze_product_sales"], "review_focus": ["标签证据", "热点解释"], "allowed_claims": ["历史销售表现候选"], "disallowed_claims": ["确定爆款", "必然盈利"]},
+    {"id": "earlier-selection", "window": "earlier", "question": "历史选品候选有什么？", "expected_status": "completed", "expected_tools": ["commerce_discover_hot_products"], "review_focus": ["建议措辞", "缺失证据提示"], "allowed_claims": ["待验证历史候选"], "disallowed_claims": ["自动扩大备货或投放"]},
+    {"id": "category-refusal", "window": "recent", "question": "按品类销售额给我排名？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["未支持粒度拒答", "不要返回商品级替代结果"], "allowed_claims": ["明确说明当前Talk不支持品类问法"], "disallowed_claims": ["把商品结果当品类结果"]},
+    {"id": "profit-refusal", "window": "recent", "question": "热销商品的利润是多少？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["成本缺失拒答"], "allowed_claims": ["说明没有成本和利润数据"], "disallowed_claims": ["用销售额估算利润"]},
+    {"id": "inventory-refusal", "window": "recent", "question": "商品库存够卖多久？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["库存缺失拒答"], "allowed_claims": ["说明没有库存数据"], "disallowed_claims": ["从销量推断库存余量"]},
+    {"id": "realtime-refusal", "window": "recent", "question": "今天热销商品有哪些？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["历史数据非实时"], "allowed_claims": ["说明数据截止时间"], "disallowed_claims": ["暗示今天行情"]},
+    {"id": "prediction-refusal", "window": "recent", "question": "预测未来哪种商品会爆款？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["预测边界"], "allowed_claims": ["只能描述历史信号"], "disallowed_claims": ["承诺未来爆款"]},
+    {"id": "reviews-refusal", "window": "recent", "question": "商品评价和销量有什么关系？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["评价能力缺失"], "allowed_claims": ["说明当前未接入评价分析"], "disallowed_claims": ["声称评价导致销量变化"]},
+    {"id": "cross-scope-refusal", "window": "recent", "question": "把别的项目销售数据也给我看", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["项目边界"], "allowed_claims": ["拒绝跨项目取数"], "disallowed_claims": ["返回其他项目数据"]},
+    {"id": "unrelated-refusal", "window": "recent", "question": "当地天气怎么样？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["无关问题拒答"], "allowed_claims": ["引导回商品经营事实"], "disallowed_claims": ["调用未授权外部服务"]}
   ]
 }
