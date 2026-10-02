@@ -305,6 +305,7 @@ export function CommerceAgentWorkspace({ snapshotId, comparison }: { snapshotId:
                   <summary>查看本次查询口径</summary>
                   <p>指标代号：{talk.query_spec.metric_codes.join(" · ")} · 粒度：{talk.query_spec.item_level}</p>
                   <p>{talk.query_spec.definitions.join("；")}</p>
+                  <small>来源：{talk.query_spec.source_type ?? "未绑定"} · 时间字段：{talk.query_spec.time_basis ?? "未绑定"} · 状态：{talk.query_spec.order_statuses.join("、") || "未声明"}</small>
                   <small>不包含：{talk.query_spec.excludes.join("、") || "无"}</small>
                 </details>
               ) : null}

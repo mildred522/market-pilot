@@ -96,6 +96,12 @@ export type CommerceTalkResponse = {
     scope_mode: "benchmark" | "merchant" | null;
     previous_window: { start: string; end: string } | null;
     current_window: { start: string; end: string } | null;
+    source_type: string | null;
+    time_basis: string | null;
+    order_statuses: string[];
+    dimensions: string[];
+    evidence_fields: string[];
+    currency_policy: string | null;
   } | null;
   executions: Array<{
     tool_name: string;

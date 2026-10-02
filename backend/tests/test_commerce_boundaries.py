@@ -284,6 +284,10 @@ def test_commerce_semantic_gate_binds_snapshot_and_windows(tmp_path: Path) -> No
     assert bound.semantic_version == "commerce-semantic-v1"
     assert bound.snapshot_id == dataset.snapshot.snapshot_id
     assert bound.current_window == current
+    assert bound.source_type == dataset.snapshot.source_type
+    assert bound.time_basis == "ordered_at"
+    assert bound.order_statuses == ("paid", "fulfilled")
+    assert "gross_amount" in bound.evidence_fields
 
 
 def test_commerce_semantic_gate_rejects_mismatched_and_oversized_scope(

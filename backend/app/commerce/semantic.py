@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,11 +26,20 @@ class CommerceMetricDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     code: CommerceMetricCode
+    definition_version: str = SEMANTIC_VERSION
     tool_name: str
     aliases: tuple[str, ...]
     definition: str = Field(min_length=1, max_length=300)
     includes: tuple[str, ...] = ()
     excludes: tuple[str, ...] = ()
+    source_types: tuple[str, ...] = ("public_dataset", "merchant_upload")
+    time_basis: Literal["ordered_at"] = "ordered_at"
+    order_statuses: tuple[str, ...] = ("paid", "fulfilled")
+    dimensions: tuple[str, ...] = ("item_id", "product_id", "category_name")
+    evidence_fields: tuple[str, ...] = (
+        "snapshot_id", "window", "order_count", "units_sold", "gross_amount"
+    )
+    currency_policy: str = "report source currency; do not convert without an explicit rate"
 
 
 class CommerceQuerySpec(BaseModel):
@@ -49,6 +59,12 @@ class CommerceQuerySpec(BaseModel):
     scope_mode: CommerceAnalysisMode | None = None
     previous_window: TimeWindow | None = None
     current_window: TimeWindow | None = None
+    source_type: str | None = None
+    time_basis: str | None = None
+    order_statuses: tuple[str, ...] = ()
+    dimensions: tuple[str, ...] = ()
+    evidence_fields: tuple[str, ...] = ()
+    currency_policy: str | None = None
 
 
 METRIC_DEFINITIONS: tuple[CommerceMetricDefinition, ...] = (
@@ -101,6 +117,12 @@ def resolve_commerce_query(question: str, *, item_level: ItemLevel) -> CommerceQ
         excludes=tuple(
             dict.fromkeys(item for definition in selected for item in definition.excludes)
         ),
+        source_type=None,
+        time_basis=_single_definition_value(selected, "time_basis"),
+        order_statuses=_common_values(selected, "order_statuses"),
+        dimensions=_common_values(selected, "dimensions"),
+        evidence_fields=_common_values(selected, "evidence_fields"),
+        currency_policy=_single_definition_value(selected, "currency_policy"),
     )
 
 
@@ -130,6 +152,7 @@ def bind_commerce_query(
         update={
             "snapshot_id": snapshot.snapshot_id,
             "scope_mode": interaction.scope.mode,
+            "source_type": snapshot.source_type,
             "previous_window": previous_window,
             "current_window": current_window,
         }
@@ -146,6 +169,16 @@ def validate_commerce_query_scope(
 ) -> None:
     if snapshot.state.value != "ready":
         raise ValueError("commerce snapshot is not ready")
+    if spec.source_type is not None and spec.source_type != snapshot.source_type:
+        raise ValueError("query source type does not match the requested snapshot")
+    supported_sources = {
+        source_type
+        for definition in METRIC_DEFINITIONS
+        if definition.code in spec.metric_codes
+        for source_type in definition.source_types
+    }
+    if snapshot.source_type not in supported_sources:
+        raise ValueError("query metrics are not supported by this source type")
     if snapshot.mode is not interaction.scope.mode:
         raise ValueError("query scope mode does not match snapshot mode")
     requested_snapshot = interaction.scope.snapshot_id
@@ -159,3 +192,21 @@ def validate_commerce_query_scope(
     if CommerceMetricCode.PRODUCT_TRENDS in spec.metric_codes or CommerceMetricCode.HOT_PRODUCTS in spec.metric_codes:
         if current_window.end - current_window.start != previous_window.end - previous_window.start:
             raise ValueError("trend and hot-product queries require equal-length windows")
+
+
+def _common_values(
+    definitions: list[CommerceMetricDefinition], field: Literal["order_statuses", "dimensions", "evidence_fields"]
+) -> tuple[str, ...]:
+    values: list[str] = []
+    for definition in definitions:
+        for value in getattr(definition, field):
+            if value not in values:
+                values.append(value)
+    return tuple(values)
+
+
+def _single_definition_value(
+    definitions: list[CommerceMetricDefinition], field: Literal["time_basis", "currency_policy"]
+) -> str:
+    values = {str(getattr(definition, field)) for definition in definitions}
+    return next(iter(values)) if len(values) == 1 else "mixed"
