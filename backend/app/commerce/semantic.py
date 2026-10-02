@@ -18,6 +18,7 @@ MAX_QUERY_WINDOW_DAYS = 366
 
 class CommerceMetricCode(StrEnum):
     PRODUCT_SALES = "commerce.product_sales"
+    CATEGORY_SALES = "commerce.category_sales"
     PRODUCT_TRENDS = "commerce.product_trends"
     HOT_PRODUCTS = "commerce.hot_products"
 
@@ -50,6 +51,7 @@ class CommerceQuerySpec(BaseModel):
     semantic_version: str = SEMANTIC_VERSION
     metric_codes: tuple[CommerceMetricCode, ...]
     item_level: ItemLevel
+    result_grain: Literal["sku", "product", "category"] = "product"
     matched_aliases: tuple[str, ...] = ()
     definitions: tuple[str, ...] = ()
     includes: tuple[str, ...] = ()
@@ -85,6 +87,14 @@ METRIC_DEFINITIONS: tuple[CommerceMetricDefinition, ...] = (
         excludes=("实时行情", "未来预测", "因果效果"),
     ),
     CommerceMetricDefinition(
+        code=CommerceMetricCode.CATEGORY_SALES,
+        tool_name="commerce_analyze_category_sales",
+        aliases=("品类", "类目", "分类", "类别"),
+        definition="按品类汇总指定历史窗口内可成交订单的商品数量、销量、销售额和去重订单数。",
+        includes=("历史窗口销售事实", "品类内去重商品数", "品类内去重订单数"),
+        excludes=("利润", "库存", "品类级因果效果"),
+    ),
+    CommerceMetricDefinition(
         code=CommerceMetricCode.PRODUCT_SALES,
         tool_name="commerce_analyze_product_sales",
         aliases=("销售", "销量", "成交", "商品", "SKU"),
@@ -106,9 +116,20 @@ def resolve_commerce_query(question: str, *, item_level: ItemLevel) -> CommerceQ
             matched_aliases.extend(aliases)
     if not selected:
         return None
+    if any(definition.code is CommerceMetricCode.CATEGORY_SALES for definition in selected):
+        selected = [
+            definition
+            for definition in selected
+            if definition.code is not CommerceMetricCode.PRODUCT_SALES
+        ]
     return CommerceQuerySpec(
         metric_codes=tuple(definition.code for definition in selected),
         item_level=item_level,
+        result_grain=(
+            "category"
+            if CommerceMetricCode.CATEGORY_SALES in {definition.code for definition in selected}
+            else item_level.value
+        ),
         matched_aliases=tuple(dict.fromkeys(matched_aliases)),
         definitions=tuple(definition.definition for definition in selected),
         includes=tuple(

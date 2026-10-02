@@ -7,7 +7,14 @@ from decimal import Decimal
 
 from app.commerce.canonical.models import OrderItemRecord, OrderRecord, OrderStatus
 from app.commerce.ingestion import CommerceDataset
-from app.commerce.metrics.contracts import ItemLevel, ItemSalesMetric, SalesReport, TimeWindow
+from app.commerce.metrics.contracts import (
+    CategorySalesMetric,
+    CategorySalesReport,
+    ItemLevel,
+    ItemSalesMetric,
+    SalesReport,
+    TimeWindow,
+)
 
 
 ELIGIBLE_ORDER_STATUSES = frozenset({OrderStatus.PAID, OrderStatus.FULFILLED})
@@ -87,6 +94,72 @@ def compute_sales_report(
         included_order_count=len(included_order_ids),
         excluded_order_count=len(excluded_order_ids),
         excluded_order_ids=tuple(sorted(excluded_order_ids)),
+    )
+
+
+def compute_category_sales_report(
+    dataset: CommerceDataset,
+    window: TimeWindow,
+    *,
+    eligible_statuses: Iterable[OrderStatus] = ELIGIBLE_ORDER_STATUSES,
+) -> CategorySalesReport:
+    eligible = frozenset(eligible_statuses)
+    orders_by_id = {order.order_id: order for order in dataset.orders}
+    sku_by_id = {sku.sku_id: sku for sku in dataset.skus}
+    product_by_id = {product.product_id: product for product in dataset.products}
+    aggregate: dict[str | None, dict[str, object]] = {}
+    included_order_ids: set[str] = set()
+    excluded_order_ids: set[str] = set()
+
+    for item in dataset.order_items:
+        order = orders_by_id.get(item.order_id)
+        if order is None or not _in_window(order.ordered_at, window):
+            continue
+        if order.status not in eligible:
+            excluded_order_ids.add(order.order_id)
+            continue
+        product = product_by_id[sku_by_id[item.sku_id].product_id]
+        category = product.category_name
+        bucket = aggregate.setdefault(
+            category,
+            {
+                "product_ids": set(),
+                "order_ids": set(),
+                "units_sold": Decimal("0"),
+                "gross_amount": Decimal("0"),
+                "currencies": set(),
+            },
+        )
+        bucket["product_ids"].add(product.product_id)  # type: ignore[union-attr]
+        bucket["order_ids"].add(order.order_id)  # type: ignore[union-attr]
+        bucket["units_sold"] += item.quantity  # type: ignore[operator]
+        bucket["gross_amount"] += item.quantity * item.unit_price  # type: ignore[operator]
+        if item.currency:
+            bucket["currencies"].add(item.currency)  # type: ignore[union-attr]
+        included_order_ids.add(order.order_id)
+
+    categories = tuple(
+        sorted(
+            (
+                CategorySalesMetric(
+                    category_name=category,
+                    product_count=len(bucket["product_ids"]),  # type: ignore[arg-type]
+                    units_sold=bucket["units_sold"],  # type: ignore[arg-type]
+                    order_count=len(bucket["order_ids"]),  # type: ignore[arg-type]
+                    gross_amount=bucket["gross_amount"],  # type: ignore[arg-type]
+                    currency=_single_value(bucket["currencies"]),  # type: ignore[arg-type]
+                )
+                for category, bucket in aggregate.items()
+            ),
+            key=lambda metric: (-metric.gross_amount, metric.category_name or ""),
+        )
+    )
+    return CategorySalesReport(
+        snapshot_id=dataset.snapshot.snapshot_id,
+        window=window,
+        categories=categories,
+        included_order_count=len(included_order_ids),
+        excluded_order_count=len(excluded_order_ids),
     )
 
 

@@ -52,6 +52,27 @@ class SalesReport(BaseModel):
     excluded_order_ids: tuple[str, ...] = ()
 
 
+class CategorySalesMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    category_name: str | None = None
+    product_count: int = Field(ge=0)
+    units_sold: Decimal
+    order_count: int = Field(ge=0)
+    gross_amount: Decimal
+    currency: str | None = None
+
+
+class CategorySalesReport(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    snapshot_id: str
+    window: TimeWindow
+    categories: tuple[CategorySalesMetric, ...]
+    included_order_count: int = Field(ge=0)
+    excluded_order_count: int = Field(ge=0)
+
+
 class OlistProductSalesMetric(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

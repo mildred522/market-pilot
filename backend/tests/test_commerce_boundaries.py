@@ -387,9 +387,40 @@ def test_talk_declines_questions_outside_supported_product_facts(tmp_path: Path)
     assert route_talk_question(request.question) == []
     assert route_talk_question("这些商品的利润是多少？") == []
     assert route_talk_question("今天有哪些热销商品？") == []
-    assert route_talk_question("按品类销售额给我排名") == []
+    assert route_talk_question("按品类销售额给我排名") == [
+        "commerce_analyze_category_sales"
+    ]
     assert route_talk_question("给我别的项目销售数据") == []
     assert response.status == "insufficient_data"
     assert response.intent.value == "unsupported"
     assert response.selected_tools == ()
     assert response.executions == ()
+
+
+def test_talk_category_sales_uses_platform_neutral_provider(tmp_path: Path) -> None:
+    _write_package(tmp_path)
+    dataset = import_csv_package(tmp_path, mode=CommerceAnalysisMode.BENCHMARK)
+    request = CommerceTalkRequest(
+        question="按品类销售额给我排名",
+        interaction=CommerceInteraction(
+            mode=InteractionMode.TALK,
+            scope=CommerceScope(mode=CommerceAnalysisMode.BENCHMARK, project_id=1),
+        ),
+        previous_window=TimeWindow(
+            start=datetime(2025, 12, 25, tzinfo=UTC),
+            end=datetime(2026, 1, 1, tzinfo=UTC),
+        ),
+        current_window=TimeWindow(
+            start=datetime(2026, 1, 1, tzinfo=UTC),
+            end=datetime(2026, 1, 8, tzinfo=UTC),
+        ),
+        item_level=ItemLevel.PRODUCT,
+    )
+
+    response = CommerceTalkService().answer(request, dataset)
+
+    assert response.status == "completed"
+    assert response.intent.value == "category_sales"
+    assert response.query_spec is not None
+    assert response.query_spec.result_grain == "category"
+    assert response.executions[0].data["categories"][0]["category_name"] == "Demo"

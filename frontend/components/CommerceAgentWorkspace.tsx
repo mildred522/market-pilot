@@ -10,6 +10,7 @@ type TalkExecution = CommerceTalkResponse["executions"][number];
 
 const toolNames: Record<string, string> = {
   commerce_analyze_product_sales: "商品销售事实",
+  commerce_analyze_category_sales: "品类销售事实",
   commerce_compare_product_trends: "商品趋势对比",
   commerce_discover_hot_products: "热点商品候选"
 };
@@ -40,6 +41,16 @@ function TalkExecutionCard({ execution }: { execution: TalkExecution }) {
           <ol>{data.metrics.slice(0, 5).map((metric) => (
             <li key={metric.item_id} title={metric.product_id}>
               {productLabel(metric.category_name, metric.product_id)}：销售额 {formatAmount(metric.gross_amount)} {metric.currency ?? ""}，销量 {formatAmount(metric.units_sold)}
+            </li>
+          ))}</ol>
+        </>
+      ) : null}
+      {data?.categories ? (
+        <>
+          <p>当前窗口包含 {data.categories.length} 个品类；以下展示销售额前 5 个品类。</p>
+          <ol>{data.categories.slice(0, 5).map((category) => (
+            <li key={category.category_name ?? "uncategorized"}>
+              {category.category_name ?? "未分类"}：销售额 {formatAmount(category.gross_amount)} {category.currency ?? ""}，销量 {formatAmount(category.units_sold)}，商品数 {category.product_count}
             </li>
           ))}</ol>
         </>
@@ -303,7 +314,7 @@ export function CommerceAgentWorkspace({ snapshotId, comparison }: { snapshotId:
               {talk.query_spec ? (
                 <details className="commerce-query-spec">
                   <summary>查看本次查询口径</summary>
-                  <p>指标代号：{talk.query_spec.metric_codes.join(" · ")} · 粒度：{talk.query_spec.item_level}</p>
+                  <p>指标代号：{talk.query_spec.metric_codes.join(" · ")} · 粒度：{talk.query_spec.result_grain}</p>
                   <p>{talk.query_spec.definitions.join("；")}</p>
                   <small>来源：{talk.query_spec.source_type ?? "未绑定"} · 时间字段：{talk.query_spec.time_basis ?? "未绑定"} · 状态：{talk.query_spec.order_statuses.join("、") || "未声明"}</small>
                   <small>证据字段：{talk.query_spec.evidence_fields.join("、") || "未声明"}</small>

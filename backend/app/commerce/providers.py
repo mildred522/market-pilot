@@ -5,6 +5,7 @@ from typing import Protocol
 
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import (
+    CategorySalesReport,
     ItemLevel,
     OlistHotProductReport,
     OlistProductSalesReport,
@@ -12,6 +13,7 @@ from app.commerce.metrics import (
     OlistSelectionRecommendationReport,
     TimeWindow,
     compare_sales_windows,
+    compute_category_sales_report,
     compute_sales_report,
     discover_hot_products,
 )
@@ -19,6 +21,8 @@ from app.commerce.sources.olist import OlistSalesFactRepository
 
 
 class CommerceFactProvider(Protocol):
+    def category_sales(self, window: TimeWindow) -> CategorySalesReport: ...
+
     def sales(
         self,
         window: TimeWindow,
@@ -54,6 +58,9 @@ class CommerceFactProvider(Protocol):
 @dataclass(frozen=True)
 class DatasetCommerceFactProvider:
     dataset: CommerceDataset
+
+    def category_sales(self, window: TimeWindow) -> CategorySalesReport:
+        return compute_category_sales_report(self.dataset, window)
 
     def sales(self, window: TimeWindow, *, item_level: ItemLevel) -> object:
         return compute_sales_report(self.dataset, window, item_level=item_level)
@@ -100,6 +107,26 @@ class DatasetCommerceFactProvider:
 class OlistDuckDBFactProvider:
     snapshot_id: str
     repository: OlistSalesFactRepository
+
+    def category_sales(self, window: TimeWindow) -> CategorySalesReport:
+        report = self.repository.category_sales(self.snapshot_id, window)
+        return CategorySalesReport(
+            snapshot_id=report.snapshot_id,
+            window=report.window,
+            categories=tuple(
+                {
+                    "category_name": category.category_name,
+                    "product_count": category.product_count,
+                    "units_sold": category.units_sold,
+                    "order_count": category.order_count,
+                    "gross_amount": category.gross_amount,
+                    "currency": category.currency,
+                }
+                for category in report.categories
+            ),
+            included_order_count=report.included_order_count,
+            excluded_order_count=report.excluded_order_count,
+        )
 
     def sales(self, window: TimeWindow, *, item_level: ItemLevel) -> OlistProductSalesReport:
         return self.repository.product_sales(

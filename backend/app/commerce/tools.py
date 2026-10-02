@@ -88,6 +88,10 @@ def _sales(context: CommerceToolContext) -> dict[str, Any]:
     return report.model_dump(mode="json")
 
 
+def _category_sales(context: CommerceToolContext) -> dict[str, Any]:
+    return context.fact_provider().category_sales(context.current_window).model_dump(mode="json")
+
+
 def _trends(context: CommerceToolContext) -> dict[str, Any]:
     trends = context.fact_provider().trends(
         context.previous_window,
@@ -122,6 +126,14 @@ def _hot_products(context: CommerceToolContext) -> dict[str, Any]:
 
 
 COMMERCE_TALK_TOOLS: Mapping[str, CommerceToolSpec] = {
+    "commerce_analyze_category_sales": CommerceToolSpec(
+        name="commerce_analyze_category_sales",
+        description="按品类计算指定快照和时间窗口内的销售事实。",
+        required_capabilities=frozenset(
+            {CommerceCapability.CATALOG, CommerceCapability.SALES}
+        ),
+        runner=_category_sales,
+    ),
     "commerce_analyze_product_sales": CommerceToolSpec(
         name="commerce_analyze_product_sales",
         description="计算指定快照和时间窗口内的 SKU 或商品销售表现。",
@@ -229,6 +241,7 @@ def _validate_tool_data(
     if not isinstance(data, dict):
         raise ValueError("fact result must be an object")
     collection_key = {
+        "commerce_analyze_category_sales": "categories",
         "commerce_analyze_product_sales": "metrics",
         "commerce_compare_product_trends": "items",
         "commerce_discover_hot_products": "candidates",
@@ -237,6 +250,16 @@ def _validate_tool_data(
     if not isinstance(rows, list):
         raise ValueError(f"fact result must contain a list of {collection_key}")
     for row in rows:
+        if tool_name == "commerce_analyze_category_sales":
+            if not isinstance(row, dict) or not isinstance(row.get("product_count"), int):
+                raise ValueError("fact result contains an invalid category row")
+            if not isinstance(row.get("units_sold"), (str, int, float)):
+                raise ValueError("fact result is missing category units_sold")
+            if not isinstance(row.get("order_count"), int):
+                raise ValueError("fact result is missing category order_count")
+            if not isinstance(row.get("gross_amount"), (str, int, float)):
+                raise ValueError("fact result is missing category gross amount")
+            continue
         if not isinstance(row, dict) or not isinstance(row.get("item_id"), str):
             raise ValueError("fact result contains an invalid item row")
         row_level = row.get("item_level")

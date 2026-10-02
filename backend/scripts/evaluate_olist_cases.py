@@ -25,7 +25,7 @@ def _source_sales(directory: Path, window: TimeWindow) -> dict[str, Any]:
     orders: dict[str, str] = {}
     included: set[str] = set()
     excluded: set[str] = set()
-    with (directory / "olist_orders_dataset.csv").open(newline="", encoding="utf-8") as source:
+    with (directory / "olist_orders_dataset.csv").open(newline="", encoding="utf-8-sig") as source:
         for row in csv.DictReader(source):
             purchased_at = row["order_purchase_timestamp"]
             if not purchased_at:
@@ -39,15 +39,32 @@ def _source_sales(directory: Path, window: TimeWindow) -> dict[str, Any]:
                 else:
                     excluded.add(order_id)
 
+    translations: dict[str, str] = {}
+    translation_path = directory / "product_category_name_translation.csv"
+    if translation_path.is_file():
+        with translation_path.open(newline="", encoding="utf-8-sig") as source:
+            translations = {
+                row["product_category_name"]: row["product_category_name_english"]
+                for row in csv.DictReader(source)
+                if row.get("product_category_name") and row.get("product_category_name_english")
+            }
+    category_by_product: dict[str, str | None] = {}
+    with (directory / "olist_products_dataset.csv").open(
+        newline="", encoding="utf-8-sig"
+    ) as source:
+        for row in csv.DictReader(source):
+            raw_category = row.get("product_category_name", "")
+            category_by_product[row["product_id"]] = translations.get(raw_category, raw_category) or None
     products: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"units_sold": 0, "gross_amount": Decimal(0), "orders": set()}
+        lambda: {"units_sold": 0, "gross_amount": Decimal(0), "orders": set(), "category_name": None}
     )
-    with (directory / "olist_order_items_dataset.csv").open(newline="", encoding="utf-8") as source:
+    with (directory / "olist_order_items_dataset.csv").open(newline="", encoding="utf-8-sig") as source:
         for row in csv.DictReader(source):
             order_id = row["order_id"]
             if order_id not in orders:
                 continue
             metric = products[row["product_id"]]
+            metric["category_name"] = category_by_product.get(row["product_id"])
             metric["units_sold"] += 1
             metric["gross_amount"] += Decimal(row["price"])
             metric["orders"].add(order_id)
@@ -72,6 +89,34 @@ def _check_sales(data: dict[str, Any], source: dict[str, Any]) -> list[str]:
             or metric["order_count"] != len(expected["orders"])
         ):
             failures.append(f"product {product_id} differs from raw order items")
+    return failures[:10]
+
+
+def _check_category_sales(data: dict[str, Any], source: dict[str, Any]) -> list[str]:
+    expected: dict[str | None, dict[str, Any]] = defaultdict(
+        lambda: {"products": set(), "orders": set(), "units_sold": 0, "gross_amount": Decimal(0)}
+    )
+    for product_id, metric in source["products"].items():
+        category = metric["category_name"]
+        bucket = expected[category]
+        bucket["products"].add(product_id)
+        bucket["orders"].update(metric["orders"])
+        bucket["units_sold"] += metric["units_sold"]
+        bucket["gross_amount"] += metric["gross_amount"]
+    observed = {category["category_name"]: category for category in data["categories"]}
+    failures: list[str] = []
+    if set(observed) != set(expected):
+        failures.append("category names differ from raw product categories")
+    for category in set(observed) & set(expected):
+        metric = observed[category]
+        expected_metric = expected[category]
+        if (
+            metric["product_count"] != len(expected_metric["products"])
+            or metric["order_count"] != len(expected_metric["orders"])
+            or Decimal(metric["units_sold"]) != expected_metric["units_sold"]
+            or Decimal(metric["gross_amount"]) != expected_metric["gross_amount"]
+        ):
+            failures.append(f"category {category} differs from raw order items")
     return failures[:10]
 
 
@@ -146,11 +191,14 @@ def evaluate_olist_cases(
             if not any("公开基准数据" in limitation for limitation in response.limitations):
                 failures.append("missing historical benchmark limitation")
             for execution in response.executions:
-                if execution.tool_name != "commerce_analyze_product_sales" or execution.data is None:
+                if execution.data is None:
                     continue
                 if case["window"] not in source_cache:
                     source_cache[case["window"]] = _source_sales(directory, current)
-                failures.extend(_check_sales(execution.data, source_cache[case["window"]]))
+                if execution.tool_name == "commerce_analyze_product_sales":
+                    failures.extend(_check_sales(execution.data, source_cache[case["window"]]))
+                elif execution.tool_name == "commerce_analyze_category_sales":
+                    failures.extend(_check_category_sales(execution.data, source_cache[case["window"]]))
         elif response.executions:
             failures.append("refused case executed a tool")
         results.append({

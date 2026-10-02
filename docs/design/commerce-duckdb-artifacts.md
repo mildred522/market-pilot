@@ -97,7 +97,7 @@ GET /commerce/benchmarks/{snapshot_id}/selection-recommendations
 
 Talk 和 Plan 通过 `CommerceFactProvider` 选择事实来源：标准 CSV 快照继续使用内存 Dataset，`olist-canonical-v2` 快照使用只读 DuckDB artifact。这样 API 工作台、Talk 工具和 Plan 草案不会各自实现一套商品销售口径；artifact 不可用时，调用会显式失败，不回退到不一致的空数据。
 
-Talk 目前先落地轻量语义层：`backend/app/commerce/semantic.py` 注册 `commerce.product_sales`、`commerce.product_trends` 和 `commerce.hot_products` 三个指标代号，维护别名、版本、来源、时间字段、成交状态、粒度、可用维度、证据字段、币种策略和包含/排除项。问句先解析为冻结的 `CommerceQuerySpec`，再绑定请求项目、快照和两个时间窗，最后选择已有工具；模型不生成 SQL，未支持的品类、成本、库存、实时和预测问题仍直接拒答。运行时门禁要求快照为 ready、请求快照与事实快照一致、来源受该指标支持、两个窗口不重叠且各不超过 366 天；趋势和热点必须使用等长窗口。工具返回后还会校验集合结构、商品/SKU 粒度、核心数值字段和比较两侧，失败时拒绝把结果包装成完成状态。响应将代号、版本和口径展示给前端，便于人工审查；这不是完整数仓语义层，尚未覆盖租户级 SQL 编译、租户数据库权限或商家数据。
+Talk 目前先落地轻量语义层：`backend/app/commerce/semantic.py` 注册 `commerce.product_sales`、`commerce.category_sales`、`commerce.product_trends` 和 `commerce.hot_products` 四个指标代号，维护别名、版本、来源、时间字段、成交状态、粒度、可用维度、证据字段、币种策略和包含/排除项。问句先解析为冻结的 `CommerceQuerySpec`，再绑定请求项目、快照和两个时间窗，最后选择已有工具；模型不生成 SQL，成本、库存、实时和预测问题仍直接拒答。运行时门禁要求快照为 ready、请求快照与事实快照一致、来源受该指标支持、两个窗口不重叠且各不超过 366 天；趋势和热点必须使用等长窗口。工具返回后还会校验集合结构、商品/SKU/品类粒度、核心数值字段和比较两侧，失败时拒绝把结果包装成完成状态。响应将代号、版本和口径展示给前端，便于人工审查；这不是完整数仓语义层，尚未覆盖租户级 SQL 编译、租户数据库权限或商家数据。
 
 控制面读取与事实层解耦：SQLite 快照记录另存轻量 `snapshot_json`，列表、Olist 指标入口和 Olist Talk/Plan 只读取元数据，不再反序列化整份订单 JSON；标准四表快照仍按原有 Dataset 路径计算。启动时兼容迁移从旧记录的 `dataset_json` 一次性回填元数据，保留完整旧数据及导入幂等性。当前改造降低请求内存与延迟，**不缩减 SQLite 文件体积**；如需删除 Olist 的冗余 JSON，必须先验证 artifact 可恢复性和迁移/回滚路径。
 

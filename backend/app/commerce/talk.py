@@ -26,6 +26,7 @@ from app.commerce.tools import (
 class CommerceTalkIntent(StrEnum):
     UNSUPPORTED = "unsupported"
     SALES = "sales"
+    CATEGORY_SALES = "category_sales"
     TRENDS = "trends"
     HOT_PRODUCTS = "hot_products"
     MIXED = "mixed"
@@ -130,7 +131,6 @@ class CommerceTalkService:
 UNSUPPORTED_QUESTION_MARKERS = (
     "成本", "利润", "毛利", "库存", "实时", "今天", "预测", "未来",
     "投放", "广告", "退款", "退货", "评价", "履约", "物流",
-    "品类", "类目",
     "其他项目", "别的项目", "其他店铺", "别的店铺", "其他商家", "别的商家",
 )
 
@@ -149,6 +149,8 @@ def _intent_for_tools(tool_names: list[str]) -> CommerceTalkIntent:
         return CommerceTalkIntent.TRENDS
     if tool_names[0].endswith("hot_products"):
         return CommerceTalkIntent.HOT_PRODUCTS
+    if tool_names[0].endswith("category_sales"):
+        return CommerceTalkIntent.CATEGORY_SALES
     return CommerceTalkIntent.SALES
 
 

@@ -81,12 +81,13 @@ export type CommerceInteractionRequest = {
 
 export type CommerceTalkResponse = {
   status: "completed" | "insufficient_data" | "tool_failure";
-  intent: "unsupported" | "sales" | "trends" | "hot_products" | "mixed";
+  intent: "unsupported" | "sales" | "category_sales" | "trends" | "hot_products" | "mixed";
   selected_tools: string[];
   query_spec: {
     semantic_version: string;
     metric_codes: string[];
     item_level: "product" | "sku";
+    result_grain: "sku" | "product" | "category";
     matched_aliases: string[];
     definitions: string[];
     includes: string[];
@@ -108,6 +109,7 @@ export type CommerceTalkResponse = {
     status: "completed" | "degraded" | "failed";
     data: {
       metrics?: CommerceProductSalesMetric[];
+      categories?: CommerceCategorySalesReport["categories"];
       included_order_count?: number;
       excluded_order_count?: number;
       items?: CommerceProductTrendReport["trends"];
