@@ -133,10 +133,16 @@ UNSUPPORTED_QUESTION_MARKERS = (
     "投放", "广告", "退款", "退货", "评价", "履约", "物流",
     "其他项目", "别的项目", "其他店铺", "别的店铺", "其他商家", "别的商家",
 )
+CATEGORY_MARKERS = ("品类", "类目", "分类", "类别")
+TREND_MARKERS = ("趋势", "增长", "下降", "变化")
 
 
 def route_talk_question(question: str) -> list[str]:
     if any(marker in question for marker in UNSUPPORTED_QUESTION_MARKERS):
+        return []
+    if any(marker in question for marker in CATEGORY_MARKERS) and any(
+        marker in question for marker in TREND_MARKERS
+    ):
         return []
     spec = resolve_commerce_query(question, item_level=ItemLevel.PRODUCT)
     return tool_names_for_query(spec) if spec else []
