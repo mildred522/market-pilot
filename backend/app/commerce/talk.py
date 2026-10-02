@@ -108,6 +108,7 @@ class CommerceTalkService:
             current_window=request.current_window,
             item_level=request.item_level,
             provider=provider,
+            query_spec=query_spec,
         )
         batch = execute_commerce_talk_tools(tool_names, context)
         status = "completed"

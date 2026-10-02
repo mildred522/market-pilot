@@ -18,6 +18,7 @@ from app.commerce.metrics import (
     discover_hot_products,
 )
 from app.commerce.providers import CommerceFactProvider, DatasetCommerceFactProvider
+from app.commerce.semantic import CommerceQuerySpec, tool_names_for_query
 from app.commerce.snapshot import CommerceSnapshot
 
 
@@ -50,6 +51,7 @@ class CommerceToolContext:
     current_window: TimeWindow
     item_level: ItemLevel = ItemLevel.SKU
     provider: CommerceFactProvider | None = None
+    query_spec: CommerceQuerySpec | None = None
 
     def validate(self) -> None:
         snapshot = (
@@ -159,6 +161,8 @@ def execute_commerce_talk_tools(
 ) -> CommerceToolBatch:
     context.validate()
     validate_talk_tool_selection(tool_names)
+    if context.query_spec is not None and tool_names != tool_names_for_query(context.query_spec):
+        raise ValueError("selected tools do not match the registered query metric codes")
     executions: list[CommerceToolResult] = []
     snapshot = (
         context.dataset
@@ -190,12 +194,13 @@ def execute_commerce_talk_tools(
             continue
         try:
             data = spec.runner(context)
+            _validate_tool_data(name, data, context)
         except ValueError as error:
             executions.append(
                 CommerceToolResult(
                     tool_name=name,
                     status="failed",
-                    error_code="invalid_tool_context",
+                    error_code="invalid_fact_result" if "fact result" in str(error) else "invalid_tool_context",
                     warnings=(str(error),),
                     duration_ms=_duration_ms(started),
                 )
@@ -214,6 +219,44 @@ def execute_commerce_talk_tools(
             )
         )
     return CommerceToolBatch(executions=tuple(executions))
+
+
+def _validate_tool_data(
+    tool_name: str,
+    data: dict[str, Any],
+    context: CommerceToolContext,
+) -> None:
+    if not isinstance(data, dict):
+        raise ValueError("fact result must be an object")
+    collection_key = {
+        "commerce_analyze_product_sales": "metrics",
+        "commerce_compare_product_trends": "items",
+        "commerce_discover_hot_products": "candidates",
+    }[tool_name]
+    rows = data.get(collection_key)
+    if not isinstance(rows, list):
+        raise ValueError(f"fact result must contain a list of {collection_key}")
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("item_id"), str):
+            raise ValueError("fact result contains an invalid item row")
+        row_level = row.get("item_level")
+        if row_level is not None and row_level != context.item_level.value:
+            raise ValueError("fact result item level does not match the query")
+        if tool_name == "commerce_analyze_product_sales":
+            if not isinstance(row.get("product_id"), str):
+                raise ValueError("fact result is missing product_id")
+            if not isinstance(row.get("units_sold"), (str, int, float)):
+                raise ValueError("fact result is missing units_sold")
+            if not isinstance(row.get("order_count"), int):
+                raise ValueError("fact result is missing order_count")
+            if not isinstance(row.get("gross_amount", row.get("item_gross_amount")), (str, int, float)):
+                raise ValueError("fact result is missing gross amount")
+        elif tool_name == "commerce_compare_product_trends":
+            if "current" not in row or "previous" not in row:
+                raise ValueError("fact result is missing comparison sides")
+        elif tool_name == "commerce_discover_hot_products":
+            if not isinstance(row.get("labels"), list) or not isinstance(row.get("current"), dict):
+                raise ValueError("fact result is missing hot-product evidence")
 
 
 def _duration_ms(started: float) -> int:

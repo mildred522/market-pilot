@@ -29,6 +29,7 @@ from app.commerce.metrics import (
 from app.commerce.metrics.contracts import ItemLevel
 from app.commerce.tools import (
     CommerceToolContext,
+    _validate_tool_data,
     execute_commerce_talk_tools,
     validate_talk_tool_selection,
 )
@@ -208,6 +209,38 @@ def test_talk_tools_execute_read_only_sales_analysis(tmp_path: Path) -> None:
 def test_talk_policy_rejects_unknown_or_plan_tools() -> None:
     with pytest.raises(ValueError):
         validate_talk_tool_selection(["commerce_create_plan"])
+
+
+def test_fact_result_gate_rejects_wrong_grain_and_missing_evidence(tmp_path: Path) -> None:
+    _write_package(tmp_path)
+    dataset = import_csv_package(tmp_path, mode=CommerceAnalysisMode.BENCHMARK)
+    context = CommerceToolContext(
+        interaction=CommerceInteraction(
+            mode=InteractionMode.TALK,
+            scope=CommerceScope(mode=CommerceAnalysisMode.BENCHMARK, project_id=1),
+        ),
+        dataset=dataset,
+        previous_window=TimeWindow(
+            start=datetime(2026, 1, 1, tzinfo=UTC), end=datetime(2026, 1, 8, tzinfo=UTC)
+        ),
+        current_window=TimeWindow(
+            start=datetime(2026, 1, 8, tzinfo=UTC), end=datetime(2026, 1, 15, tzinfo=UTC)
+        ),
+        item_level=ItemLevel.PRODUCT,
+    )
+
+    with pytest.raises(ValueError, match="item level"):
+        _validate_tool_data(
+            "commerce_analyze_product_sales",
+            {"metrics": [{"item_id": "sku-1", "item_level": "sku"}]},
+            context,
+        )
+    with pytest.raises(ValueError, match="comparison sides"):
+        _validate_tool_data(
+            "commerce_compare_product_trends",
+            {"items": [{"item_id": "p-1", "item_level": "product"}]},
+            context,
+        )
 
 
 def test_talk_request_routes_to_read_only_tools(tmp_path: Path) -> None:
