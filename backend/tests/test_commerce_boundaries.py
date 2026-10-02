@@ -14,7 +14,11 @@ from app.commerce.contracts import (
     InteractionMode,
 )
 from app.commerce.snapshot import CommerceSnapshot
-from app.commerce.semantic import CommerceMetricCode, resolve_commerce_query
+from app.commerce.semantic import (
+    CommerceMetricCode,
+    bind_commerce_query,
+    resolve_commerce_query,
+)
 from app.commerce.ingestion import CommerceImportError, import_csv_package
 from app.commerce.metrics import (
     TimeWindow,
@@ -245,6 +249,87 @@ def test_commerce_semantic_query_spec_keeps_sku_scope_and_exclusions() -> None:
     assert spec.metric_codes == (CommerceMetricCode.PRODUCT_SALES,)
     assert spec.item_level is ItemLevel.SKU
     assert "成本" in spec.excludes
+
+
+def test_commerce_semantic_gate_binds_snapshot_and_windows(tmp_path: Path) -> None:
+    _write_package(tmp_path)
+    dataset = import_csv_package(tmp_path, mode=CommerceAnalysisMode.BENCHMARK)
+    spec = resolve_commerce_query("最近哪些商品增长较快？", item_level=ItemLevel.PRODUCT)
+    assert spec is not None
+    previous = TimeWindow(
+        start=datetime(2026, 1, 1, tzinfo=UTC),
+        end=datetime(2026, 1, 8, tzinfo=UTC),
+    )
+    current = TimeWindow(
+        start=datetime(2026, 1, 8, tzinfo=UTC),
+        end=datetime(2026, 1, 15, tzinfo=UTC),
+    )
+    interaction = CommerceInteraction(
+        mode=InteractionMode.TALK,
+        scope=CommerceScope(
+            mode=CommerceAnalysisMode.BENCHMARK,
+            project_id=1,
+            snapshot_id=dataset.snapshot.snapshot_id,
+        ),
+    )
+
+    bound = bind_commerce_query(
+        spec,
+        interaction=interaction,
+        snapshot=dataset.snapshot,
+        previous_window=previous,
+        current_window=current,
+    )
+
+    assert bound.semantic_version == "commerce-semantic-v1"
+    assert bound.snapshot_id == dataset.snapshot.snapshot_id
+    assert bound.current_window == current
+
+
+def test_commerce_semantic_gate_rejects_mismatched_and_oversized_scope(
+    tmp_path: Path,
+) -> None:
+    _write_package(tmp_path)
+    dataset = import_csv_package(tmp_path, mode=CommerceAnalysisMode.BENCHMARK)
+    spec = resolve_commerce_query("最近哪些商品增长较快？", item_level=ItemLevel.PRODUCT)
+    assert spec is not None
+    interaction = CommerceInteraction(
+        mode=InteractionMode.TALK,
+        scope=CommerceScope(
+            mode=CommerceAnalysisMode.BENCHMARK,
+            project_id=1,
+            snapshot_id="wrong-snapshot",
+        ),
+    )
+    previous = TimeWindow(
+        start=datetime(2024, 1, 1, tzinfo=UTC),
+        end=datetime(2025, 1, 2, tzinfo=UTC),
+    )
+    current = TimeWindow(
+        start=datetime(2025, 1, 2, tzinfo=UTC),
+        end=datetime(2025, 1, 3, tzinfo=UTC),
+    )
+
+    with pytest.raises(ValueError, match="does not match"):
+        bind_commerce_query(
+            spec,
+            interaction=interaction,
+            snapshot=dataset.snapshot,
+            previous_window=previous,
+            current_window=current,
+        )
+
+    valid_interaction = interaction.model_copy(
+        update={"scope": interaction.scope.model_copy(update={"snapshot_id": dataset.snapshot.snapshot_id})}
+    )
+    with pytest.raises(ValueError, match="budget"):
+        bind_commerce_query(
+            spec,
+            interaction=valid_interaction,
+            snapshot=dataset.snapshot,
+            previous_window=previous,
+            current_window=current,
+        )
 
 
 def test_talk_declines_questions_outside_supported_product_facts(tmp_path: Path) -> None:

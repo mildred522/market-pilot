@@ -84,6 +84,7 @@ export type CommerceTalkResponse = {
   intent: "unsupported" | "sales" | "trends" | "hot_products" | "mixed";
   selected_tools: string[];
   query_spec: {
+    semantic_version: string;
     metric_codes: string[];
     item_level: "product" | "sku";
     matched_aliases: string[];
@@ -91,6 +92,10 @@ export type CommerceTalkResponse = {
     includes: string[];
     excludes: string[];
     execution_policy: string;
+    snapshot_id: string | null;
+    scope_mode: "benchmark" | "merchant" | null;
+    previous_window: { start: string; end: string } | null;
+    current_window: { start: string; end: string } | null;
   } | null;
   executions: Array<{
     tool_name: string;

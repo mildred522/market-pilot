@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.commerce.contracts import CommerceAnalysisMode, CommerceInteraction
 from app.commerce.metrics import ItemLevel
+from app.commerce.metrics import TimeWindow
+from app.commerce.snapshot import CommerceSnapshot
+
+
+SEMANTIC_VERSION = "commerce-semantic-v1"
+MAX_QUERY_WINDOW_DAYS = 366
 
 
 class CommerceMetricCode(StrEnum):
@@ -29,6 +37,7 @@ class CommerceQuerySpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    semantic_version: str = SEMANTIC_VERSION
     metric_codes: tuple[CommerceMetricCode, ...]
     item_level: ItemLevel
     matched_aliases: tuple[str, ...] = ()
@@ -36,6 +45,10 @@ class CommerceQuerySpec(BaseModel):
     includes: tuple[str, ...] = ()
     excludes: tuple[str, ...] = ()
     execution_policy: str = "only registered metrics; parameterized read-only facts"
+    snapshot_id: str | None = None
+    scope_mode: CommerceAnalysisMode | None = None
+    previous_window: TimeWindow | None = None
+    current_window: TimeWindow | None = None
 
 
 METRIC_DEFINITIONS: tuple[CommerceMetricDefinition, ...] = (
@@ -94,3 +107,55 @@ def resolve_commerce_query(question: str, *, item_level: ItemLevel) -> CommerceQ
 def tool_names_for_query(spec: CommerceQuerySpec) -> list[str]:
     by_code = {definition.code: definition.tool_name for definition in METRIC_DEFINITIONS}
     return [by_code[code] for code in spec.metric_codes]
+
+
+def bind_commerce_query(
+    spec: CommerceQuerySpec,
+    *,
+    interaction: CommerceInteraction,
+    snapshot: CommerceSnapshot,
+    previous_window: TimeWindow,
+    current_window: TimeWindow,
+) -> CommerceQuerySpec:
+    """Bind the parsed metric request to the immutable execution scope."""
+
+    validate_commerce_query_scope(
+        spec,
+        interaction=interaction,
+        snapshot=snapshot,
+        previous_window=previous_window,
+        current_window=current_window,
+    )
+    return spec.model_copy(
+        update={
+            "snapshot_id": snapshot.snapshot_id,
+            "scope_mode": interaction.scope.mode,
+            "previous_window": previous_window,
+            "current_window": current_window,
+        }
+    )
+
+
+def validate_commerce_query_scope(
+    spec: CommerceQuerySpec,
+    *,
+    interaction: CommerceInteraction,
+    snapshot: CommerceSnapshot,
+    previous_window: TimeWindow,
+    current_window: TimeWindow,
+) -> None:
+    if snapshot.state.value != "ready":
+        raise ValueError("commerce snapshot is not ready")
+    if snapshot.mode is not interaction.scope.mode:
+        raise ValueError("query scope mode does not match snapshot mode")
+    requested_snapshot = interaction.scope.snapshot_id
+    if requested_snapshot is not None and requested_snapshot != snapshot.snapshot_id:
+        raise ValueError("query snapshot does not match the requested snapshot")
+    if previous_window.end > current_window.start:
+        raise ValueError("comparison windows must not overlap")
+    for name, window in (("previous", previous_window), ("current", current_window)):
+        if window.end - window.start > timedelta(days=MAX_QUERY_WINDOW_DAYS):
+            raise ValueError(f"{name} query window exceeds the {MAX_QUERY_WINDOW_DAYS}-day budget")
+    if CommerceMetricCode.PRODUCT_TRENDS in spec.metric_codes or CommerceMetricCode.HOT_PRODUCTS in spec.metric_codes:
+        if current_window.end - current_window.start != previous_window.end - previous_window.start:
+            raise ValueError("trend and hot-product queries require equal-length windows")

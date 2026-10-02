@@ -9,7 +9,12 @@ from app.commerce.contracts import CommerceInteraction, InteractionMode
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import ItemLevel, TimeWindow
 from app.commerce.providers import CommerceFactProvider
-from app.commerce.semantic import CommerceQuerySpec, resolve_commerce_query, tool_names_for_query
+from app.commerce.semantic import (
+    CommerceQuerySpec,
+    bind_commerce_query,
+    resolve_commerce_query,
+    tool_names_for_query,
+)
 from app.commerce.snapshot import CommerceSnapshot
 from app.commerce.tools import (
     CommerceToolContext,
@@ -76,6 +81,25 @@ class CommerceTalkService:
                 executions=(),
                 suggestions=("当前仅支持商品销售、趋势和热点问题；请缩小问题范围。",),
                 limitations=_limitations_for(request.interaction, dataset),
+            )
+        snapshot = dataset if isinstance(dataset, CommerceSnapshot) else dataset.snapshot
+        try:
+            query_spec = bind_commerce_query(
+                query_spec,
+                interaction=request.interaction,
+                snapshot=snapshot,
+                previous_window=request.previous_window,
+                current_window=request.current_window,
+            )
+        except ValueError as error:
+            return CommerceTalkResponse(
+                status="tool_failure",
+                intent=_intent_for_tools(tool_names),
+                selected_tools=tuple(tool_names),
+                query_spec=query_spec,
+                executions=(),
+                suggestions=("当前查询范围不符合指标执行门禁，请调整时间窗或快照。",),
+                limitations=_limitations_for(request.interaction, dataset) + (str(error),),
             )
         context = CommerceToolContext(
             interaction=request.interaction,
