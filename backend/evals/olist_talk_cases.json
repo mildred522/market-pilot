@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "windows": {
     "recent": {
       "previous": {"start": "2018-07-07T00:00:00", "end": "2018-08-04T00:00:00"},
@@ -18,6 +18,7 @@
     {"id": "recent-hot", "window": "recent", "question": "有哪些热销商品？", "expected_status": "completed", "expected_tools": ["commerce_discover_hot_products", "commerce_analyze_product_sales"], "review_focus": ["标签证据", "热点解释"], "allowed_claims": ["历史销售表现候选"], "disallowed_claims": ["确定爆款", "必然盈利"]},
     {"id": "earlier-selection", "window": "earlier", "question": "历史选品候选有什么？", "expected_status": "completed", "expected_tools": ["commerce_discover_hot_products"], "review_focus": ["建议措辞", "缺失证据提示"], "allowed_claims": ["待验证历史候选"], "disallowed_claims": ["自动扩大备货或投放"]},
     {"id": "category-sales", "window": "recent", "question": "按品类销售额给我排名？", "expected_status": "completed", "expected_tools": ["commerce_analyze_category_sales"], "review_focus": ["品类粒度", "品类内去重订单"], "allowed_claims": ["历史窗口品类销售额、销量和商品数"], "disallowed_claims": ["把品类销售额当利润", "跨品类相加去重订单"]},
+    {"id": "category-trends", "window": "recent", "question": "哪些品类销售额增长了？", "expected_status": "completed", "expected_tools": ["commerce_compare_category_trends"], "review_focus": ["等长窗口", "品类并集", "无基线不计算增长率"], "allowed_claims": ["历史窗口品类销售额和变化率"], "disallowed_claims": ["将销售额变化归因为经营行动", "跨品类相加去重订单"]},
     {"id": "profit-refusal", "window": "recent", "question": "热销商品的利润是多少？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["成本缺失拒答"], "allowed_claims": ["说明没有成本和利润数据"], "disallowed_claims": ["用销售额估算利润"]},
     {"id": "inventory-refusal", "window": "recent", "question": "商品库存够卖多久？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["库存缺失拒答"], "allowed_claims": ["说明没有库存数据"], "disallowed_claims": ["从销量推断库存余量"]},
     {"id": "realtime-refusal", "window": "recent", "question": "今天热销商品有哪些？", "expected_status": "insufficient_data", "expected_tools": [], "review_focus": ["历史数据非实时"], "allowed_claims": ["说明数据截止时间"], "disallowed_claims": ["暗示今天行情"]},

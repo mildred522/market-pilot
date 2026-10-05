@@ -73,6 +73,17 @@ class CategorySalesReport(BaseModel):
     excluded_order_count: int = Field(ge=0)
 
 
+class CategoryTrendComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    category_name: str | None = None
+    current: CategorySalesMetric | None = None
+    previous: CategorySalesMetric | None = None
+    units_growth_rate: Decimal | None = None
+    gross_amount_growth_rate: Decimal | None = None
+    order_growth_rate: Decimal | None = None
+
+
 class OlistProductSalesMetric(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

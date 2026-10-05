@@ -196,6 +196,30 @@ def test_olist_category_sales_counts_distinct_orders_and_sellers_within_category
     assert sum(category.order_count for category in report.categories) > report.included_order_count
 
 
+def test_olist_category_trends_use_shared_category_facts(tmp_path: Path) -> None:
+    source = tmp_path / "olist"
+    _write_olist_hot_fixture(source)
+    dataset, adapter = _import_dataset(source)
+    artifact_root = tmp_path / "artifacts"
+    CommerceDuckDBArtifactStore(artifact_root).write(
+        dataset, staging_tables=adapter.staging_tables(source)
+    )
+    provider = OlistDuckDBFactProvider(
+        dataset.snapshot.snapshot_id, OlistSalesFactRepository(artifact_root)
+    )
+    trends = provider.category_trends(
+        TimeWindow(start=datetime(2018, 1, 1, tzinfo=UTC), end=datetime(2018, 1, 2, tzinfo=UTC)),
+        TimeWindow(start=datetime(2018, 1, 2, tzinfo=UTC), end=datetime(2018, 1, 3, tzinfo=UTC)),
+    )
+
+    by_name = {trend.category_name: trend for trend in trends}
+    assert by_name["beauty"].previous.gross_amount == Decimal("30.0000")
+    assert by_name["beauty"].current.gross_amount == Decimal("80.0000")
+    assert by_name["beauty"].gross_amount_growth_rate == Decimal("50") / Decimal("30")
+    assert by_name["bed_bath_table"].previous is None
+    assert by_name["bed_bath_table"].gross_amount_growth_rate is None
+
+
 def test_olist_sales_endpoint_reads_shared_benchmark_fact(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "olist"
     _write_olist(source)

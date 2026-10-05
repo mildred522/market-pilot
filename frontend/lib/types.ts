@@ -81,7 +81,7 @@ export type CommerceInteractionRequest = {
 
 export type CommerceTalkResponse = {
   status: "completed" | "insufficient_data" | "tool_failure";
-  intent: "unsupported" | "sales" | "category_sales" | "trends" | "hot_products" | "mixed";
+  intent: "unsupported" | "sales" | "category_sales" | "category_trends" | "trends" | "hot_products" | "mixed";
   selected_tools: string[];
   query_spec: {
     semantic_version: string;
@@ -110,6 +110,14 @@ export type CommerceTalkResponse = {
     data: {
       metrics?: CommerceProductSalesMetric[];
       categories?: CommerceCategorySalesReport["categories"];
+      category_trends?: Array<{
+        category_name: string | null;
+        current: CommerceCategorySalesReport["categories"][number] | null;
+        previous: CommerceCategorySalesReport["categories"][number] | null;
+        units_growth_rate: number | string | null;
+        gross_amount_growth_rate: number | string | null;
+        order_growth_rate: number | string | null;
+      }>;
       included_order_count?: number;
       excluded_order_count?: number;
       items?: CommerceProductTrendReport["trends"];

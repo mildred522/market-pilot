@@ -11,6 +11,7 @@ type TalkExecution = CommerceTalkResponse["executions"][number];
 const toolNames: Record<string, string> = {
   commerce_analyze_product_sales: "商品销售事实",
   commerce_analyze_category_sales: "品类销售事实",
+  commerce_compare_category_trends: "品类趋势对比",
   commerce_compare_product_trends: "商品趋势对比",
   commerce_discover_hot_products: "热点商品候选"
 };
@@ -51,6 +52,18 @@ function TalkExecutionCard({ execution }: { execution: TalkExecution }) {
           <ol>{data.categories.slice(0, 5).map((category) => (
             <li key={category.category_name ?? "uncategorized"}>
               {category.category_name ?? "未分类"}：销售额 {formatAmount(category.gross_amount)} {category.currency ?? ""}，销量 {formatAmount(category.units_sold)}，商品数 {category.product_count}
+            </li>
+          ))}</ol>
+        </>
+      ) : null}
+      {data?.category_trends ? (
+        <>
+          <p>两窗共有 {data.category_trends.length} 个品类；以下按当前窗口销售额展示前 5 个。</p>
+          <ol>{[...data.category_trends].sort((left, right) =>
+            Number(right.current?.gross_amount ?? 0) - Number(left.current?.gross_amount ?? 0)
+          ).slice(0, 5).map((category) => (
+            <li key={category.category_name ?? "uncategorized"}>
+              {category.category_name ?? "未分类"}：当前 {formatAmount(category.current?.gross_amount)}，基线 {formatAmount(category.previous?.gross_amount)}，销售额变化 {category.gross_amount_growth_rate == null ? "基线不足" : `${formatAmount(Number(category.gross_amount_growth_rate) * 100)}%`}
             </li>
           ))}</ol>
         </>

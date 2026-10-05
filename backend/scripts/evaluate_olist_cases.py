@@ -92,7 +92,7 @@ def _check_sales(data: dict[str, Any], source: dict[str, Any]) -> list[str]:
     return failures[:10]
 
 
-def _check_category_sales(data: dict[str, Any], source: dict[str, Any]) -> list[str]:
+def _source_categories(source: dict[str, Any]) -> dict[str | None, dict[str, Any]]:
     expected: dict[str | None, dict[str, Any]] = defaultdict(
         lambda: {"products": set(), "orders": set(), "units_sold": 0, "gross_amount": Decimal(0)}
     )
@@ -103,6 +103,11 @@ def _check_category_sales(data: dict[str, Any], source: dict[str, Any]) -> list[
         bucket["orders"].update(metric["orders"])
         bucket["units_sold"] += metric["units_sold"]
         bucket["gross_amount"] += metric["gross_amount"]
+    return expected
+
+
+def _check_category_sales(data: dict[str, Any], source: dict[str, Any]) -> list[str]:
+    expected = _source_categories(source)
     observed = {category["category_name"]: category for category in data["categories"]}
     failures: list[str] = []
     if set(observed) != set(expected):
@@ -120,6 +125,55 @@ def _check_category_sales(data: dict[str, Any], source: dict[str, Any]) -> list[
     return failures[:10]
 
 
+def _check_category_trends(
+    data: dict[str, Any], previous: dict[str, Any], current: dict[str, Any]
+) -> list[str]:
+    previous_categories = _source_categories(previous)
+    current_categories = _source_categories(current)
+    observed = {category["category_name"]: category for category in data["category_trends"]}
+    names = set(previous_categories) | set(current_categories)
+    failures: list[str] = []
+    if set(observed) != names or len(data["category_trends"]) != len(names):
+        failures.append("category trend names differ from raw category union")
+    for name in names & set(observed):
+        comparison = observed[name]
+        for side, source in (("previous", previous_categories), ("current", current_categories)):
+            actual = comparison[side]
+            expected = source.get(name)
+            if (actual is None) != (expected is None):
+                failures.append(f"category {name} {side} presence differs from raw orders")
+            elif actual is not None and expected is not None:
+                if (
+                    actual["category_name"] != name
+                    or actual["product_count"] != len(expected["products"])
+                    or actual["order_count"] != len(expected["orders"])
+                    or Decimal(actual["units_sold"]) != expected["units_sold"]
+                    or Decimal(actual["gross_amount"]) != expected["gross_amount"]
+                ):
+                    failures.append(f"category {name} {side} differs from raw orders")
+        baseline = previous_categories.get(name)
+        latest = current_categories.get(name)
+        for field, rate_field in (
+            ("units_sold", "units_growth_rate"),
+            ("gross_amount", "gross_amount_growth_rate"),
+            ("orders", "order_growth_rate"),
+        ):
+            baseline_value = None if baseline is None else (
+                len(baseline[field]) if field == "orders" else baseline[field]
+            )
+            latest_value = None if latest is None else (
+                len(latest[field]) if field == "orders" else latest[field]
+            )
+            expected_rate = (
+                (Decimal(latest_value) - Decimal(baseline_value)) / Decimal(baseline_value)
+                if baseline_value and latest_value is not None else None
+            )
+            actual_rate = comparison[rate_field]
+            if (Decimal(actual_rate) if actual_rate is not None else None) != expected_rate:
+                failures.append(f"category {name} {rate_field} differs from raw orders")
+    return failures[:10]
+
+
 def evaluate_olist_cases(
     directory: Path,
     *,
@@ -129,7 +183,7 @@ def evaluate_olist_cases(
     timezone: str | None = None,
 ) -> dict[str, Any]:
     casebook = json.loads(cases_path.read_text(encoding="utf-8"))
-    if casebook["version"] not in {1, 2} or not casebook["cases"]:
+    if casebook["version"] not in {1, 2, 3} or not casebook["cases"]:
         raise ValueError("unsupported or empty Olist casebook")
     adapter = OlistSourceAdapter()
     snapshot_id = adapter.snapshot_id(directory, currency=currency, timezone=timezone)
@@ -165,7 +219,7 @@ def evaluate_olist_cases(
         mode=InteractionMode.TALK,
         scope=CommerceScope(mode=CommerceAnalysisMode.BENCHMARK, project_id=1, snapshot_id=snapshot_id),
     )
-    source_cache: dict[str, dict[str, Any]] = {}
+    source_cache: dict[tuple[str, str], dict[str, Any]] = {}
     results: list[dict[str, Any]] = []
     for case in casebook["cases"]:
         previous, current = windows[case["window"]]
@@ -193,12 +247,20 @@ def evaluate_olist_cases(
             for execution in response.executions:
                 if execution.data is None:
                     continue
-                if case["window"] not in source_cache:
-                    source_cache[case["window"]] = _source_sales(directory, current)
+                current_key = (case["window"], "current")
+                if current_key not in source_cache:
+                    source_cache[current_key] = _source_sales(directory, current)
                 if execution.tool_name == "commerce_analyze_product_sales":
-                    failures.extend(_check_sales(execution.data, source_cache[case["window"]]))
+                    failures.extend(_check_sales(execution.data, source_cache[current_key]))
                 elif execution.tool_name == "commerce_analyze_category_sales":
-                    failures.extend(_check_category_sales(execution.data, source_cache[case["window"]]))
+                    failures.extend(_check_category_sales(execution.data, source_cache[current_key]))
+                elif execution.tool_name == "commerce_compare_category_trends":
+                    previous_key = (case["window"], "previous")
+                    if previous_key not in source_cache:
+                        source_cache[previous_key] = _source_sales(directory, previous)
+                    failures.extend(_check_category_trends(
+                        execution.data, source_cache[previous_key], source_cache[current_key]
+                    ))
         elif response.executions:
             failures.append("refused case executed a tool")
         results.append({
@@ -217,7 +279,7 @@ def evaluate_olist_cases(
         "automated_pass": all(result["passed"] for result in results),
         "human_review": "pending",
         "cases": results,
-        "limitations": "CSV 对账仅验证历史商品销量、销售额、订单数及已拒答边界；热点解释、建议是否误导须人工审查，不能证明经营收益。",
+        "limitations": "CSV 对账验证历史商品与品类销量、销售额、订单数、品类窗口变化率及拒答边界；热点解释、建议是否误导须人工审查，不能证明经营收益。",
     }
 
 

@@ -11,6 +11,7 @@ from app.commerce.capabilities import check_capability
 from app.commerce.contracts import CommerceCapability, CommerceInteraction, InteractionMode
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import (
+    CategoryTrendComparison,
     ItemLevel,
     TimeWindow,
     compare_sales_windows,
@@ -92,6 +93,15 @@ def _category_sales(context: CommerceToolContext) -> dict[str, Any]:
     return context.fact_provider().category_sales(context.current_window).model_dump(mode="json")
 
 
+def _category_trends(context: CommerceToolContext) -> dict[str, Any]:
+    trends = context.fact_provider().category_trends(context.previous_window, context.current_window)
+    return {
+        "previous_window": context.previous_window.model_dump(mode="json"),
+        "current_window": context.current_window.model_dump(mode="json"),
+        "category_trends": [trend.model_dump(mode="json") for trend in trends],
+    }
+
+
 def _trends(context: CommerceToolContext) -> dict[str, Any]:
     trends = context.fact_provider().trends(
         context.previous_window,
@@ -126,6 +136,12 @@ def _hot_products(context: CommerceToolContext) -> dict[str, Any]:
 
 
 COMMERCE_TALK_TOOLS: Mapping[str, CommerceToolSpec] = {
+    "commerce_compare_category_trends": CommerceToolSpec(
+        name="commerce_compare_category_trends",
+        description="比较两个等长历史窗口内的品类销售趋势。",
+        required_capabilities=frozenset({CommerceCapability.CATALOG, CommerceCapability.SALES}),
+        runner=_category_trends,
+    ),
     "commerce_analyze_category_sales": CommerceToolSpec(
         name="commerce_analyze_category_sales",
         description="按品类计算指定快照和时间窗口内的销售事实。",
@@ -241,6 +257,7 @@ def _validate_tool_data(
     if not isinstance(data, dict):
         raise ValueError("fact result must be an object")
     collection_key = {
+        "commerce_compare_category_trends": "category_trends",
         "commerce_analyze_category_sales": "categories",
         "commerce_analyze_product_sales": "metrics",
         "commerce_compare_product_trends": "items",
@@ -249,6 +266,29 @@ def _validate_tool_data(
     rows = data.get(collection_key)
     if not isinstance(rows, list):
         raise ValueError(f"fact result must contain a list of {collection_key}")
+    if tool_name == "commerce_compare_category_trends":
+        if (
+            data.get("previous_window") != context.previous_window.model_dump(mode="json")
+            or data.get("current_window") != context.current_window.model_dump(mode="json")
+        ):
+            raise ValueError("fact result category comparison windows do not match the query")
+        seen_categories: set[str | None] = set()
+        for row in rows:
+            try:
+                trend = CategoryTrendComparison.model_validate(row)
+            except ValueError as error:
+                raise ValueError("fact result contains an invalid category trend") from error
+            if trend.current is None and trend.previous is None:
+                raise ValueError("fact result is missing category comparison sides")
+            if trend.category_name in seen_categories:
+                raise ValueError("fact result contains duplicate category trends")
+            seen_categories.add(trend.category_name)
+            if any(
+                side is not None and side.category_name != trend.category_name
+                for side in (trend.current, trend.previous)
+            ):
+                raise ValueError("fact result category trend grain does not match")
+        return
     for row in rows:
         if tool_name == "commerce_analyze_category_sales":
             if not isinstance(row, dict) or not isinstance(row.get("product_count"), int):

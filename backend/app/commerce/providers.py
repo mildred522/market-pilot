@@ -6,6 +6,7 @@ from typing import Protocol
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import (
     CategorySalesReport,
+    CategoryTrendComparison,
     ItemLevel,
     OlistHotProductReport,
     OlistProductSalesReport,
@@ -13,6 +14,7 @@ from app.commerce.metrics import (
     OlistSelectionRecommendationReport,
     TimeWindow,
     compare_sales_windows,
+    compare_category_sales_reports,
     compute_category_sales_report,
     compute_sales_report,
     discover_hot_products,
@@ -22,6 +24,10 @@ from app.commerce.sources.olist import OlistSalesFactRepository
 
 class CommerceFactProvider(Protocol):
     def category_sales(self, window: TimeWindow) -> CategorySalesReport: ...
+
+    def category_trends(
+        self, previous_window: TimeWindow, current_window: TimeWindow
+    ) -> tuple[CategoryTrendComparison, ...]: ...
 
     def sales(
         self,
@@ -61,6 +67,13 @@ class DatasetCommerceFactProvider:
 
     def category_sales(self, window: TimeWindow) -> CategorySalesReport:
         return compute_category_sales_report(self.dataset, window)
+
+    def category_trends(
+        self, previous_window: TimeWindow, current_window: TimeWindow
+    ) -> tuple[CategoryTrendComparison, ...]:
+        return compare_category_sales_reports(
+            self.category_sales(previous_window), self.category_sales(current_window)
+        )
 
     def sales(self, window: TimeWindow, *, item_level: ItemLevel) -> object:
         return compute_sales_report(self.dataset, window, item_level=item_level)
@@ -126,6 +139,13 @@ class OlistDuckDBFactProvider:
             ),
             included_order_count=report.included_order_count,
             excluded_order_count=report.excluded_order_count,
+        )
+
+    def category_trends(
+        self, previous_window: TimeWindow, current_window: TimeWindow
+    ) -> tuple[CategoryTrendComparison, ...]:
+        return compare_category_sales_reports(
+            self.category_sales(previous_window), self.category_sales(current_window)
         )
 
     def sales(self, window: TimeWindow, *, item_level: ItemLevel) -> OlistProductSalesReport:

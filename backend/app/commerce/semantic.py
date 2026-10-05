@@ -19,6 +19,7 @@ MAX_QUERY_WINDOW_DAYS = 366
 class CommerceMetricCode(StrEnum):
     PRODUCT_SALES = "commerce.product_sales"
     CATEGORY_SALES = "commerce.category_sales"
+    CATEGORY_TRENDS = "commerce.category_trends"
     PRODUCT_TRENDS = "commerce.product_trends"
     HOT_PRODUCTS = "commerce.hot_products"
 
@@ -87,6 +88,14 @@ METRIC_DEFINITIONS: tuple[CommerceMetricDefinition, ...] = (
         excludes=("实时行情", "未来预测", "因果效果"),
     ),
     CommerceMetricDefinition(
+        code=CommerceMetricCode.CATEGORY_TRENDS,
+        tool_name="commerce_compare_category_trends",
+        aliases=(),
+        definition="比较两个等长历史窗口内各品类销售量、销售额和品类内去重订单变化。",
+        includes=("基线窗口", "当前窗口", "品类并集"),
+        excludes=("跨品类去重订单相加", "利润", "预测", "因果效果"),
+    ),
+    CommerceMetricDefinition(
         code=CommerceMetricCode.CATEGORY_SALES,
         tool_name="commerce_analyze_category_sales",
         aliases=("品类", "类目", "分类", "类别"),
@@ -116,18 +125,26 @@ def resolve_commerce_query(question: str, *, item_level: ItemLevel) -> CommerceQ
             matched_aliases.extend(aliases)
     if not selected:
         return None
-    if any(definition.code is CommerceMetricCode.CATEGORY_SALES for definition in selected):
-        selected = [
-            definition
-            for definition in selected
-            if definition.code is not CommerceMetricCode.PRODUCT_SALES
-        ]
+    if CommerceMetricCode.CATEGORY_SALES in {definition.code for definition in selected}:
+        explicit_trend_aliases = ("趋势", "增长", "下降", "变化")
+        if any(alias in normalized for alias in explicit_trend_aliases):
+            selected = [next(
+                definition for definition in METRIC_DEFINITIONS
+                if definition.code is CommerceMetricCode.CATEGORY_TRENDS
+            )]
+            matched_aliases.extend(alias for alias in explicit_trend_aliases if alias in normalized)
+        else:
+            selected = [
+                definition for definition in selected
+                if definition.code is CommerceMetricCode.CATEGORY_SALES
+            ]
     return CommerceQuerySpec(
         metric_codes=tuple(definition.code for definition in selected),
         item_level=item_level,
         result_grain=(
             "category"
-            if CommerceMetricCode.CATEGORY_SALES in {definition.code for definition in selected}
+            if {CommerceMetricCode.CATEGORY_SALES, CommerceMetricCode.CATEGORY_TRENDS}
+            & {definition.code for definition in selected}
             else item_level.value
         ),
         matched_aliases=tuple(dict.fromkeys(matched_aliases)),
@@ -210,7 +227,11 @@ def validate_commerce_query_scope(
     for name, window in (("previous", previous_window), ("current", current_window)):
         if window.end - window.start > timedelta(days=MAX_QUERY_WINDOW_DAYS):
             raise ValueError(f"{name} query window exceeds the {MAX_QUERY_WINDOW_DAYS}-day budget")
-    if CommerceMetricCode.PRODUCT_TRENDS in spec.metric_codes or CommerceMetricCode.HOT_PRODUCTS in spec.metric_codes:
+    if any(code in spec.metric_codes for code in (
+        CommerceMetricCode.PRODUCT_TRENDS,
+        CommerceMetricCode.CATEGORY_TRENDS,
+        CommerceMetricCode.HOT_PRODUCTS,
+    )):
         if current_window.end - current_window.start != previous_window.end - previous_window.start:
             raise ValueError("trend and hot-product queries require equal-length windows")
 

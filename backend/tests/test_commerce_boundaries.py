@@ -21,7 +21,10 @@ from app.commerce.semantic import (
 )
 from app.commerce.ingestion import CommerceImportError, import_csv_package
 from app.commerce.metrics import (
+    CategorySalesMetric,
+    CategorySalesReport,
     TimeWindow,
+    compare_category_sales_reports,
     compare_sales_windows,
     compute_sales_report,
     discover_hot_products,
@@ -241,6 +244,12 @@ def test_fact_result_gate_rejects_wrong_grain_and_missing_evidence(tmp_path: Pat
             {"items": [{"item_id": "p-1", "item_level": "product"}]},
             context,
         )
+    with pytest.raises(ValueError, match="windows do not match"):
+        _validate_tool_data(
+            "commerce_compare_category_trends",
+            {"category_trends": [], "previous_window": {}, "current_window": {}},
+            context,
+        )
 
 
 def test_talk_request_routes_to_read_only_tools(tmp_path: Path) -> None:
@@ -390,7 +399,8 @@ def test_talk_declines_questions_outside_supported_product_facts(tmp_path: Path)
     assert route_talk_question("按品类销售额给我排名") == [
         "commerce_analyze_category_sales"
     ]
-    assert route_talk_question("按品类增长给我排名") == []
+    assert route_talk_question("按品类增长给我排名") == ["commerce_compare_category_trends"]
+    assert route_talk_question("最近各品类销售额是多少") == ["commerce_analyze_category_sales"]
     assert route_talk_question("给我别的项目销售数据") == []
     assert response.status == "insufficient_data"
     assert response.intent.value == "unsupported"
@@ -425,3 +435,83 @@ def test_talk_category_sales_uses_platform_neutral_provider(tmp_path: Path) -> N
     assert response.query_spec is not None
     assert response.query_spec.result_grain == "category"
     assert response.executions[0].data["categories"][0]["category_name"] == "Demo"
+
+
+def test_talk_category_trends_uses_category_grain_and_equal_windows(tmp_path: Path) -> None:
+    _write_package(tmp_path)
+    (tmp_path / "orders.csv").write_text(
+        "order_id,ordered_at,order_status,currency\n"
+        "o-1,2026-01-01T12:00:00+00:00,fulfilled,BRL\n"
+        "o-2,2026-01-08T12:00:00+00:00,fulfilled,BRL\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "order_items.csv").write_text(
+        "order_id,order_item_id,sku_id,quantity,unit_price,currency\n"
+        "o-1,1,sku-1,2,12.50,BRL\n"
+        "o-2,1,sku-1,3,12.50,BRL\n",
+        encoding="utf-8",
+    )
+    dataset = import_csv_package(tmp_path, mode=CommerceAnalysisMode.BENCHMARK)
+    request = CommerceTalkRequest(
+        question="哪些品类销售额增长了？",
+        interaction=CommerceInteraction(
+            mode=InteractionMode.TALK,
+            scope=CommerceScope(mode=CommerceAnalysisMode.BENCHMARK, project_id=1),
+        ),
+        previous_window=TimeWindow(start=datetime(2026, 1, 1, tzinfo=UTC), end=datetime(2026, 1, 8, tzinfo=UTC)),
+        current_window=TimeWindow(start=datetime(2026, 1, 8, tzinfo=UTC), end=datetime(2026, 1, 15, tzinfo=UTC)),
+        item_level=ItemLevel.PRODUCT,
+    )
+
+    response = CommerceTalkService().answer(request, dataset)
+
+    assert response.status == "completed"
+    assert response.intent.value == "category_trends"
+    assert response.query_spec is not None
+    assert response.query_spec.metric_codes == (CommerceMetricCode.CATEGORY_TRENDS,)
+    assert response.query_spec.result_grain == "category"
+    trend = response.executions[0].data["category_trends"][0]
+    assert trend["category_name"] == "Demo"
+    assert trend["gross_amount_growth_rate"] == "0.5"
+    assert trend["order_growth_rate"] == "0"
+
+    unequal = request.model_copy(update={
+        "previous_window": TimeWindow(start=datetime(2026, 1, 2, tzinfo=UTC), end=datetime(2026, 1, 8, tzinfo=UTC))
+    })
+    assert CommerceTalkService().answer(unequal, dataset).status == "tool_failure"
+
+
+def test_category_trends_omit_undefined_and_cross_currency_rates() -> None:
+    previous_window = TimeWindow(start=datetime(2026, 1, 1, tzinfo=UTC), end=datetime(2026, 1, 8, tzinfo=UTC))
+    current_window = TimeWindow(start=datetime(2026, 1, 8, tzinfo=UTC), end=datetime(2026, 1, 15, tzinfo=UTC))
+    previous = CategorySalesReport(
+        snapshot_id="snapshot-1", window=previous_window,
+        included_order_count=1, excluded_order_count=0,
+        categories=(CategorySalesMetric(
+            category_name="zero", product_count=1, units_sold=1, order_count=1,
+            gross_amount=0, currency="BRL",
+        ), CategorySalesMetric(
+            category_name="mixed", product_count=1, units_sold=1, order_count=1,
+            gross_amount=10, currency="BRL",
+        )),
+    )
+    current = CategorySalesReport(
+        snapshot_id="snapshot-1", window=current_window,
+        included_order_count=2, excluded_order_count=0,
+        categories=(CategorySalesMetric(
+            category_name="zero", product_count=1, units_sold=2, order_count=2,
+            gross_amount=10, currency="BRL",
+        ), CategorySalesMetric(
+            category_name="mixed", product_count=1, units_sold=2, order_count=2,
+            gross_amount=20, currency="USD",
+        )),
+    )
+
+    trends = {trend.category_name: trend for trend in compare_category_sales_reports(previous, current)}
+
+    assert trends["zero"].gross_amount_growth_rate is None
+    assert trends["zero"].units_growth_rate == Decimal("1")
+    assert trends["mixed"].gross_amount_growth_rate is None
+    assert trends["mixed"].order_growth_rate is None
+    with pytest.raises(ValueError, match="same snapshot"):
+        compare_category_sales_reports(previous, current.model_copy(update={"snapshot_id": "other"}))

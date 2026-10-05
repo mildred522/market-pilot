@@ -27,6 +27,7 @@ class CommerceTalkIntent(StrEnum):
     UNSUPPORTED = "unsupported"
     SALES = "sales"
     CATEGORY_SALES = "category_sales"
+    CATEGORY_TRENDS = "category_trends"
     TRENDS = "trends"
     HOT_PRODUCTS = "hot_products"
     MIXED = "mixed"
@@ -80,7 +81,7 @@ class CommerceTalkService:
                 selected_tools=(),
                 query_spec=None,
                 executions=(),
-                suggestions=("当前仅支持商品销售、趋势和热点问题；请缩小问题范围。",),
+                suggestions=("当前仅支持商品或品类销售、趋势和商品热点问题；请缩小问题范围。",),
                 limitations=_limitations_for(request.interaction, dataset),
             )
         snapshot = dataset if isinstance(dataset, CommerceSnapshot) else dataset.snapshot
@@ -133,16 +134,10 @@ UNSUPPORTED_QUESTION_MARKERS = (
     "投放", "广告", "退款", "退货", "评价", "履约", "物流",
     "其他项目", "别的项目", "其他店铺", "别的店铺", "其他商家", "别的商家",
 )
-CATEGORY_MARKERS = ("品类", "类目", "分类", "类别")
-TREND_MARKERS = ("趋势", "增长", "下降", "变化")
 
 
 def route_talk_question(question: str) -> list[str]:
     if any(marker in question for marker in UNSUPPORTED_QUESTION_MARKERS):
-        return []
-    if any(marker in question for marker in CATEGORY_MARKERS) and any(
-        marker in question for marker in TREND_MARKERS
-    ):
         return []
     spec = resolve_commerce_query(question, item_level=ItemLevel.PRODUCT)
     return tool_names_for_query(spec) if spec else []
@@ -151,6 +146,8 @@ def route_talk_question(question: str) -> list[str]:
 def _intent_for_tools(tool_names: list[str]) -> CommerceTalkIntent:
     if len(tool_names) > 1:
         return CommerceTalkIntent.MIXED
+    if tool_names[0].endswith("category_trends"):
+        return CommerceTalkIntent.CATEGORY_TRENDS
     if tool_names[0].endswith("trends"):
         return CommerceTalkIntent.TRENDS
     if tool_names[0].endswith("hot_products"):
