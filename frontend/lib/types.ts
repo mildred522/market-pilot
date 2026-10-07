@@ -93,6 +93,8 @@ export type CommerceComparisonWindows = {
   warning: string | null;
 };
 
+export type CommerceItemLevel = "product" | "sku";
+
 export type CommerceInteractionRequest = {
   question: string;
   interaction: {
@@ -101,7 +103,7 @@ export type CommerceInteractionRequest = {
   };
   previous_window: { start: string; end: string };
   current_window: { start: string; end: string };
-  item_level: "product";
+  item_level: CommerceItemLevel;
 };
 
 export type CommerceTalkResponse = {

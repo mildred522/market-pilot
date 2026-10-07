@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { CommerceAgentWorkspace } from "@/components/CommerceAgentWorkspace";
 import { getCommerceBenchmarkCategorySales, getCommerceBenchmarkCategoryTrends, getCommerceBenchmarkHotProducts, getCommerceBenchmarkSales, getCommerceBenchmarkTrends, getCommerceBenchmarks, getCommerceComparisonWindows, getCommerceSelectionRecommendations } from "@/lib/api";
-import type { CommerceBenchmarkSnapshotSummary, CommerceCategorySalesReport, CommerceCategoryTrendReport, CommerceComparisonWindows, CommerceHotProductReport, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport } from "@/lib/types";
+import type { CommerceBenchmarkSnapshotSummary, CommerceCategorySalesReport, CommerceCategoryTrendReport, CommerceComparisonWindows, CommerceHotProductReport, CommerceItemLevel, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport } from "@/lib/types";
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -32,10 +32,10 @@ function shortProductId(productId: string): string {
   return productId.length > 12 ? `${productId.slice(0, 8)}…${productId.slice(-4)}` : productId;
 }
 
-function ProductReference({ productId, categoryName, showCategory = true }: { productId: string; categoryName: string | null; showCategory?: boolean }) {
+function ProductReference({ productId, categoryName, showCategory = true, itemLabel = "商品" }: { productId: string; categoryName: string | null; showCategory?: boolean; itemLabel?: string }) {
   return (
     <>
-      <strong>{showCategory ? categoryName ?? "未分类" : "商品"}</strong>
+      <strong>{showCategory ? categoryName ?? "未分类" : itemLabel}</strong>
       <details className="commerce-product-id">
         <summary>ID：{shortProductId(productId)}</summary>
         <code>{productId}</code>
@@ -61,6 +61,7 @@ const recommendationTypeNames: Record<string, string> = {
 export default function CommercePage() {
   const [snapshots, setSnapshots] = useState<CommerceBenchmarkSnapshotSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const [itemLevel, setItemLevel] = useState<CommerceItemLevel>("product");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [comparison, setComparison] = useState<CommerceComparisonWindows | null>(null);
@@ -108,6 +109,7 @@ export default function CommercePage() {
   const selected = snapshots.find((snapshot) => snapshot.snapshot_id === selectedId) ?? null;
   const salesSupported = selected?.schema_version === "olist-canonical-v2";
   const activeComparison = comparison?.snapshot_id === selectedId ? comparison : null;
+  const itemLabel = itemLevel === "sku" ? "SKU" : "商品";
 
   useEffect(() => {
     if (!selected || !salesSupported) {
@@ -153,12 +155,12 @@ export default function CommercePage() {
     setCategoriesError("");
     setCategories(null);
     const window = activeComparison.current_window;
-    void getCommerceBenchmarkSales(selected.snapshot_id, window.start, window.end)
+    void getCommerceBenchmarkSales(selected.snapshot_id, window.start, window.end, itemLevel)
       .then((report) => {
         if (active) setSales(report);
       })
       .catch((caught) => {
-        if (active) setSalesError(caught instanceof Error ? caught.message : "商品销售数据加载失败");
+        if (active) setSalesError(caught instanceof Error ? caught.message : `${itemLabel}销售数据加载失败`);
       })
       .finally(() => {
         if (active) setLoadingSales(false);
@@ -176,7 +178,7 @@ export default function CommercePage() {
     return () => {
       active = false;
     };
-  }, [selected, activeComparison]);
+  }, [selected, activeComparison, itemLevel]);
 
   useEffect(() => {
     if (!selected || !activeComparison) {
@@ -190,12 +192,12 @@ export default function CommercePage() {
     setHotProductsError("");
     setHotProducts(null);
     const window = activeComparison.current_window;
-    void getCommerceBenchmarkHotProducts(selected.snapshot_id, window.start, window.end)
+    void getCommerceBenchmarkHotProducts(selected.snapshot_id, window.start, window.end, itemLevel)
       .then((report) => {
         if (active) setHotProducts(report);
       })
       .catch((caught) => {
-        if (active) setHotProductsError(caught instanceof Error ? caught.message : "热点商品数据加载失败");
+        if (active) setHotProductsError(caught instanceof Error ? caught.message : `热点${itemLabel}数据加载失败`);
       })
       .finally(() => {
         if (active) setLoadingHotProducts(false);
@@ -203,7 +205,7 @@ export default function CommercePage() {
     return () => {
       active = false;
     };
-  }, [selected, activeComparison]);
+  }, [selected, activeComparison, itemLevel]);
 
   useEffect(() => {
     if (!selected || !activeComparison) {
@@ -227,17 +229,17 @@ export default function CommercePage() {
     setCategoryTrends(null);
     setCategoryTrendsError("");
     setLoadingCategoryTrends(true);
-    void getCommerceBenchmarkTrends(selected.snapshot_id, window.start, window.end)
+    void getCommerceBenchmarkTrends(selected.snapshot_id, window.start, window.end, itemLevel)
       .then((report) => {
         if (active) setTrends(report);
       })
       .catch((caught) => {
-        if (active) setTrendsError(caught instanceof Error ? caught.message : "商品趋势数据加载失败");
+        if (active) setTrendsError(caught instanceof Error ? caught.message : `${itemLabel}趋势数据加载失败`);
       })
       .finally(() => {
         if (active) setLoadingTrends(false);
       });
-    void getCommerceSelectionRecommendations(selected.snapshot_id, window.start, window.end)
+    void getCommerceSelectionRecommendations(selected.snapshot_id, window.start, window.end, itemLevel)
       .then((report) => {
         if (active) setRecommendations(report);
       })
@@ -260,14 +262,14 @@ export default function CommercePage() {
     return () => {
       active = false;
     };
-  }, [selected, activeComparison]);
+  }, [selected, activeComparison, itemLevel]);
 
   return (
     <main className="shell commerce-page">
       <section className="page-header">
         <p className="kicker">Commerce benchmark</p>
         <h1>电商经营分析</h1>
-        <p>先选择一个经过本地校验的公开销售快照，再进入商品销售、热点商品和经营建议分析。</p>
+        <p>先选择一个经过本地校验的公开销售快照，再进入商品/SKU 销售、热点和经营建议分析。</p>
       </section>
 
       {error ? <p className="commerce-error" role="alert">{error}</p> : null}
@@ -333,6 +335,8 @@ export default function CommercePage() {
                   <CommerceAgentWorkspace
                     comparison={activeComparison}
                     key={`${selected.snapshot_id}:${activeComparison.current_window.start}`}
+                    itemLevel={itemLevel}
+                    onItemLevelChange={setItemLevel}
                     snapshotId={selected.snapshot_id}
                   />
                 ) : null}
@@ -406,21 +410,21 @@ export default function CommercePage() {
                   <div className="section-heading">
                     <div>
                       <p className="kicker">Product sales</p>
-                      <h2 id="commerce-sales-title">商品销售排行</h2>
+                      <h2 id="commerce-sales-title">{itemLabel}销售排行</h2>
                     </div>
-                    <p>当前只展示可由订单商品行直接支持的销量、销售额和卖家覆盖数。</p>
+                    <p>当前只展示可由订单商品行直接支持的{itemLabel}销量、销售额和卖家覆盖数。</p>
                   </div>
                   {!salesSupported ? (
-                    <p className="commerce-empty">该快照尚未生成 Olist 商品销售事实层，请选择 `olist-canonical-v2` 快照。</p>
+                    <p className="commerce-empty">该快照尚未生成 Olist {itemLabel}销售事实层，请选择 `olist-canonical-v2` 快照。</p>
                   ) : null}
-                  {activeComparison && loadingSales ? <p className="commerce-empty">正在计算商品销售事实...</p> : null}
+                  {activeComparison && loadingSales ? <p className="commerce-empty">正在计算{itemLabel}销售事实...</p> : null}
                   {activeComparison && salesError ? <p className="commerce-error" role="alert">{salesError}</p> : null}
                   {activeComparison && !loadingSales && !salesError && sales?.metrics.length ? (
                     <div className="commerce-sales-table-wrap">
                       <table className="commerce-sales-table">
                         <thead>
                           <tr>
-                            <th>商品</th>
+                            <th>{itemLabel}</th>
                             <th>品类</th>
                             <th>销量</th>
                             <th>订单</th>
@@ -431,7 +435,7 @@ export default function CommercePage() {
                         <tbody>
                           {sales.metrics.slice(0, 10).map((metric) => (
                             <tr key={metric.item_id}>
-                              <td><ProductReference productId={metric.product_id} categoryName={metric.category_name} showCategory={false} /></td>
+                              <td><ProductReference productId={metric.product_id} categoryName={metric.category_name} itemLabel={itemLabel} showCategory={false} /></td>
                               <td>{metric.category_name ?? "未分类"}</td>
                               <td>{formatAmount(metric.units_sold)}</td>
                               <td>{metric.order_count}</td>
@@ -445,18 +449,18 @@ export default function CommercePage() {
                     </div>
                   ) : null}
                   {activeComparison && !loadingSales && !salesError && !sales?.metrics.length ? (
-                    <p className="commerce-empty">当前窗口没有可用的成交商品销售记录。</p>
+                    <p className="commerce-empty">当前窗口没有可用的成交{itemLabel}销售记录。</p>
                   ) : null}
                 </section>
                 <section className="commerce-hot-panel" aria-labelledby="commerce-hot-title">
                   <div className="section-heading">
                     <div>
                       <p className="kicker">Explainable signals</p>
-                      <h2 id="commerce-hot-title">热点商品候选</h2>
+                      <h2 id="commerce-hot-title">热点{itemLabel}候选</h2>
                     </div>
                     <p>热点是可解释候选；证据等级仅反映标签数量，不代表趋势预测、利润或因果关系。</p>
                   </div>
-                  {activeComparison && loadingHotProducts ? <p className="commerce-empty">正在识别热点商品...</p> : null}
+                  {activeComparison && loadingHotProducts ? <p className="commerce-empty">正在识别热点{itemLabel}...</p> : null}
                   {activeComparison && hotProductsError ? <p className="commerce-error" role="alert">{hotProductsError}</p> : null}
                   {activeComparison && !loadingHotProducts && !hotProductsError && hotProducts?.candidates.length ? (
                     <div className="commerce-hot-list">
@@ -485,29 +489,29 @@ export default function CommercePage() {
                     </div>
                   ) : null}
                   {activeComparison && !loadingHotProducts && !hotProductsError && !hotProducts?.candidates.length ? (
-                    <p className="commerce-empty">当前窗口没有满足可解释热点规则的商品。</p>
+                    <p className="commerce-empty">当前窗口没有满足可解释热点规则的{itemLabel}。</p>
                   ) : null}
                 </section>
                 <section className="commerce-trend-panel" aria-labelledby="commerce-trend-title">
                   <div className="section-heading">
                     <div>
                       <p className="kicker">Window comparison</p>
-                      <h2 id="commerce-trend-title">商品趋势</h2>
+                      <h2 id="commerce-trend-title">{itemLabel}趋势</h2>
                     </div>
-                    <p>与上方基线等长窗口比较；单侧出现的商品保留在结果中。</p>
+                    <p>与上方基线等长窗口比较；单侧出现的{itemLabel}保留在结果中。</p>
                   </div>
-                  {activeComparison && loadingTrends ? <p className="commerce-empty">正在计算商品趋势...</p> : null}
+                  {activeComparison && loadingTrends ? <p className="commerce-empty">正在计算{itemLabel}趋势...</p> : null}
                   {activeComparison && trendsError ? <p className="commerce-error" role="alert">{trendsError}</p> : null}
                   {activeComparison && !loadingTrends && !trendsError && trends?.trends.length ? (
                     <div className="commerce-sales-table-wrap">
                       <table className="commerce-sales-table">
-                        <thead><tr><th>商品</th><th>当前销售额</th><th>基线销售额</th><th>销售额变化</th><th>销量变化</th></tr></thead>
+                        <thead><tr><th>{itemLabel}</th><th>当前销售额</th><th>基线销售额</th><th>销售额变化</th><th>销量变化</th></tr></thead>
                         <tbody>
                           {[...trends.trends].sort((left, right) =>
                             Number(right.current?.gross_amount ?? 0) - Number(left.current?.gross_amount ?? 0) || left.item_id.localeCompare(right.item_id)
                           ).slice(0, 10).map((trend) => (
                             <tr key={trend.item_id}>
-                              <td><ProductReference productId={trend.product_id} categoryName={trend.category_name} /></td>
+                              <td><ProductReference productId={trend.product_id} categoryName={trend.category_name} itemLabel={itemLabel} /></td>
                               <td>{formatAmount(trend.current?.gross_amount ?? null)}</td>
                               <td>{formatAmount(trend.previous?.gross_amount ?? null)}</td>
                               <td>{formatGrowth(trend.gross_amount_growth_rate)}</td>
@@ -518,7 +522,7 @@ export default function CommercePage() {
                       </table>
                     </div>
                   ) : null}
-                  {activeComparison && !loadingTrends && !trendsError && !trends?.trends.length ? <p className="commerce-empty">当前没有可比较的商品趋势。</p> : null}
+                  {activeComparison && !loadingTrends && !trendsError && !trends?.trends.length ? <p className="commerce-empty">当前没有可比较的{itemLabel}趋势。</p> : null}
                 </section>
                 <section className="commerce-recommendation-panel" aria-labelledby="commerce-recommendation-title">
                   <div className="section-heading">

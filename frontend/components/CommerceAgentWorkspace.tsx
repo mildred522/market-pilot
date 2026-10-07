@@ -3,7 +3,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { CommercePlanPractice } from "@/components/CommercePlanPractice";
 import { approveCommercePlan, askCommerceTalk, createCommercePlan, createProject, getCommercePlan, getCommercePlans, getCurrentUser, getProjectHistory } from "@/lib/api";
-import type { AuthenticatedUser, CommerceComparisonWindows, CommerceInteractionRequest, CommercePlanResponse, CommercePlanSummary, CommerceTalkResponse, Project } from "@/lib/types";
+import type { AuthenticatedUser, CommerceComparisonWindows, CommerceInteractionRequest, CommerceItemLevel, CommercePlanResponse, CommercePlanSummary, CommerceTalkResponse, Project } from "@/lib/types";
 
 type AgentMode = "talk" | "plan";
 type TalkExecution = CommerceTalkResponse["executions"][number];
@@ -33,12 +33,14 @@ function productLabel(category: string | null, productId: string): string {
 
 function TalkExecutionCard({ execution }: { execution: TalkExecution }) {
   const data = execution.data;
+  const itemLevel = data?.metrics?.[0]?.item_level ?? data?.items?.[0]?.item_level ?? data?.candidates?.[0]?.item_level;
+  const itemLabel = itemLevel === "sku" ? "SKU" : "商品";
   return (
     <article className="commerce-agent-card">
       <h4>{toolNames[execution.tool_name] ?? execution.tool_name} · {execution.status === "completed" ? "已计算" : "未完成"}</h4>
       {data?.metrics ? (
         <>
-          <p>当前窗口 {data.included_order_count ?? 0} 笔有效订单；以下展示销售额前 5 个商品。</p>
+          <p>当前窗口 {data.included_order_count ?? 0} 笔有效订单；以下展示销售额前 5 个{itemLabel}。</p>
           <ol>{data.metrics.slice(0, 5).map((metric) => (
             <li key={metric.item_id} title={metric.product_id}>
               {productLabel(metric.category_name, metric.product_id)}：销售额 {formatAmount(metric.gross_amount)} {metric.currency ?? ""}，销量 {formatAmount(metric.units_sold)}
@@ -70,7 +72,7 @@ function TalkExecutionCard({ execution }: { execution: TalkExecution }) {
       ) : null}
       {data?.items ? (
         <>
-          <p>两窗共有 {data.items.length} 个商品；以下按当前窗口销售额展示前 5 个。</p>
+          <p>两窗共有 {data.items.length} 个{itemLabel}；以下按当前窗口销售额展示前 5 个。</p>
           <ol>{[...data.items].sort((left, right) =>
             Number(right.current?.gross_amount ?? 0) - Number(left.current?.gross_amount ?? 0)
           ).slice(0, 5).map((item) => (
@@ -82,7 +84,7 @@ function TalkExecutionCard({ execution }: { execution: TalkExecution }) {
       ) : null}
       {data?.candidates ? (
         <>
-          <p>识别 {data.candidates.length} 个热点候选；以下展示前 5 个，不代表未来需求。</p>
+          <p>识别 {data.candidates.length} 个{itemLabel}热点候选；以下展示前 5 个，不代表未来需求。</p>
           <ol>{data.candidates.slice(0, 5).map((candidate) => (
             <li key={candidate.item_id} title={candidate.product_id}>
               {productLabel(candidate.category_name, candidate.product_id)}：{candidate.evidence.join("；")}
@@ -97,7 +99,17 @@ function TalkExecutionCard({ execution }: { execution: TalkExecution }) {
   );
 }
 
-export function CommerceAgentWorkspace({ snapshotId, comparison }: { snapshotId: string; comparison: CommerceComparisonWindows }) {
+export function CommerceAgentWorkspace({
+  snapshotId,
+  comparison,
+  itemLevel,
+  onItemLevelChange
+}: {
+  snapshotId: string;
+  comparison: CommerceComparisonWindows;
+  itemLevel: CommerceItemLevel;
+  onItemLevelChange: (itemLevel: CommerceItemLevel) => void;
+}) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<number | null>(null);
@@ -218,7 +230,7 @@ export function CommerceAgentWorkspace({ snapshotId, comparison }: { snapshotId:
       interaction: { mode, scope: { mode: "benchmark", project_id: projectId, snapshot_id: snapshotId } },
       previous_window: comparison.baseline_window,
       current_window: comparison.current_window,
-      item_level: "product"
+      item_level: itemLevel
     };
     setPending(mode);
     setError("");
@@ -282,6 +294,11 @@ export function CommerceAgentWorkspace({ snapshotId, comparison }: { snapshotId:
           <div className="commerce-agent-modes" role="group" aria-label="分析模式">
             <button aria-pressed={mode === "talk"} className={mode === "talk" ? "active" : ""} onClick={() => { setMode("talk"); setError(""); }} type="button">Talk · 事实查询</button>
             <button aria-pressed={mode === "plan"} className={mode === "plan" ? "active" : ""} disabled={!user?.is_admin} onClick={() => { setMode("plan"); setError(""); }} type="button">Plan · 计划草案</button>
+          </div>
+          <div className="commerce-agent-grain" role="group" aria-label="分析粒度">
+            <span>分析粒度</span>
+            <button aria-pressed={itemLevel === "product"} className={itemLevel === "product" ? "active" : ""} onClick={() => onItemLevelChange("product")} type="button">商品</button>
+            <button aria-pressed={itemLevel === "sku"} className={itemLevel === "sku" ? "active" : ""} onClick={() => onItemLevelChange("sku")} type="button">SKU</button>
           </div>
           {!user?.is_admin ? <p className="commerce-agent-hint">当前账号仅可使用 Talk；Plan 由服务端限制为管理员。</p> : null}
           {mode === "plan" && user?.is_admin && projectId ? (
