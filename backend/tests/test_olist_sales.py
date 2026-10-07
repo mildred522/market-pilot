@@ -212,7 +212,7 @@ def test_olist_category_trends_use_shared_category_facts(tmp_path: Path) -> None
         TimeWindow(start=datetime(2018, 1, 2, tzinfo=UTC), end=datetime(2018, 1, 3, tzinfo=UTC)),
     )
 
-    by_name = {trend.category_name: trend for trend in trends}
+    by_name = {trend.category_name: trend for trend in trends.trends}
     assert by_name["beauty"].previous.gross_amount == Decimal("30.0000")
     assert by_name["beauty"].current.gross_amount == Decimal("80.0000")
     assert by_name["beauty"].gross_amount_growth_rate == Decimal("50") / Decimal("30")
@@ -262,6 +262,10 @@ def test_olist_sales_endpoint_reads_shared_benchmark_fact(tmp_path: Path, monkey
             f"/commerce/benchmarks/{dataset.snapshot.snapshot_id}/trends",
             params={"start": "2018-01-01T00:00:00", "end": "2018-01-03T00:00:00"},
         )
+        category_trends_response = client.get(
+            f"/commerce/benchmarks/{dataset.snapshot.snapshot_id}/category-trends",
+            params={"start": "2018-01-01T00:00:00", "end": "2018-01-03T00:00:00"},
+        )
 
     assert listing.status_code == 200
     assert response.status_code == 200
@@ -277,6 +281,9 @@ def test_olist_sales_endpoint_reads_shared_benchmark_fact(tmp_path: Path, monkey
     assert windows_response.json()["selection_method"] == "split_coverage"
     assert windows_response.json()["warning"]
     assert trends_response.status_code == 200
+    assert category_trends_response.status_code == 200
+    assert category_trends_response.json()["snapshot_id"] == dataset.snapshot.snapshot_id
+    assert category_trends_response.json()["trends"][0]["category_name"] == "beauty"
 
 
 def test_olist_hot_products_explain_growth_against_equal_baseline(tmp_path: Path) -> None:

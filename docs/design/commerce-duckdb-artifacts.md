@@ -42,6 +42,18 @@ GET /commerce/benchmarks/{snapshot_id}/sales?start=...&end=...&item_level=produc
 GET /commerce/benchmarks/{snapshot_id}/category-sales?start=...&end=...
 ```
 
+品类趋势接口使用同一组当前/基线窗口：
+
+```text
+GET /commerce/benchmarks/{snapshot_id}/category-trends
+  ?start=...
+  &end=...
+  &baseline_start=...
+  &baseline_end=...
+```
+
+返回平台无关的品类趋势报告，包含品类并集、两侧销售事实和变化率；销售额变化率要求两侧币种一致，销量和订单变化率是独立的计数指标。
+
 该事实层只表达商品销售额、销量、订单数、平均单价、卖家数和可用运费，不推导净利润、卖家实收或因果效果。热点商品和选品建议应建立在这些可追溯聚合之上。
 品类概览直接按同一订单商品事实聚合，返回品类内去重的商品、订单和卖家数，以及销量和销售额；未分类商品保留独立分组。同一订单或卖家可能跨品类，因此订单数、卖家数不能跨品类相加。该概览只描述历史窗口，不生成品类级选品结论。
 

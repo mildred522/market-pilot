@@ -58,6 +58,31 @@ export type CommerceCategorySalesReport = {
   excluded_order_count: number;
 };
 
+export type CommerceCategoryTrendMetric = {
+  category_name: string | null;
+  product_count: number;
+  units_sold: number | string;
+  order_count: number;
+  gross_amount: number | string;
+  currency: string | null;
+};
+
+export type CommerceCategoryTrendReport = {
+  snapshot_id: string;
+  current_window: { start: string; end: string };
+  baseline_window: { start: string; end: string };
+  trends: Array<{
+    category_name: string | null;
+    current: CommerceCategoryTrendMetric | null;
+    previous: CommerceCategoryTrendMetric | null;
+    units_growth_rate: number | string | null;
+    gross_amount_growth_rate: number | string | null;
+    order_growth_rate: number | string | null;
+  }>;
+  included_order_count: number;
+  excluded_order_count: number;
+};
+
 export type CommerceComparisonWindows = {
   snapshot_id: string;
   baseline_window: { start: string; end: string };
@@ -112,8 +137,8 @@ export type CommerceTalkResponse = {
       categories?: CommerceCategorySalesReport["categories"];
       category_trends?: Array<{
         category_name: string | null;
-        current: CommerceCategorySalesReport["categories"][number] | null;
-        previous: CommerceCategorySalesReport["categories"][number] | null;
+        current: CommerceCategoryTrendMetric | null;
+        previous: CommerceCategoryTrendMetric | null;
         units_growth_rate: number | string | null;
         gross_amount_growth_rate: number | string | null;
         order_growth_rate: number | string | null;

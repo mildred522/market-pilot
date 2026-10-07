@@ -94,12 +94,13 @@ def _category_sales(context: CommerceToolContext) -> dict[str, Any]:
 
 
 def _category_trends(context: CommerceToolContext) -> dict[str, Any]:
-    trends = context.fact_provider().category_trends(context.previous_window, context.current_window)
-    return {
-        "previous_window": context.previous_window.model_dump(mode="json"),
-        "current_window": context.current_window.model_dump(mode="json"),
-        "category_trends": [trend.model_dump(mode="json") for trend in trends],
-    }
+    report = context.fact_provider().category_trends(
+        context.previous_window, context.current_window
+    )
+    payload = report.model_dump(mode="json")
+    payload["category_trends"] = payload.pop("trends")
+    payload["previous_window"] = payload.pop("baseline_window")
+    return payload
 
 
 def _trends(context: CommerceToolContext) -> dict[str, Any]:

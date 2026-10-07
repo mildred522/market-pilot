@@ -84,6 +84,17 @@ class CategoryTrendComparison(BaseModel):
     order_growth_rate: Decimal | None = None
 
 
+class CategoryTrendReport(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    snapshot_id: str
+    current_window: TimeWindow
+    baseline_window: TimeWindow
+    trends: tuple[CategoryTrendComparison, ...]
+    included_order_count: int = Field(ge=0)
+    excluded_order_count: int = Field(ge=0)
+
+
 class OlistProductSalesMetric(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

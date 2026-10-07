@@ -6,7 +6,7 @@ from typing import Protocol
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import (
     CategorySalesReport,
-    CategoryTrendComparison,
+    CategoryTrendReport,
     ItemLevel,
     OlistHotProductReport,
     OlistProductSalesReport,
@@ -27,7 +27,7 @@ class CommerceFactProvider(Protocol):
 
     def category_trends(
         self, previous_window: TimeWindow, current_window: TimeWindow
-    ) -> tuple[CategoryTrendComparison, ...]: ...
+    ) -> CategoryTrendReport: ...
 
     def sales(
         self,
@@ -70,9 +70,16 @@ class DatasetCommerceFactProvider:
 
     def category_trends(
         self, previous_window: TimeWindow, current_window: TimeWindow
-    ) -> tuple[CategoryTrendComparison, ...]:
-        return compare_category_sales_reports(
-            self.category_sales(previous_window), self.category_sales(current_window)
+    ) -> CategoryTrendReport:
+        previous = self.category_sales(previous_window)
+        current = self.category_sales(current_window)
+        return CategoryTrendReport(
+            snapshot_id=current.snapshot_id,
+            current_window=current.window,
+            baseline_window=previous.window,
+            trends=compare_category_sales_reports(previous, current),
+            included_order_count=current.included_order_count,
+            excluded_order_count=current.excluded_order_count,
         )
 
     def sales(self, window: TimeWindow, *, item_level: ItemLevel) -> object:
@@ -143,9 +150,16 @@ class OlistDuckDBFactProvider:
 
     def category_trends(
         self, previous_window: TimeWindow, current_window: TimeWindow
-    ) -> tuple[CategoryTrendComparison, ...]:
-        return compare_category_sales_reports(
-            self.category_sales(previous_window), self.category_sales(current_window)
+    ) -> CategoryTrendReport:
+        previous = self.category_sales(previous_window)
+        current = self.category_sales(current_window)
+        return CategoryTrendReport(
+            snapshot_id=current.snapshot_id,
+            current_window=current.window,
+            baseline_window=previous.window,
+            trends=compare_category_sales_reports(previous, current),
+            included_order_count=current.included_order_count,
+            excluded_order_count=current.excluded_order_count,
         )
 
     def sales(self, window: TimeWindow, *, item_level: ItemLevel) -> OlistProductSalesReport:

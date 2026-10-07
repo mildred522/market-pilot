@@ -1,4 +1,4 @@
-import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, CommerceCategorySalesReport, CommerceComparisonWindows, CommerceHotProductReport, CommerceInteractionRequest, CommercePlanListResponse, CommercePlanPracticeCreate, CommercePlanPracticeListResponse, CommercePlanPracticeRecord, CommercePlanResponse, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport, CommerceTalkResponse, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
+import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, CommerceCategorySalesReport, CommerceCategoryTrendReport, CommerceComparisonWindows, CommerceHotProductReport, CommerceInteractionRequest, CommercePlanListResponse, CommercePlanPracticeCreate, CommercePlanPracticeListResponse, CommercePlanPracticeRecord, CommercePlanResponse, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport, CommerceTalkResponse, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim()
   || (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8000" : "");
@@ -161,6 +161,18 @@ export function getCommerceBenchmarkCategorySales(
   const params = new URLSearchParams({ start, end });
   return request<CommerceCategorySalesReport>(
     `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/category-sales?${params.toString()}`,
+    { cache: "no-store" }
+  );
+}
+
+export function getCommerceBenchmarkCategoryTrends(
+  snapshotId: string,
+  start: string,
+  end: string
+): Promise<CommerceCategoryTrendReport> {
+  const params = new URLSearchParams({ start, end });
+  return request<CommerceCategoryTrendReport>(
+    `/commerce/benchmarks/${encodeURIComponent(snapshotId)}/category-trends?${params.toString()}`,
     { cache: "no-store" }
   );
 }

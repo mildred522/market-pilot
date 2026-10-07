@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { CommerceAgentWorkspace } from "@/components/CommerceAgentWorkspace";
-import { getCommerceBenchmarkCategorySales, getCommerceBenchmarkHotProducts, getCommerceBenchmarkSales, getCommerceBenchmarkTrends, getCommerceBenchmarks, getCommerceComparisonWindows, getCommerceSelectionRecommendations } from "@/lib/api";
-import type { CommerceBenchmarkSnapshotSummary, CommerceCategorySalesReport, CommerceComparisonWindows, CommerceHotProductReport, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport } from "@/lib/types";
+import { getCommerceBenchmarkCategorySales, getCommerceBenchmarkCategoryTrends, getCommerceBenchmarkHotProducts, getCommerceBenchmarkSales, getCommerceBenchmarkTrends, getCommerceBenchmarks, getCommerceComparisonWindows, getCommerceSelectionRecommendations } from "@/lib/api";
+import type { CommerceBenchmarkSnapshotSummary, CommerceCategorySalesReport, CommerceCategoryTrendReport, CommerceComparisonWindows, CommerceHotProductReport, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport } from "@/lib/types";
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -72,6 +72,9 @@ export default function CommercePage() {
   const [categories, setCategories] = useState<CommerceCategorySalesReport | null>(null);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [categoriesError, setCategoriesError] = useState("");
+  const [categoryTrends, setCategoryTrends] = useState<CommerceCategoryTrendReport | null>(null);
+  const [loadingCategoryTrends, setLoadingCategoryTrends] = useState(false);
+  const [categoryTrendsError, setCategoryTrendsError] = useState("");
   const [hotProducts, setHotProducts] = useState<CommerceHotProductReport | null>(null);
   const [loadingHotProducts, setLoadingHotProducts] = useState(false);
   const [hotProductsError, setHotProductsError] = useState("");
@@ -210,6 +213,9 @@ export default function CommercePage() {
       setRecommendations(null);
       setRecommendationsError("");
       setLoadingRecommendations(false);
+      setCategoryTrends(null);
+      setCategoryTrendsError("");
+      setLoadingCategoryTrends(false);
       return;
     }
     let active = true;
@@ -218,6 +224,9 @@ export default function CommercePage() {
     setTrendsError("");
     setLoadingRecommendations(true);
     setRecommendationsError("");
+    setCategoryTrends(null);
+    setCategoryTrendsError("");
+    setLoadingCategoryTrends(true);
     void getCommerceBenchmarkTrends(selected.snapshot_id, window.start, window.end)
       .then((report) => {
         if (active) setTrends(report);
@@ -237,6 +246,16 @@ export default function CommercePage() {
       })
       .finally(() => {
         if (active) setLoadingRecommendations(false);
+      });
+    void getCommerceBenchmarkCategoryTrends(selected.snapshot_id, window.start, window.end)
+      .then((report) => {
+        if (active) setCategoryTrends(report);
+      })
+      .catch((caught) => {
+        if (active) setCategoryTrendsError(caught instanceof Error ? caught.message : "品类趋势数据加载失败");
+      })
+      .finally(() => {
+        if (active) setLoadingCategoryTrends(false);
       });
     return () => {
       active = false;
@@ -348,6 +367,40 @@ export default function CommercePage() {
                     </div>
                   ) : null}
                   {activeComparison && !loadingCategories && !categoriesError && !categories?.categories.length ? <p className="commerce-empty">当前窗口没有可用的品类销售记录。</p> : null}
+                </section>
+                <section className="commerce-trend-panel" aria-labelledby="commerce-category-trend-title">
+                  <div className="section-heading">
+                    <div>
+                      <p className="kicker">Category comparison</p>
+                      <h2 id="commerce-category-trend-title">品类趋势</h2>
+                    </div>
+                    <p>按品类并集比较两个等长窗口；新出现或消失的品类保留，但没有基线时不计算增长率。</p>
+                  </div>
+                  {activeComparison && loadingCategoryTrends ? <p className="commerce-empty">正在计算品类趋势...</p> : null}
+                  {activeComparison && categoryTrendsError ? <p className="commerce-error" role="alert">{categoryTrendsError}</p> : null}
+                  {activeComparison && !loadingCategoryTrends && !categoryTrendsError && categoryTrends?.trends.length ? (
+                    <div className="commerce-sales-table-wrap">
+                      <table className="commerce-sales-table">
+                        <thead><tr><th>品类</th><th>当前销售额</th><th>基线销售额</th><th>销售额变化</th><th>销量变化</th><th>订单变化</th></tr></thead>
+                        <tbody>
+                          {[...categoryTrends.trends].sort((left, right) =>
+                            Number(right.current?.gross_amount ?? 0) - Number(left.current?.gross_amount ?? 0) || (left.category_name ?? "").localeCompare(right.category_name ?? "")
+                          ).slice(0, 10).map((trend) => (
+                            <tr key={trend.category_name ?? "__uncategorized__"}>
+                              <td><strong>{trend.category_name ?? "未分类"}</strong></td>
+                              <td>{formatAmount(trend.current?.gross_amount ?? null)}</td>
+                              <td>{formatAmount(trend.previous?.gross_amount ?? null)}</td>
+                              <td>{formatGrowth(trend.gross_amount_growth_rate)}</td>
+                              <td>{formatGrowth(trend.units_growth_rate)}</td>
+                              <td>{formatGrowth(trend.order_growth_rate)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="commerce-sales-note">展示当前窗口销售额前 10 个品类，共 {categoryTrends.trends.length} 个；变化率是历史描述，不是预测。</p>
+                    </div>
+                  ) : null}
+                  {activeComparison && !loadingCategoryTrends && !categoryTrendsError && !categoryTrends?.trends.length ? <p className="commerce-empty">当前没有可比较的品类趋势。</p> : null}
                 </section>
                 <section className="commerce-sales-panel" aria-labelledby="commerce-sales-title">
                   <div className="section-heading">
