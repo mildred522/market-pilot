@@ -36,6 +36,7 @@
 - [发布基线](../release-baseline.md)
 - [面试评估证据](../interview-evidence.md)
 - [五分钟演示](../demo-script.md)
+- [电商 Benchmark 演示](../commerce-demo-script.md)
 
 ## 文档规则
 

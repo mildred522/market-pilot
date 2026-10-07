@@ -52,7 +52,8 @@ powershell -ExecutionPolicy Bypass -File .\launcher\build-launcher.ps1
 首次启动会要求创建账户；第一个账户会接管此前本地工作区中的无主项目。经营 CSV、
 分析报告、追问记忆与选址快照均按账户所属项目隔离，公共 RAG 仅收录已审核的公开资料。
 
-打开 `http://localhost:3000/demo`，即可按预设路径完成一次五分钟面试演示。
+打开 `http://localhost:3000/demo`，即可按预设路径完成一次五分钟面试演示；电商 Benchmark 也可直接打开
+`http://localhost:3000/commerce`。
 
 <details>
 <summary><b>开发模式启动</b></summary>
@@ -269,14 +270,13 @@ python -m scripts.run_agent_evals
 
 ## 五分钟演示
 
-1. 在 `/demo` 选择“准备开店”或“正在经营”。
-2. 提交开店前问卷，查看投资压力、加盟风险和核验动作。
-3. 生成样例经营报告，展示保本线、渠道利润、菜品矩阵与证据面板。
-4. 追问“根据现有表现推荐一些菜品”，观察数据结论、通用建议和信息缺口分区。
-5. 更正“租金不是 18,000，应为 25,000”，确认后展示增量重算、新旧指标和执行 Trace。
-6. 要求“再结合成都趋势”或“回答简短一点”，展示证据检索、强制修订和版本时间线。
+1. 在 `/demo` 首先选择“电商：商品经营 Benchmark”，或直接打开 `/commerce`。
+2. 选择历史快照，展示商品/SKU 粒度、品类销售、趋势、热点和选品建议。
+3. 使用 Talk 提问，展示指标代号、证据字段、时间窗口以及利润/库存/实时问题的拒答。
+4. 使用管理员账号生成并审批 Plan，再追加 Benchmark 演练记录；说明审批不执行外部动作。
+5. 用普通账号复核 Plan 权限由服务端限制；再回看餐饮 legacy 的开店前和经营诊断路径。
 
-完整讲解词见 [Demo 脚本](docs/demo-script.md)，可上传样本位于 `outputs/operating-demo/`。
+完整讲解词见[电商 Benchmark 演示脚本](docs/commerce-demo-script.md)和[餐饮 Demo 脚本](docs/demo-script.md)。
 
 ## 深入了解
 
