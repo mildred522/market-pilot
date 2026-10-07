@@ -9,6 +9,28 @@
 3. 将结果写入本地忽略的 `outputs/evals/` 文件，不把原始订单、客户标识、个人凭据或 DuckDB artifact 放入仓库。
 4. 发现失败时记录最小复现案例、期望行为、实际行为和修复后的新案例编号；不要直接修改标准答案来消除失败。
 
+评测默认只产生 `human_review: pending`。完成独立审查后，可通过一个单独的 review JSON
+合并人工结论，自动保留未审查案例，不会改变自动对账结果：
+
+```json
+{
+  "reviewer": "reviewer-1",
+  "reviewed_at": "2026-10-07T12:00:00Z",
+  "cases": [
+    {"id": "recent-sales", "verdict": "pass", "notes": "事实和边界可核对"}
+  ]
+}
+```
+
+```bash
+python -m scripts.evaluate_olist_cases <Olist数据目录> \
+  --review-file outputs/evals/olist-review.json > outputs/evals/olist-cases-reviewed.json
+```
+
+`verdict` 只允许 `pass`、`fail` 或 `needs_review`。review 文件只存审查元数据和措辞判断，
+不应包含原始订单、顾客标识、令牌或内网数据；所有案例完成审查后报告才会标记为
+`human_review: completed`。
+
 ## 判定维度
 
 | 维度 | 通过条件 | 失败示例 |

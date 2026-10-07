@@ -19,6 +19,7 @@ from app.commerce.warehouse import CommerceDuckDBArtifactStore, default_commerce
 
 DEFAULT_CASES = Path(__file__).resolve().parents[1] / "evals" / "olist_talk_cases.json"
 ELIGIBLE_STATUSES = {"delivered", "shipped", "approved", "invoiced"}
+REVIEW_VERDICTS = {"pass", "fail", "needs_review"}
 
 
 def _source_sales(directory: Path, window: TimeWindow) -> dict[str, Any]:
@@ -373,6 +374,7 @@ def evaluate_olist_cases(
     artifact_root: Path | None = None,
     currency: str | None = None,
     timezone: str | None = None,
+    review_path: Path | None = None,
 ) -> dict[str, Any]:
     casebook = json.loads(cases_path.read_text(encoding="utf-8"))
     if casebook["version"] not in {1, 2, 3} or not casebook["cases"]:
@@ -489,7 +491,7 @@ def evaluate_olist_cases(
                 "disallowed_claims": case.get("disallowed_claims", []),
             },
         })
-    return {
+    report = {
         "snapshot_id": snapshot_id,
         "casebook_version": casebook["version"],
         "automated_pass": all(result["passed"] for result in results),
@@ -497,6 +499,75 @@ def evaluate_olist_cases(
         "cases": results,
         "limitations": "CSV 对账验证历史商品、SKU 与品类销量、销售额、订单数、双窗变化率、热点候选标签及拒答边界；建议是否误导须人工审查，不能证明经营收益。",
     }
+    return apply_human_review(report, review_path=review_path)
+
+
+def apply_human_review(
+    report: dict[str, Any], *, review_path: Path | None = None
+) -> dict[str, Any]:
+    """Merge an explicitly authored review without changing automated facts."""
+
+    if review_path is None:
+        return report
+    payload = json.loads(review_path.read_text(encoding="utf-8"))
+    reviewer = payload.get("reviewer")
+    reviewed_at = payload.get("reviewed_at")
+    reviews = payload.get("cases")
+    if not isinstance(reviewer, str) or not reviewer.strip():
+        raise ValueError("human review requires a non-empty reviewer")
+    if not isinstance(reviewed_at, str) or not reviewed_at.strip():
+        raise ValueError("human review requires reviewed_at")
+    try:
+        parsed_reviewed_at = datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("human review reviewed_at must be an ISO timestamp") from error
+    if parsed_reviewed_at.tzinfo is None:
+        raise ValueError("human review reviewed_at must include a timezone")
+    if not isinstance(reviews, list):
+        raise ValueError("human review cases must be a list")
+
+    case_results = {case["id"]: case for case in report["cases"]}
+    review_by_id: dict[str, dict[str, Any]] = {}
+    for review in reviews:
+        if not isinstance(review, dict) or not isinstance(review.get("id"), str):
+            raise ValueError("human review case requires an id")
+        case_id = review["id"]
+        if case_id not in case_results:
+            raise ValueError(f"human review references unknown case: {case_id}")
+        if case_id in review_by_id:
+            raise ValueError(f"duplicate human review case: {case_id}")
+        verdict = review.get("verdict")
+        if verdict not in REVIEW_VERDICTS:
+            raise ValueError(f"unsupported human review verdict for {case_id}")
+        notes = review.get("notes", "")
+        if not isinstance(notes, str) or len(notes) > 2000:
+            raise ValueError(f"human review notes are invalid for {case_id}")
+        review_by_id[case_id] = {"verdict": verdict, "notes": notes}
+
+    for case_id, case in case_results.items():
+        existing = case["human_review"]
+        review = review_by_id.get(case_id)
+        if review is None:
+            continue
+        case["human_review"] = {
+            **existing,
+            **review,
+            "reviewer": reviewer.strip(),
+            "reviewed_at": reviewed_at,
+        }
+
+    reviewed_cases = [case for case in report["cases"] if case["human_review"]["verdict"] != "pending"]
+    verdict_counts = {
+        verdict: sum(case["human_review"]["verdict"] == verdict for case in report["cases"])
+        for verdict in (*REVIEW_VERDICTS, "pending")
+    }
+    report["human_review"] = "completed" if len(reviewed_cases) == len(report["cases"]) else "pending"
+    report["human_review_summary"] = {
+        "reviewer": reviewer.strip(),
+        "reviewed_at": reviewed_at,
+        "verdict_counts": verdict_counts,
+    }
+    return report
 
 
 def main() -> int:
@@ -506,11 +577,12 @@ def main() -> int:
     parser.add_argument("--artifact-root", type=Path)
     parser.add_argument("--currency", default=None)
     parser.add_argument("--timezone", default=None)
+    parser.add_argument("--review-file", type=Path)
     args = parser.parse_args()
     try:
         result = evaluate_olist_cases(
             args.directory, cases_path=args.cases, artifact_root=args.artifact_root,
-            currency=args.currency, timezone=args.timezone,
+            currency=args.currency, timezone=args.timezone, review_path=args.review_file,
         )
     except (OSError, ValueError, KeyError, InvalidOperation) as error:
         parser.exit(1, f"Olist case evaluation failed: {error}\n")

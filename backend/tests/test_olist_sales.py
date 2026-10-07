@@ -26,6 +26,7 @@ from scripts.evaluate_olist_cases import (
     _check_product_trends,
     _check_sales,
     _source_sales,
+    apply_human_review,
     evaluate_olist_cases,
 )
 from app.db.session import SessionLocal, init_db
@@ -834,6 +835,57 @@ def test_independent_olist_cases_compare_raw_sales_and_refusal(tmp_path: Path) -
     assert any("hot candidate" in failure for failure in _check_hot_products(
         hot_data, previous_source, current_source
     ))
+
+
+def test_olist_case_human_review_is_separate_and_explicit(tmp_path: Path) -> None:
+    report = {
+        "automated_pass": True,
+        "human_review": "pending",
+        "cases": [
+            {"id": "sales", "human_review": {"verdict": "pending"}},
+            {"id": "refusal", "human_review": {"verdict": "pending"}},
+        ],
+    }
+    review = tmp_path / "review.json"
+    review.write_text(
+        '{"reviewer":"reviewer-1","reviewed_at":"2026-10-07T12:00:00Z",'
+        '"cases":[{"id":"sales","verdict":"pass","notes":"事实和边界可核对"}]}'
+    )
+
+    reviewed = apply_human_review(report, review_path=review)
+
+    assert reviewed["automated_pass"] is True
+    assert reviewed["human_review"] == "pending"
+    assert reviewed["human_review_summary"]["verdict_counts"] == {
+        "pass": 1, "fail": 0, "needs_review": 0, "pending": 1
+    }
+    assert reviewed["cases"][0]["human_review"]["reviewer"] == "reviewer-1"
+    assert reviewed["cases"][1]["human_review"]["verdict"] == "pending"
+
+    complete = tmp_path / "complete-review.json"
+    complete.write_text(
+        '{"reviewer":"reviewer-1","reviewed_at":"2026-10-07T12:00:00Z",'
+        '"cases":[{"id":"sales","verdict":"pass"},'
+        '{"id":"refusal","verdict":"needs_review"}]}'
+    )
+    completed = apply_human_review(report, review_path=complete)
+    assert completed["human_review"] == "completed"
+
+    unknown = tmp_path / "unknown-review.json"
+    unknown.write_text(
+        '{"reviewer":"reviewer-1","reviewed_at":"2026-10-07T12:00:00Z",'
+        '"cases":[{"id":"missing","verdict":"pass"}]}'
+    )
+    with pytest.raises(ValueError, match="unknown case"):
+        apply_human_review(report, review_path=unknown)
+
+    invalid = tmp_path / "invalid-review.json"
+    invalid.write_text(
+        '{"reviewer":"reviewer-1","reviewed_at":"2026-10-07T12:00:00Z",'
+        '"cases":[{"id":"sales","verdict":"approved"}]}'
+    )
+    with pytest.raises(ValueError, match="unsupported human review verdict"):
+        apply_human_review(report, review_path=invalid)
 
 
 def test_olist_holdout_backtest_counts_growth_and_disappearance() -> None:
