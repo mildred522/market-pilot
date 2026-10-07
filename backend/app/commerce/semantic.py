@@ -82,7 +82,7 @@ METRIC_DEFINITIONS: tuple[CommerceMetricDefinition, ...] = (
     CommerceMetricDefinition(
         code=CommerceMetricCode.PRODUCT_TRENDS,
         tool_name="commerce_compare_product_trends",
-        aliases=("趋势", "增长", "下降", "变化", "最近"),
+        aliases=("趋势", "增长", "下降", "变化"),
         definition="比较两个等长历史窗口内的商品销售量、销售额和订单变化。",
         includes=("基线窗口", "当前窗口", "商品并集"),
         excludes=("实时行情", "未来预测", "因果效果"),

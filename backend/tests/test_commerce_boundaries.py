@@ -305,6 +305,9 @@ def test_commerce_semantic_aliases_keep_registered_tool_sets() -> None:
         "commerce_compare_product_trends",
         "commerce_analyze_product_sales",
     ]
+    assert route_talk_question("最近商品销售额是多少") == [
+        "commerce_analyze_product_sales"
+    ]
     assert route_talk_question("产品库存够卖多久") == []
 
 
