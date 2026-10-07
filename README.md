@@ -237,7 +237,8 @@ python -m scripts.run_agent_evals
 
 | 质量门 | 当前结果 |
 | --- | ---: |
-| 回归测试 | **494 passed**, 2 skipped |
+| 回归测试 | **590 passed**, 5 skipped |
+| Olist Talk 原始 CSV 自动对账 | **17 / 17**，人工审查仍为 pending |
 | Agent Cases | **53 / 53**，含 23 条对抗案例 |
 | Focused Tool Precision / Recall / Exact-set | **1.000 / 1.000 / 1.000** |
 | Evidence Validity / Safety Pass Rate | **1.000 / 1.000** |
@@ -247,7 +248,7 @@ python -m scripts.run_agent_evals
 | 地图 Provider 专项测试 | **14 / 14** |
 | Next.js Production Build | **Passed** |
 
-离线评测使用脚本化模型和合成业务数据，不消耗外部模型额度。GitHub Actions 将后端回归、Agent 安全门禁、前端生产构建和 Windows 启动器构建拆成四个独立 Job，并上传逐案例评测报告。两项默认跳过的测试分别依赖真实百度地图凭据和显式开启的实时模型评测。
+离线 Agent 安全评测使用脚本化模型和合成业务数据，不消耗外部模型额度；Olist Talk 对账使用本地公开历史 CSV 和只读 DuckDB artifact，不代表实时商家经营结果。GitHub Actions 将后端回归、Agent 安全门禁、前端生产构建和 Windows 启动器构建拆成四个独立 Job，并上传逐案例评测报告。两项默认跳过的测试分别依赖真实百度地图凭据和显式开启的实时模型评测。
 
 > [!IMPORTANT]
 > 报告中的月度利润和保本结果属于基于样本与用户假设的经营规划估算，不等同于财务报表，也不构成投资承诺。

@@ -18,10 +18,11 @@ from app.commerce.providers import OlistDuckDBFactProvider
 from app.commerce.plan import CommercePlanRequest, CommercePlanService
 from app.commerce.sources.olist import OlistSalesFactRepository, OlistSourceAdapter
 from app.commerce.warehouse import CommerceDuckDBArtifactStore
-from app.commerce.metrics import OlistComparisonWindows, TimeWindow
+from app.commerce.metrics import ItemLevel, OlistComparisonWindows, TimeWindow
 from app.commerce.talk import CommerceTalkRequest, CommerceTalkService
 from scripts.evaluate_olist_benchmark import _rolling_holdout_backtest, evaluate_olist_benchmark
 from scripts.evaluate_olist_cases import (
+    _check_hot_products,
     _check_product_trends,
     _check_sales,
     _source_sales,
@@ -767,6 +768,27 @@ def test_independent_olist_cases_compare_raw_sales_and_refusal(tmp_path: Path) -
     ))
     assert any("product union" in failure for failure in _check_product_trends(
         {"items": []}, previous_source, current_source
+    ))
+
+    sku_report = OlistSalesFactRepository(artifacts).product_trends(
+        dataset.snapshot.snapshot_id,
+        current_window,
+        previous_window,
+        item_level=ItemLevel.SKU,
+    )
+    sku_data = {"items": [trend.model_dump(mode="json") for trend in sku_report.trends]}
+    assert _check_product_trends(
+        sku_data, previous_source, current_source, item_level="sku"
+    ) == []
+
+    hot_report = OlistSalesFactRepository(artifacts).hot_products(
+        dataset.snapshot.snapshot_id, current_window, previous_window
+    )
+    hot_data = {"candidates": [candidate.model_dump(mode="json") for candidate in hot_report.candidates]}
+    assert _check_hot_products(hot_data, previous_source, current_source) == []
+    hot_data["candidates"][0]["labels"] = ["revenue_leader"]
+    assert any("hot candidate" in failure for failure in _check_hot_products(
+        hot_data, previous_source, current_source
     ))
 
 

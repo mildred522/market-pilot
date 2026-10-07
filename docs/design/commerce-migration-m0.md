@@ -37,12 +37,11 @@ User → Organization → Store → Project → Snapshot → Analysis / Plan
 - `backend/app/commerce/canonical/` 定义平台无关的商品、SKU、订单和订单明细记录。
 - `CommerceSnapshot` 保存不可变的数据版本元数据；`check_capability` 为后续指标和工作流提供能力降级入口。
 
-这些接口暂不挂入现有 API 路由，也不改变当前餐饮 Agent 的路由行为。
+这些接口通过独立的 `commerce` API 路径逐步接入，不改变当前餐饮 Agent 的路由行为；当前公开能力仍限定在本地 Benchmark 快照和只读分析范围。
 
 ## M0-M3 基线与验收
 
-- Git 基线：`56915d9`（2026-09-29 本地与 `origin/main` 一致）。
-- 既有文档记录的回归基线：494 passed、2 skipped；Agent Eval 53/53。本阶段不重写或降低旧基线。
+- 当前验证基线：后端回归 `590 passed, 5 skipped`；真实 Olist Talk casebook `17/17` 自动通过，人工审查仍为 pending。本阶段不把自动通过解释为建议有效，也不降低旧餐饮回归门禁。
 - 新增接口只做契约级测试，不能要求数据库、外部平台或网络数据。
 - M1 只完成内存中的标准契约和 Snapshot 元数据，不代表已经实现导入、持久化或指标计算。
 - M2 增加标准四表 CSV 包的文件级校验、主外键质量检查、内容哈希和内存 Dataset；导入失败不会生成可用 Snapshot。
