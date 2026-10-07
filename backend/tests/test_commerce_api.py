@@ -149,6 +149,24 @@ def test_benchmark_list_is_empty_when_no_snapshot_is_imported() -> None:
     assert response.json() == []
 
 
+def test_commerce_benchmark_api_requires_a_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTH_DISABLED", "false")
+
+    with TestClient(app) as client:
+        listing = client.get("/commerce/benchmarks")
+        talk = client.post(
+            "/commerce/talk",
+            json=_talk_payload(1, "not-registered"),
+        )
+
+    assert listing.status_code == 401
+    assert listing.headers["www-authenticate"] == "Session"
+    assert talk.status_code == 401
+    assert talk.json()["detail"] == "authentication required"
+
+
 def test_benchmark_list_returns_metadata_only(tmp_path: Path) -> None:
     _write_package(tmp_path)
     dataset = import_csv_package(
