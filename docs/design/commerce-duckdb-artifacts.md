@@ -127,7 +127,7 @@ DuckDB artifact 目前没有保存完整质量审计报告，且旧 `dataset_jso
 
 ## 独立 Talk 案例门禁
 
-`backend/evals/olist_talk_cases.json` 固定了两个历史时间片的 17 个 Talk 案例：商品/SKU 销售与趋势、品类销售与增长、商品热点，以及混合粒度、成本/库存/实时/预测/评价/跨项目等拒答边界。每个案例还给出 `review_focus`、允许声明和禁止声明，供人工审查使用；它不复用滚动留出集的建议阈值。审查量表见 `backend/evals/olist_talk_review_rubric.md`。先按上文导入相同 Olist 数据、生成 DuckDB artifact，再执行：
+`backend/evals/olist_talk_cases.json` 固定了两个历史时间片的 21 个 Talk 案例：商品/SKU 销售与趋势、品类销售与增长、商品热点，以及取消订单、右端时间边界、混合粒度、成本/库存/实时/预测/评价/退款/跨项目等拒答边界。每个案例还给出 `review_focus`、允许声明和禁止声明，供人工审查使用；它不复用滚动留出集的建议阈值。审查量表见 `backend/evals/olist_talk_review_rubric.md`。先按上文导入相同 Olist 数据、生成 DuckDB artifact，再执行：
 
 ```bash
 cd backend
@@ -136,7 +136,7 @@ python -m scripts.evaluate_olist_cases ../data/olist --currency BRL > ../outputs
 
 命令根据输入文件哈希校验 artifact，只读运行 Talk，并独立扫描原始 Olist `orders` / `order_items` CSV，对商品与 SKU 销售逐粒度核对销量、销售额、去重订单数及窗口纳入/排除订单数；商品、SKU 与品类趋势核对两侧事实、并集和变化率；热点案例核对候选并集、标签、排序、置信度、当前事实和增长率。时间窗口按 Olist 原始文件的无时区钟面解释、右端不包含。失败时非零退出，不打印原始订单或顾客数据。输出仅在本地忽略的 `outputs/evals/` 下保存；不可提交原始数据、artifact 或个人评测结果。
 
-**自动通过不等于人工验收。** 每个案例默认保留 `human_review: pending`，需使用独立 review 文件记录审查人员、日期、`pass`/`fail`/`needs_review` 结论和备注；review 合并不会改变自动对账结果，也会保留未审查案例。审查人员需核对证据表达、热点解释有无误导、是否暗示实时/利润/行动效果；当前既没有完整的 50–100 例人工标注，也没有实商家结果。此脚本直接调用服务，不是 API 鉴权或跨租户渗透测试；跨项目关键词拒答只是防误解，真正隔离仍须运行时权限门禁。后续引入另一来源和更大冻结案例集，不应依据这 17 例反复调参后宣称泛化。
+**自动通过不等于人工验收。** 每个案例默认保留 `human_review: pending`，需使用独立 review 文件记录审查人员、日期、`pass`/`fail`/`needs_review` 结论和备注；review 合并不会改变自动对账结果，也会保留未审查案例。审查人员需核对证据表达、热点解释有无误导、是否暗示实时/利润/行动效果；当前既没有完整的 50–100 例人工标注，也没有实商家结果。此脚本直接调用服务，不是 API 鉴权或跨租户渗透测试；跨项目关键词拒答只是防误解，真正隔离仍须运行时权限门禁。后续引入另一来源和更大冻结案例集，不应依据这 21 例反复调参后宣称泛化。
 
 ## 导入方式
 

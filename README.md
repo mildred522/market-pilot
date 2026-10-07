@@ -239,7 +239,7 @@ python -m scripts.run_agent_evals
 | 质量门 | 当前结果 |
 | --- | ---: |
 | 回归测试 | **590 passed**, 5 skipped |
-| Olist Talk 原始 CSV 自动对账 | **17 / 17**，人工审查仍为 pending |
+| Olist Talk 原始 CSV 自动对账 | **21 / 21**，人工审查仍为 pending |
 | Agent Cases | **53 / 53**，含 23 条对抗案例 |
 | Focused Tool Precision / Recall / Exact-set | **1.000 / 1.000 / 1.000** |
 | Evidence Validity / Safety Pass Rate | **1.000 / 1.000** |
