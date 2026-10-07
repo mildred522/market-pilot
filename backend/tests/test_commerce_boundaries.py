@@ -293,6 +293,21 @@ def test_commerce_semantic_query_spec_keeps_sku_scope_and_exclusions() -> None:
     assert "成本" in spec.excludes
 
 
+def test_commerce_semantic_aliases_keep_registered_tool_sets() -> None:
+    assert route_talk_question("哪些产品卖得好") == [
+        "commerce_analyze_product_sales"
+    ]
+    assert route_talk_question("热门商品有哪些") == [
+        "commerce_discover_hot_products",
+        "commerce_analyze_product_sales",
+    ]
+    assert route_talk_question("产品增长趋势如何") == [
+        "commerce_compare_product_trends",
+        "commerce_analyze_product_sales",
+    ]
+    assert route_talk_question("产品库存够卖多久") == []
+
+
 def test_commerce_semantic_gate_binds_snapshot_and_windows(tmp_path: Path) -> None:
     _write_package(tmp_path)
     dataset = import_csv_package(tmp_path, mode=CommerceAnalysisMode.BENCHMARK)

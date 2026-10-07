@@ -74,7 +74,7 @@ METRIC_DEFINITIONS: tuple[CommerceMetricDefinition, ...] = (
     CommerceMetricDefinition(
         code=CommerceMetricCode.HOT_PRODUCTS,
         tool_name="commerce_discover_hot_products",
-        aliases=("热销", "热点", "爆款", "潜力", "选品"),
+        aliases=("热销", "热点", "热门", "爆款", "潜力", "选品"),
         definition="基于当前与基线窗口的销售量、销售额和可复核标签发现历史候选。",
         includes=("历史窗口销售事实", "volume_leader/revenue_leader/momentum 标签"),
         excludes=("利润", "库存", "预测", "因果效果"),
@@ -106,7 +106,7 @@ METRIC_DEFINITIONS: tuple[CommerceMetricDefinition, ...] = (
     CommerceMetricDefinition(
         code=CommerceMetricCode.PRODUCT_SALES,
         tool_name="commerce_analyze_product_sales",
-        aliases=("销售", "销量", "成交", "商品", "SKU"),
+        aliases=("销售", "销量", "成交", "商品", "产品", "货品", "SKU"),
         definition="按商品或 SKU 汇总指定历史窗口内的可成交订单商品事实。",
         includes=("paid/fulfilled 订单", "数量", "商品销售额", "去重订单数"),
         excludes=("成本", "利润", "库存", "退款归因"),
