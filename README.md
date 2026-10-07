@@ -299,6 +299,8 @@ CORS_ORIGINS=http://localhost:3000
 AUTH_COOKIE_SECURE=false
 ```
 
+前端 API 地址单独配置在 `frontend/.env.local`，可参考 `frontend/.env.example`。本地开发未配置时默认访问 `http://127.0.0.1:8000`；Vercel 或其他公网部署必须设置 `NEXT_PUBLIC_API_BASE_URL` 为后端的完整 HTTPS 地址，并同步配置后端 `CORS_ORIGINS`、`AUTH_COOKIE_SECURE=true` 及跨站 Cookie 策略。公网前端没有配置该变量时会明确提示配置缺失，不会尝试访问访客自己的本机地址。
+
 - 支持 OpenAI-compatible Chat Completions 接口。
 - Planner、Synthesizer、Follow-up 可以分别配置模型。
 - 模型未配置、调用失败、Schema 错误或引用无效时自动降级。

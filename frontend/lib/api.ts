@@ -1,6 +1,7 @@
 import type { AgentRunDetail, AgentRunSummary, AnalysisFollowupResponse, AnalysisReport, AuthenticatedUser, CommerceBenchmarkSnapshotSummary, CommerceCategorySalesReport, CommerceComparisonWindows, CommerceHotProductReport, CommerceInteractionRequest, CommercePlanListResponse, CommercePlanPracticeCreate, CommercePlanPracticeListResponse, CommercePlanPracticeRecord, CommercePlanResponse, CommerceProductSalesReport, CommerceProductTrendReport, CommerceSelectionRecommendationReport, CommerceTalkResponse, ConversationHistory, CorrectionConfirmation, CorrectionProposal, DashboardOverview, IntegrationStatus, IntegrationTestResult, LocationResult, ManualLocationRequest, OperatingAnalysisMode, OperatingCostAssumptions, OperatingFileSelection, PreOpenInput, PreOpenReport, Project, ProjectAnalyses, ProjectHistoryPage, RecommendationRequest, Stage, UploadedFileResult } from "./types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim()
+  || (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8000" : "");
 
 export class ApiRequestError extends Error {
   constructor(message: string, public readonly status: number) {
@@ -54,6 +55,9 @@ export interface AgentAnalyzeResponse<T = unknown> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (!API_BASE_URL) {
+    throw new Error("未配置分析服务地址，请设置 NEXT_PUBLIC_API_BASE_URL 后重新部署前端。");
+  }
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
