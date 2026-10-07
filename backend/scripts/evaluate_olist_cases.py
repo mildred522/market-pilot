@@ -92,6 +92,64 @@ def _check_sales(data: dict[str, Any], source: dict[str, Any]) -> list[str]:
     return failures[:10]
 
 
+def _check_product_trends(
+    data: dict[str, Any], previous: dict[str, Any], current: dict[str, Any]
+) -> list[str]:
+    previous_products = previous["products"]
+    current_products = current["products"]
+    items = data["items"]
+    observed = {item["item_id"]: item for item in items}
+    product_ids = set(previous_products) | set(current_products)
+    failures: list[str] = []
+    if set(observed) != product_ids or len(items) != len(product_ids):
+        failures.append("product trend IDs differ from raw product union")
+    for product_id in product_ids & set(observed):
+        item = observed[product_id]
+        expected_category = (current_products.get(product_id) or previous_products[product_id])["category_name"]
+        if (
+            item["product_id"] != product_id
+            or item["item_level"] != "product"
+            or item["category_name"] != expected_category
+        ):
+            failures.append(f"product {product_id} trend grain differs from raw order items")
+        for side, products in (("previous", previous_products), ("current", current_products)):
+            actual = item[side]
+            expected = products.get(product_id)
+            if (actual is None) != (expected is None):
+                failures.append(f"product {product_id} {side} presence differs from raw orders")
+            elif actual is not None and expected is not None and (
+                actual["item_id"] != product_id
+                or actual["product_id"] != product_id
+                or actual["item_level"] != "product"
+                or actual["category_name"] != expected["category_name"]
+                or Decimal(actual["units_sold"]) != expected["units_sold"]
+                or Decimal(actual["gross_amount"]) != expected["gross_amount"]
+                or actual["order_count"] != len(expected["orders"])
+            ):
+                failures.append(f"product {product_id} {side} differs from raw orders")
+        baseline = previous_products.get(product_id)
+        latest = current_products.get(product_id)
+        for field, rate_field in (
+            ("units_sold", "units_growth_rate"),
+            ("gross_amount", "gross_amount_growth_rate"),
+            ("orders", "order_growth_rate"),
+        ):
+            baseline_value = None if baseline is None else (
+                len(baseline[field]) if field == "orders" else baseline[field]
+            )
+            latest_value = None if latest is None else (
+                len(latest[field]) if field == "orders" else latest[field]
+            )
+            expected_rate = (
+                (Decimal(latest_value) - Decimal(baseline_value)) / Decimal(baseline_value)
+                if baseline_value and latest_value is not None else None
+            )
+            actual_rate = item[rate_field]
+            if (Decimal(actual_rate) if actual_rate is not None else None) != expected_rate:
+                failures.append(f"product {product_id} {rate_field} differs from raw orders")
+    return failures[:10]
+
+
 def _source_categories(source: dict[str, Any]) -> dict[str | None, dict[str, Any]]:
     expected: dict[str | None, dict[str, Any]] = defaultdict(
         lambda: {"products": set(), "orders": set(), "units_sold": 0, "gross_amount": Decimal(0)}
@@ -261,6 +319,15 @@ def evaluate_olist_cases(
                     failures.extend(_check_category_trends(
                         execution.data, source_cache[previous_key], source_cache[current_key]
                     ))
+                elif execution.tool_name == "commerce_compare_product_trends":
+                    if case.get("item_level", "product") != "product":
+                        continue
+                    previous_key = (case["window"], "previous")
+                    if previous_key not in source_cache:
+                        source_cache[previous_key] = _source_sales(directory, previous)
+                    failures.extend(_check_product_trends(
+                        execution.data, source_cache[previous_key], source_cache[current_key]
+                    ))
         elif response.executions:
             failures.append("refused case executed a tool")
         results.append({
@@ -279,7 +346,7 @@ def evaluate_olist_cases(
         "automated_pass": all(result["passed"] for result in results),
         "human_review": "pending",
         "cases": results,
-        "limitations": "CSV 对账验证历史商品与品类销量、销售额、订单数、品类窗口变化率及拒答边界；热点解释、建议是否误导须人工审查，不能证明经营收益。",
+        "limitations": "CSV 对账验证历史商品与品类销量、销售额、订单数、双窗变化率及拒答边界；SKU 趋势和热点标签尚未独立对账，建议是否误导须人工审查，不能证明经营收益。",
     }
 
 

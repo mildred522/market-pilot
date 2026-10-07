@@ -21,7 +21,12 @@ from app.commerce.warehouse import CommerceDuckDBArtifactStore
 from app.commerce.metrics import OlistComparisonWindows, TimeWindow
 from app.commerce.talk import CommerceTalkRequest, CommerceTalkService
 from scripts.evaluate_olist_benchmark import _rolling_holdout_backtest, evaluate_olist_benchmark
-from scripts.evaluate_olist_cases import _check_sales, evaluate_olist_cases
+from scripts.evaluate_olist_cases import (
+    _check_product_trends,
+    _check_sales,
+    _source_sales,
+    evaluate_olist_cases,
+)
 from app.db.session import SessionLocal, init_db
 from app.main import app
 from app.commerce.repository import CommerceBenchmarkRepository
@@ -716,10 +721,13 @@ def test_independent_olist_cases_compare_raw_sales_and_refusal(tmp_path: Path) -
     casebook = tmp_path / "cases.json"
     casebook.write_text(
         '{"version":1,"windows":{"one":{"previous":'
-        '{"start":"2018-01-01T12:00:00","end":"2018-01-02T00:00:00"},'
-        '"current":{"start":"2018-01-02T00:00:00","end":"2018-01-03T00:00:00"}}},'
+        '{"start":"2018-01-01T12:00:00","end":"2018-01-02T12:00:00"},'
+        '"current":{"start":"2018-01-02T12:00:00","end":"2018-01-03T12:00:00"}}},'
         '"cases":[{"id":"sales","window":"one","question":"商品销售如何？",'
         '"expected_status":"completed","expected_tools":["commerce_analyze_product_sales"]},'
+        '{"id":"trends","window":"one","question":"商品增长趋势如何？",'
+        '"expected_status":"completed","expected_tools":'
+        '["commerce_compare_product_trends","commerce_analyze_product_sales"]},'
         '{"id":"scope","window":"one","question":"给我别的项目销售",'
         '"expected_status":"insufficient_data","expected_tools":[]}]}'
     )
@@ -735,6 +743,31 @@ def test_independent_olist_cases_compare_raw_sales_and_refusal(tmp_path: Path) -
         {"included_order_count": 1, "excluded_order_count": 1, "metrics": []},
         {"included": 0, "excluded": 1, "products": {}},
     ) == ["included order count differs from raw orders"]
+
+    previous_window = TimeWindow(start=datetime(2018, 1, 1, 12), end=datetime(2018, 1, 2, 12))
+    current_window = TimeWindow(start=datetime(2018, 1, 2, 12), end=datetime(2018, 1, 3, 12))
+    previous_source = _source_sales(source, previous_window)
+    current_source = _source_sales(source, current_window)
+    report = OlistSalesFactRepository(artifacts).product_trends(
+        dataset.snapshot.snapshot_id, current_window, previous_window
+    )
+    data = {"items": [trend.model_dump(mode="json") for trend in report.trends]}
+    assert _check_product_trends(data, previous_source, current_source) == []
+    data["items"][0]["gross_amount_growth_rate"] = "0"
+    assert any("gross_amount_growth_rate" in failure for failure in _check_product_trends(
+        data, previous_source, current_source
+    ))
+    data["items"][0]["previous"]["gross_amount"] = "999"
+    assert any("previous differs" in failure for failure in _check_product_trends(
+        data, previous_source, current_source
+    ))
+    data["items"][0]["category_name"] = "wrong"
+    assert any("trend grain" in failure for failure in _check_product_trends(
+        data, previous_source, current_source
+    ))
+    assert any("product union" in failure for failure in _check_product_trends(
+        {"items": []}, previous_source, current_source
+    ))
 
 
 def test_olist_holdout_backtest_counts_growth_and_disappearance() -> None:

@@ -109,7 +109,7 @@ GET /commerce/benchmarks/{snapshot_id}/selection-recommendations
 
 Talk 和 Plan 通过 `CommerceFactProvider` 选择事实来源：标准 CSV 快照继续使用内存 Dataset，`olist-canonical-v2` 快照使用只读 DuckDB artifact。这样 API 工作台、Talk 工具和 Plan 草案不会各自实现一套商品销售口径；artifact 不可用时，调用会显式失败，不回退到不一致的空数据。
 
-Talk 目前先落地轻量语义层：`backend/app/commerce/semantic.py` 注册 `commerce.product_sales`、`commerce.category_sales`、`commerce.category_trends`、`commerce.product_trends` 和 `commerce.hot_products` 五个指标代号，维护别名、版本、来源、时间字段、成交状态、粒度、可用维度、证据字段、币种策略和包含/排除项。问句先解析为冻结的 `CommerceQuerySpec`，再绑定请求项目、快照和两个时间窗，最后选择已有工具；模型不生成 SQL，成本、库存、实时和预测问题仍直接拒答。运行时门禁要求快照为 ready、请求快照与事实快照一致、来源受该指标支持、两个窗口不重叠且各不超过 366 天；趋势和热点必须使用等长窗口。品类趋势由两窗统一品类销售事实构成，按品类并集呈现；无基线、基线为零或币种不一致时不计算变化率，不推断未来走势。工具返回后还会校验集合结构、商品/SKU/品类粒度、核心数值字段和比较两侧，失败时拒绝把结果包装成完成状态。响应将代号、版本和口径展示给前端，便于人工审查；这不是完整数仓语义层，尚未覆盖租户级 SQL 编译、租户数据库权限或商家数据。
+Talk 目前先落地轻量语义层：`backend/app/commerce/semantic.py` 注册 `commerce.product_sales`、`commerce.category_sales`、`commerce.category_trends`、`commerce.product_trends` 和 `commerce.hot_products` 五个指标代号，维护别名、版本、来源、时间字段、成交状态、粒度、可用维度、证据字段、币种策略和包含/排除项。问句先解析为冻结的 `CommerceQuerySpec`，再绑定请求项目、快照和两个时间窗，最后选择已有工具；模型不生成 SQL，成本、库存、实时和预测问题仍直接拒答。运行时门禁要求快照为 ready、请求快照与事实快照一致、来源受该指标支持、两个窗口不重叠且各不超过 366 天；趋势和热点必须使用等长窗口。品类趋势由两窗统一品类销售事实构成，按品类并集呈现；无基线或基线为零时不计算相应变化率，币种不一致时仅不计算销售额变化率，不推断未来走势。工具返回后还会校验集合结构、商品/SKU/品类粒度、核心数值字段和比较两侧，失败时拒绝把结果包装成完成状态。响应将代号、版本和口径展示给前端，便于人工审查；这不是完整数仓语义层，尚未覆盖租户级 SQL 编译、租户数据库权限或商家数据。
 
 控制面读取与事实层解耦：SQLite 快照记录另存轻量 `snapshot_json`，列表、Olist 指标入口和 Olist Talk/Plan 只读取元数据，不再反序列化整份订单 JSON；标准四表快照仍按原有 Dataset 路径计算。启动时兼容迁移从旧记录的 `dataset_json` 一次性回填元数据，保留完整旧数据及导入幂等性。当前改造降低请求内存与延迟，**不缩减 SQLite 文件体积**；如需删除 Olist 的冗余 JSON，必须先验证 artifact 可恢复性和迁移/回滚路径。
 
@@ -134,7 +134,7 @@ cd backend
 python -m scripts.evaluate_olist_cases ../data/olist --currency BRL > ../outputs/evals/olist-cases-v3.json
 ```
 
-命令根据输入文件哈希校验 artifact，只读运行 Talk，并独立扫描原始 Olist `orders` / `order_items` CSV，对出现销售工具的案例逐商品对账销量、销售额、去重订单数，以及窗口内的纳入/排除订单数；时间窗口按 Olist 原始文件的无时区钟面解释、右端不包含。其他案例检查工具路由、拒答和快照/项目证据。失败时非零退出，不打印原始订单或顾客数据。输出仅在本地忽略的 `outputs/evals/` 下保存；不可提交原始数据、artifact 或个人评测结果。
+命令根据输入文件哈希校验 artifact，只读运行 Talk，并独立扫描原始 Olist `orders` / `order_items` CSV，对销售案例逐商品核对销量、销售额、去重订单数及窗口纳入/排除订单数；商品与品类趋势还核对两侧事实、并集和变化率。时间窗口按 Olist 原始文件的无时区钟面解释、右端不包含。SKU 趋势及热点标签尚未独立对账，相关案例仍检查工具路由、拒答和快照/项目证据。失败时非零退出，不打印原始订单或顾客数据。输出仅在本地忽略的 `outputs/evals/` 下保存；不可提交原始数据、artifact 或个人评测结果。
 
 **自动通过不等于人工验收。** 每个案例保留 `human_review: pending`，需独立审查人员核对证据表达、热点解释有无误导、是否暗示实时/利润/行动效果，并记录反例与审查日期；当前既没有完整的 50–100 例人工标注，也没有实商家结果。此脚本直接调用服务，不是 API 鉴权或跨租户渗透测试；跨项目关键词拒答只是防误解，真正隔离仍须运行时权限门禁。后续引入另一来源和更大冻结案例集，不应依据这 16 例反复调参后宣称泛化。
 
