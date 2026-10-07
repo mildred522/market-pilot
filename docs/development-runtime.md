@@ -21,6 +21,15 @@ including added Python modules. Generated files, uploads and database writes do
 not trigger reloads. Frontend development uses Next HMR and `.next-dev`; production
 builds use `.next` so a build cannot overwrite the development runtime cache.
 
+If port `8000` is already occupied by another checkout, start this backend on an explicit alternate port and point the frontend at it:
+
+```bash
+MARKET_PILOT_API_PORT=8001 backend/.venv/bin/python backend/dev.py
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8001 npm --prefix frontend run dev
+```
+
+The default remains `127.0.0.1:8000`; changing the port does not change authentication or data-scope behavior.
+
 Python/TypeScript source and route changes update automatically. Restart after
 changing dependencies, environment variables or startup configuration. Database
 schema changes still require an explicit compatible migration. Vercel requires
