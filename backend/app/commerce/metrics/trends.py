@@ -52,11 +52,10 @@ def _category_growth(
     current: CategorySalesMetric | None,
     field: str,
 ) -> Decimal | None:
-    if (
-        previous is None
-        or current is None
-        or not previous.currency
-        or previous.currency != current.currency
+    if previous is None or current is None:
+        return None
+    if field == "gross_amount" and (
+        not previous.currency or not current.currency or previous.currency != current.currency
     ):
         return None
     previous_value = Decimal(str(getattr(previous, field)))

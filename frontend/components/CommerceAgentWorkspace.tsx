@@ -308,10 +308,10 @@ export function CommerceAgentWorkspace({ snapshotId, comparison }: { snapshotId:
             </div>
           ) : null}
           <form className="commerce-agent-form" onSubmit={(event) => void submit(event)}>
-            <label htmlFor="commerce-agent-question">{mode === "talk" ? "关于商品销售、趋势或热点提问" : "计划目标"}</label>
+          <label htmlFor="commerce-agent-question">{mode === "talk" ? "关于商品、品类销售、趋势或热点提问" : "计划目标"}</label>
             <textarea id="commerce-agent-question" maxLength={2000} onChange={(event) => setQuestion(event.target.value)} required rows={3} value={question} />
             <div className="commerce-agent-prompts">
-              {(["哪些商品销售额领先？", "最近哪些商品增长较快？", "有哪些热点商品候选？"] as const).map((prompt) => (
+              {(["哪些商品销售额领先？", "哪些品类销售额增长了？", "最近哪些商品增长较快？", "有哪些热点商品候选？"] as const).map((prompt) => (
                 <button key={prompt} onClick={() => setQuestion(prompt)} type="button">{prompt}</button>
               ))}
             </div>

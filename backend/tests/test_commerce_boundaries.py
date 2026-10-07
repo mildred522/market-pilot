@@ -512,6 +512,7 @@ def test_category_trends_omit_undefined_and_cross_currency_rates() -> None:
     assert trends["zero"].gross_amount_growth_rate is None
     assert trends["zero"].units_growth_rate == Decimal("1")
     assert trends["mixed"].gross_amount_growth_rate is None
-    assert trends["mixed"].order_growth_rate is None
+    assert trends["mixed"].units_growth_rate == Decimal("1")
+    assert trends["mixed"].order_growth_rate == Decimal("1")
     with pytest.raises(ValueError, match="same snapshot"):
         compare_category_sales_reports(previous, current.model_copy(update={"snapshot_id": "other"}))
