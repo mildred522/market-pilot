@@ -254,6 +254,14 @@ def test_olist_sales_endpoint_reads_shared_benchmark_fact(tmp_path: Path, monkey
                 "end": "2018-01-03T00:00:00Z",
             },
         )
+        sku_response = client.get(
+            f"/commerce/benchmarks/{dataset.snapshot.snapshot_id}/sales",
+            params={
+                "start": "2018-01-01T00:00:00Z",
+                "end": "2018-01-03T00:00:00Z",
+                "item_level": "sku",
+            },
+        )
         categories_response = client.get(
             f"/commerce/benchmarks/{dataset.snapshot.snapshot_id}/category-sales",
             params={
@@ -268,6 +276,30 @@ def test_olist_sales_endpoint_reads_shared_benchmark_fact(tmp_path: Path, monkey
             f"/commerce/benchmarks/{dataset.snapshot.snapshot_id}/trends",
             params={"start": "2018-01-01T00:00:00", "end": "2018-01-03T00:00:00"},
         )
+        sku_trends_response = client.get(
+            f"/commerce/benchmarks/{dataset.snapshot.snapshot_id}/trends",
+            params={
+                "start": "2018-01-01T00:00:00",
+                "end": "2018-01-03T00:00:00",
+                "item_level": "sku",
+            },
+        )
+        sku_hot_response = client.get(
+            f"/commerce/benchmarks/{dataset.snapshot.snapshot_id}/hot-products",
+            params={
+                "start": "2018-01-01T00:00:00",
+                "end": "2018-01-03T00:00:00",
+                "item_level": "sku",
+            },
+        )
+        sku_selection_response = client.get(
+            f"/commerce/benchmarks/{dataset.snapshot.snapshot_id}/selection-recommendations",
+            params={
+                "start": "2018-01-01T00:00:00",
+                "end": "2018-01-03T00:00:00",
+                "item_level": "sku",
+            },
+        )
         category_trends_response = client.get(
             f"/commerce/benchmarks/{dataset.snapshot.snapshot_id}/category-trends",
             params={"start": "2018-01-01T00:00:00", "end": "2018-01-03T00:00:00"},
@@ -280,6 +312,11 @@ def test_olist_sales_endpoint_reads_shared_benchmark_fact(tmp_path: Path, monkey
     assert body["excluded_order_count"] == 1
     assert body["metrics"][0]["product_id"] == "p-1"
     assert Decimal(str(body["metrics"][0]["gross_amount"])) == Decimal("10.0000")
+    assert sku_response.status_code == 200
+    sku_body = sku_response.json()
+    assert sku_body["item_level"] == "sku"
+    assert sku_body["metrics"][0]["item_id"] == "olist:p-1"
+    assert sku_body["metrics"][0]["product_id"] == "p-1"
     assert categories_response.status_code == 200
     assert categories_response.json()["categories"][0]["category_name"] == "beauty"
     assert Decimal(str(categories_response.json()["categories"][0]["gross_amount"])) == Decimal("10.0000")
@@ -287,6 +324,13 @@ def test_olist_sales_endpoint_reads_shared_benchmark_fact(tmp_path: Path, monkey
     assert windows_response.json()["selection_method"] == "split_coverage"
     assert windows_response.json()["warning"]
     assert trends_response.status_code == 200
+    assert sku_trends_response.status_code == 200
+    assert sku_trends_response.json()["item_level"] == "sku"
+    assert sku_trends_response.json()["trends"][0]["item_id"] == "olist:p-1"
+    assert sku_hot_response.status_code == 200
+    assert sku_hot_response.json()["item_level"] == "sku"
+    assert sku_selection_response.status_code == 200
+    assert sku_selection_response.json()["item_level"] == "sku"
     assert category_trends_response.status_code == 200
     assert category_trends_response.json()["snapshot_id"] == dataset.snapshot.snapshot_id
     assert category_trends_response.json()["trends"][0]["category_name"] == "beauty"
