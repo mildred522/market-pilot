@@ -9,15 +9,34 @@ type Mode = "login" | "register";
 export function AuthGate({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [checked, setChecked] = useState(false);
+  const [gatewayError, setGatewayError] = useState("");
 
   useEffect(() => {
     void getCurrentUser()
       .then(setUser)
-      .catch(() => setUser(null))
+      .catch((caught) => {
+        if (caught instanceof ApiRequestError && caught.status === 401) {
+          setUser(null);
+          return;
+        }
+        setGatewayError(caught instanceof Error ? caught.message : "无法连接身份服务，请稍后重试。");
+      })
       .finally(() => setChecked(true));
   }, []);
 
   if (!checked) return <main className="auth-loading" aria-live="polite">正在确认工作区身份...</main>;
+  if (gatewayError) {
+    return (
+      <main className="auth-loading auth-gateway-error" role="alert">
+        <section>
+          <p className="kicker">Workspace unavailable</p>
+          <h1>暂时无法连接工作区</h1>
+          <p>{gatewayError}</p>
+          <button onClick={() => window.location.reload()} type="button">重试</button>
+        </section>
+      </main>
+    );
+  }
   if (!user) return <AuthenticationForm onAuthenticated={setUser} />;
   return <>{children}</>;
 }

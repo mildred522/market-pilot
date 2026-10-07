@@ -36,6 +36,12 @@ body {
   font-size: 15px;
 }
 
+.auth-gateway-error { padding: 24px; text-align: center; }
+.auth-gateway-error section { max-width: 520px; }
+.auth-gateway-error h1 { margin: 10px 0 0; color: var(--ink); font-size: 28px; }
+.auth-gateway-error p:not(.kicker) { line-height: 1.7; }
+.auth-gateway-error button { min-height: 40px; margin-top: 12px; padding: 8px 18px; border: 1px solid var(--accent-strong); border-radius: 4px; background: var(--accent-strong); color: #fff; cursor: pointer; font: inherit; font-weight: 700; }
+
 .auth-shell {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(360px, .9fr);
