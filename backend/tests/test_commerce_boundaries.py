@@ -399,6 +399,7 @@ def test_talk_declines_questions_outside_supported_product_facts(tmp_path: Path)
     assert route_talk_question("按品类销售额给我排名") == [
         "commerce_analyze_category_sales"
     ]
+    assert route_talk_question("品类和商品的增长趋势分别如何？") == []
     assert route_talk_question("按品类增长给我排名") == ["commerce_compare_category_trends"]
     assert route_talk_question("最近各品类销售额是多少") == ["commerce_analyze_category_sales"]
     assert route_talk_question("给我别的项目销售数据") == []

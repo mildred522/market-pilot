@@ -116,6 +116,14 @@ METRIC_DEFINITIONS: tuple[CommerceMetricDefinition, ...] = (
 
 def resolve_commerce_query(question: str, *, item_level: ItemLevel) -> CommerceQuerySpec | None:
     normalized = question.lower()
+    if any(
+        marker in normalized
+        for marker in (
+            "品类和商品", "商品和品类", "品类与商品", "商品与品类",
+            "品类和sku", "sku和品类",
+        )
+    ):
+        return None
     selected: list[CommerceMetricDefinition] = []
     matched_aliases: list[str] = []
     for definition in METRIC_DEFINITIONS:
