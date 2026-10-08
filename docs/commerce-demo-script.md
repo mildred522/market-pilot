@@ -5,11 +5,11 @@
 
 ## 演示前准备
 
-1. 确认已依法取得 Olist CSV，并放在仓库外的本地目录；原始文件、DuckDB artifact 和本地数据库不提交 Git。
+1. 确认已依法取得 Olist CSV，并放在仓库外或被 Git 忽略的本地目录；原始文件、DuckDB artifact 和本地数据库不提交 Git。
 2. 在 `backend` 目录导入快照：
 
    ```bash
-   .venv/bin/python -m scripts.import_commerce_benchmark <Olist数据目录>
+   .venv/bin/python -m scripts.import_olist_benchmark <Olist数据目录> --currency BRL
    ```
 
 3. 运行独立 Talk 对账：
