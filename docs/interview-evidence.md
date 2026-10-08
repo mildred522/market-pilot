@@ -55,7 +55,7 @@ cd ../frontend
 npm run build
 ```
 
-本地完整回归结果为 **494 passed, 2 skipped**。GitHub Actions 设置四个独立门禁：
+当前本地完整回归结果为 **594 passed, 5 skipped**。GitHub Actions 设置四个独立门禁：
 `backend-tests`、`agent-safety-eval`、`frontend-build` 和 `launcher-build`；安全评测 Job 会上传逐案例 JSON/Markdown Artifact。
 
 机器生成的逐案例 JSON/Markdown 位于 `outputs/evals/`，该目录内容默认不提交，避免把每次

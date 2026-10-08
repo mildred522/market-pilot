@@ -10,7 +10,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.128-009688?style=flat-square&logo=fastapi&logoColor=white)](backend/requirements.txt)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)](frontend/package.json)
 [![Quality Gate](https://github.com/mildred522/market-pilot/actions/workflows/quality.yml/badge.svg)](https://github.com/mildred522/market-pilot/actions/workflows/quality.yml)
-[![Tests](https://img.shields.io/badge/tests-494%20passed-22C55E?style=flat-square)](docs/interview-evidence.md)
+[![Tests](https://img.shields.io/badge/tests-594%20passed-22C55E?style=flat-square)](docs/interview-evidence.md)
 [![Agent Eval](https://img.shields.io/badge/Agent%20Eval-53%2F53-7C3AED?style=flat-square)](docs/agent-evaluation.md)
 [![Last Commit](https://img.shields.io/github/last-commit/mildred522/market-pilot?style=flat-square&color=17695B)](https://github.com/mildred522/market-pilot/commits/main)
 
@@ -25,7 +25,7 @@
 Market Pilot 是面向单店餐饮的全生命周期决策 Agent。开店前，它评估投资、加盟与商圈潜力；开店后，它读取订单、菜单成本和评论，调用确定性工具计算经营指标，再由 LLM 生成有引用、可修订的行动建议。
 
 > [!NOTE]
-> 这不是“上传 CSV 后让模型自由发挥”的聊天壳。营业额、毛利率、保本线与渠道贡献由程序计算，模型只负责受限规划和证据综合；当前 494 项回归测试与 53 条 Agent Cases 均通过，其中包含 23 条对抗案例。
+> 这不是“上传 CSV 后让模型自由发挥”的聊天壳。营业额、毛利率、保本线与渠道贡献由程序计算，模型只负责受限规划和证据综合；当前 594 项回归测试与 53 条 Agent Cases 均通过，其中包含 23 条对抗案例。
 
 > [!TIP]
 > 当前版本新增百度地图 MCP Provider：选址业务统一依赖 `LocationProvider`，可在 WebAPI、官方 MCP Server 和受控 fallback 三种模式间切换。MCP 原始响应必须先归一化为项目 POI 契约，LLM 和评分层不会直接消费外部工具返回。
@@ -238,7 +238,7 @@ python -m scripts.run_agent_evals
 
 | 质量门 | 当前结果 |
 | --- | ---: |
-| 回归测试 | **590 passed**, 5 skipped |
+| 回归测试 | **594 passed**, 5 skipped |
 | Olist Talk 原始 CSV 自动对账 | **21 / 21**，人工审查仍为 pending |
 | Agent Cases | **53 / 53**，含 23 条对抗案例 |
 | Focused Tool Precision / Recall / Exact-set | **1.000 / 1.000 / 1.000** |
