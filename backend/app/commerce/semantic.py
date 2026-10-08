@@ -14,6 +14,10 @@ from app.commerce.snapshot import CommerceSnapshot
 
 SEMANTIC_VERSION = "commerce-semantic-v1"
 MAX_QUERY_WINDOW_DAYS = 366
+UNSUPPORTED_COMMERCE_PLAN_MARKERS = (
+    "成本", "利润", "毛利", "库存", "退款", "退货", "评价", "履约", "物流",
+    "实时", "今天", "预测", "采购", "补货", "改价", "调价", "投放", "广告", "下架",
+)
 
 
 class CommerceMetricCode(StrEnum):
@@ -175,6 +179,17 @@ def resolve_commerce_query(question: str, *, item_level: ItemLevel) -> CommerceQ
 def tool_names_for_query(spec: CommerceQuerySpec) -> list[str]:
     by_code = {definition.code: definition.tool_name for definition in METRIC_DEFINITIONS}
     return [by_code[code] for code in spec.metric_codes]
+
+
+def resolve_commerce_plan_query(
+    question: str, *, item_level: ItemLevel
+) -> CommerceQuerySpec | None:
+    """Resolve only plan goals that remain evidence-bound and non-executing."""
+
+    normalized = question.lower()
+    if any(marker in normalized for marker in UNSUPPORTED_COMMERCE_PLAN_MARKERS):
+        return None
+    return resolve_commerce_query(question, item_level=item_level)
 
 
 def bind_commerce_query(

@@ -29,6 +29,7 @@ from app.commerce.metrics import (
     compute_sales_report,
     discover_hot_products,
 )
+from app.commerce.semantic import resolve_commerce_plan_query
 from app.commerce.metrics.contracts import ItemLevel
 from app.commerce.tools import (
     CommerceToolContext,
@@ -309,6 +310,15 @@ def test_commerce_semantic_aliases_keep_registered_tool_sets() -> None:
         "commerce_analyze_product_sales"
     ]
     assert route_talk_question("产品库存够卖多久") == []
+
+
+def test_commerce_plan_question_uses_the_same_evidence_boundary() -> None:
+    assert resolve_commerce_plan_query(
+        "为热销商品制定未来两周的验证计划", item_level=ItemLevel.SKU
+    ) is not None
+    assert resolve_commerce_plan_query(
+        "自动采购库存充足的热销商品", item_level=ItemLevel.SKU
+    ) is None
 
 
 def test_commerce_semantic_gate_binds_snapshot_and_windows(tmp_path: Path) -> None:

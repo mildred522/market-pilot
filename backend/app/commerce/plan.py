@@ -10,6 +10,7 @@ from app.commerce.contracts import CommerceInteraction, InteractionMode
 from app.commerce.ingestion import CommerceDataset
 from app.commerce.metrics import ItemLevel, TimeWindow, discover_hot_products
 from app.commerce.providers import CommerceFactProvider
+from app.commerce.semantic import resolve_commerce_plan_query
 from app.commerce.snapshot import CommerceSnapshot
 
 
@@ -17,6 +18,10 @@ class CommercePlanStatus(StrEnum):
     DRAFT = "draft"
     APPROVED = "approved"
     INSUFFICIENT_DATA = "insufficient_data"
+
+
+class CommercePlanQuestionError(ValueError):
+    """Raised when a plan goal is outside the registered commerce scope."""
 
 
 class CommercePlanStep(BaseModel):
@@ -138,6 +143,12 @@ class CommercePlanService:
         dataset: CommerceDataset | CommerceSnapshot,
         provider: CommerceFactProvider | None = None,
     ) -> CommercePlanDraft:
+        if resolve_commerce_plan_query(
+            request.question, item_level=request.item_level
+        ) is None:
+            raise CommercePlanQuestionError(
+                "commerce plan question must reference a supported sales, trend, or hot-product signal"
+            )
         if isinstance(dataset, CommerceSnapshot) and provider is None:
             raise ValueError("Olist analysis requires a DuckDB fact provider")
         selection_report = (

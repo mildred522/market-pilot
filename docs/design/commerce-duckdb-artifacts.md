@@ -107,7 +107,7 @@ GET /commerce/benchmarks/{snapshot_id}/selection-recommendations
 增长核验与下降复核要求两侧各至少 3 笔订单且销量、销售额同向变化至少 20%；新品验证需要当前至少 3 笔订单。低样本不强行输出动作。单窗增长仅触发 `verify_growth`，不再触发 `scale_test`；它既不预测下一期走势，也不建议扩大备货或投放。若未来补齐连续窗口、成本、库存和流量证据，可另行设计带预算、停止条件的受控试验。
 当前销售事实不足以推断商业紧迫度，建议统一采用中优先级；排序以两窗之间已发生的销售额绝对变化为依据（缺失视为零），不为展示而配额凑齐不同建议类型。
 
-Talk 和 Plan 通过 `CommerceFactProvider` 选择事实来源：标准 CSV 快照继续使用内存 Dataset，`olist-canonical-v2` 快照使用只读 DuckDB artifact。这样 API 工作台、Talk 工具和 Plan 草案不会各自实现一套商品销售口径；artifact 不可用时，调用会显式失败，不回退到不一致的空数据。
+Talk 和 Plan 通过 `CommerceFactProvider` 选择事实来源：标准 CSV 快照继续使用内存 Dataset，`olist-canonical-v2` 快照使用只读 DuckDB artifact。这样 API 工作台、Talk 工具和 Plan 草案不会各自实现一套商品销售口径；artifact 不可用时，调用会显式失败，不回退到不一致的空数据。Plan 生成前还复用同一受限语义解析，只允许销售、趋势和热点信号；利润、库存、退款、预测、采购、改价和投放等问题即使由管理员提交也会被拒绝。
 
 Talk 目前先落地轻量语义层：`backend/app/commerce/semantic.py` 注册 `commerce.product_sales`、`commerce.category_sales`、`commerce.category_trends`、`commerce.product_trends` 和 `commerce.hot_products` 五个指标代号，维护别名、版本、来源、时间字段、成交状态、粒度、可用维度、证据字段、币种策略和包含/排除项。问句先解析为冻结的 `CommerceQuerySpec`，再绑定请求项目、快照和两个时间窗，最后选择已有工具；模型不生成 SQL，成本、库存、实时和预测问题仍直接拒答。运行时门禁要求快照为 ready、请求快照与事实快照一致、来源受该指标支持、两个窗口不重叠且各不超过 366 天；趋势和热点必须使用等长窗口。品类趋势由两窗统一品类销售事实构成，按品类并集呈现；无基线或基线为零时不计算相应变化率，币种不一致时仅不计算销售额变化率，不推断未来走势。工具返回后还会校验集合结构、商品/SKU/品类粒度、核心数值字段和比较两侧，失败时拒绝把结果包装成完成状态。响应将代号、版本和口径展示给前端，便于人工审查；这不是完整数仓语义层，尚未覆盖租户级 SQL 编译、租户数据库权限或商家数据。
 

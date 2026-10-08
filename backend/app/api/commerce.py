@@ -30,6 +30,7 @@ from app.commerce.metrics import (
 )
 from app.commerce.plan import (
     CommercePlanRequest,
+    CommercePlanQuestionError,
     CommercePlanListResponse,
     CommercePlanPracticeCreate,
     CommercePlanPracticeListResponse,
@@ -375,6 +376,14 @@ def create_commerce_plan(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail={
                 "code": "commerce_plan_facts_not_ready",
+                "message": str(error),
+            },
+        ) from error
+    except CommercePlanQuestionError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "unsupported_commerce_plan_question",
                 "message": str(error),
             },
         ) from error

@@ -238,6 +238,9 @@ def test_admin_can_create_read_and_approve_commerce_plan(tmp_path: Path) -> None
             "/projects",
             json={"name": "电商计划项目", "stage": "operating"},
         ).json()
+        unsafe_payload = _plan_payload(project["id"], dataset.snapshot.snapshot_id)
+        unsafe_payload["question"] = "自动采购库存充足的热销商品"
+        unsafe = client.post("/commerce/plans", json=unsafe_payload)
         created = client.post(
             "/commerce/plans",
             json=_plan_payload(project["id"], dataset.snapshot.snapshot_id),
@@ -274,6 +277,8 @@ def test_admin_can_create_read_and_approve_commerce_plan(tmp_path: Path) -> None
             params={"project_id": project["id"], "snapshot_id": dataset.snapshot.snapshot_id},
         )
 
+    assert unsafe.status_code == 422
+    assert unsafe.json()["detail"]["code"] == "unsupported_commerce_plan_question"
     assert second.status_code == 201
     assert first_page.status_code == 200
     assert [item["id"] for item in first_page.json()["items"]] == [second.json()["id"]]
